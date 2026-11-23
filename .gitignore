@@ -1,0 +1,56 @@
+# Build output
+/bin/
+/dist/
+/out/
+*.exe
+*.test
+*.prof
+coverage.out
+coverage.html
+
+# Embedded UI build (keep the placeholder so go:embed works)
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep
+
+# Go
+/vendor/
+go.work
+go.work.sum
+
+# Node / web
+node_modules/
+/web/dist/
+/web/.vite/
+/web/coverage/
+/web/test-results/
+/web/playwright-report/
+/web/blob-report/
+/web/e2e/.auth/
+*.tsbuildinfo
+.pnpm-store/
+npm-debug.log*
+pnpm-debug.log*
+
+# Runtime data
+/data/
+/data-*/
+*.db
+*.db-wal
+*.db-shm
+app.key
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local notes and editor files
+notes/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+.DS_Store
+Thumbs.db
+
+# Agent customisations in .agents/ are committed (shared with the team).
