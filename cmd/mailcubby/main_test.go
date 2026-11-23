@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/mailcubby/mailcubby/internal/web"
 )
 
 func TestVersionSubcommand(t *testing.T) {
@@ -61,7 +63,7 @@ func TestServeHTTPShutdown(t *testing.T) {
 	cancel()
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := serveHTTP(ctx, "127.0.0.1:0", newPlaceholderHandler(), logger); err != nil {
+	if err := serveHTTP(ctx, "127.0.0.1:0", web.Handler(), logger); err != nil {
 		t.Fatalf("serveHTTP returned unexpected error: %v", err)
 	}
 }

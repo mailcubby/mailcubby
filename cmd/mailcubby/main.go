@@ -14,6 +14,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/mailcubby/mailcubby/internal/web"
 )
 
 // Build metadata populated via -ldflags.
@@ -102,19 +104,11 @@ func runServe(args []string, stdout, stderr io.Writer, lookupEnv func(string) (s
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := serveHTTP(ctx, addr, newPlaceholderHandler(), logger); err != nil {
+	if err := serveHTTP(ctx, addr, web.Handler(), logger); err != nil {
 		logger.Error("server exited with error", "error", err)
 		return 1
 	}
 	return 0
-}
-
-func newPlaceholderHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, "Mailcubby\n")
-	})
 }
 
 func serveHTTP(ctx context.Context, addr string, handler http.Handler, logger *slog.Logger) error {
