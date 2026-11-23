@@ -16,8 +16,43 @@ const THEME_OPTIONS: ReadonlyArray<{
   { value: "system", label: "System", Icon: Monitor },
 ];
 
-export function AppHeader() {
+export function ThemeToggle() {
   const { theme, systemTheme, setTheme } = useTheme();
+
+  return (
+    <fieldset
+      aria-label="Theme preference"
+      className="inline-flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5"
+    >
+      <legend className="sr-only">Theme preference</legend>
+      {THEME_OPTIONS.map(({ value, label, Icon }) => {
+        const active = theme === value;
+        const displayLabel = value === "system" ? `${label} (Currently ${systemTheme})` : label;
+        return (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={active}
+            aria-label={label}
+            title={displayLabel}
+            onClick={() => setTheme(value)}
+            className={cn(
+              "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center gap-1 rounded-sm px-2 text-xs font-medium transition-colors duration-150",
+              active
+                ? "bg-surface text-foreground shadow-2xs"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Icon className="size-3.5" aria-hidden="true" />
+            <span className="hidden md:inline">{label}</span>
+          </button>
+        );
+      })}
+    </fieldset>
+  );
+}
+
+export function AppHeader() {
   const { data: meta } = useQuery(metaQueryOptions());
   const instanceName = meta?.instance_name || "Mailcubby";
 
@@ -41,35 +76,7 @@ export function AppHeader() {
       </div>
 
       <nav aria-label="Application utilities" className="flex items-center gap-2">
-        <fieldset
-          aria-label="Theme preference"
-          className="inline-flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5"
-        >
-          <legend className="sr-only">Theme preference</legend>
-          {THEME_OPTIONS.map(({ value, label, Icon }) => {
-            const active = theme === value;
-            const displayLabel = value === "system" ? `${label} (Currently ${systemTheme})` : label;
-            return (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={active}
-                aria-label={displayLabel}
-                title={displayLabel}
-                onClick={() => setTheme(value)}
-                className={cn(
-                  "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center gap-1 rounded-sm px-2 text-xs font-medium transition-colors duration-150",
-                  active
-                    ? "bg-surface text-foreground shadow-2xs"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon className="size-3.5" aria-hidden="true" />
-                <span className="hidden md:inline">{label}</span>
-              </button>
-            );
-          })}
-        </fieldset>
+        <ThemeToggle />
       </nav>
     </header>
   );

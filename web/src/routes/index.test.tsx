@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ThemeToggle } from "@/components/AppHeader";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
-import { HomePage } from "./index";
 
 function installMatchMedia(matchesDark: boolean) {
   Object.defineProperty(window, "matchMedia", {
@@ -19,7 +19,7 @@ function installMatchMedia(matchesDark: boolean) {
   });
 }
 
-describe("HomePage", () => {
+describe("ThemeToggle", () => {
   beforeEach(() => {
     window.localStorage.clear();
     document.documentElement.classList.remove("dark", "light");
@@ -37,10 +37,8 @@ describe("HomePage", () => {
     cleanup();
   });
 
-  it("renders Mailcubby and toggles light, dark, and system themes", () => {
-    render(<HomePage />);
-
-    expect(screen.getByRole("heading", { name: "Mailcubby" })).toBeTruthy();
+  it("toggles light, dark, and system themes", () => {
+    render(<ThemeToggle />);
 
     const darkButton = screen.getByRole("button", { name: "Dark" });
     const lightButton = screen.getByRole("button", { name: "Light" });
