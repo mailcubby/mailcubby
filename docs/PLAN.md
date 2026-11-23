@@ -84,12 +84,12 @@ Acceptance:
 Tasks:
 - [x] `internal/blob`: spool (zstd), place (link or copy), open (stream decompress), remove, walk, path validation.
 - [x] `internal/search`: `IndexTx` only (FTS row insert, ARCHITECTURE 3.7). Parser and builder come in Phase 5.
-- [ ] `internal/ingest`: pipeline steps 1 to 7 from ARCHITECTURE 3.4 (quota and rate-limit hooks are no-ops until Phase 10; retention nudge is a no-op until Phase 10), ULID generator, metadata extraction (FR-008), text derivation (FR-009), attachment list, parse warnings, FTS indexing. `X-Tags` and plus-address tags are extracted into the ingest result but stored in Phase 5.
-- [ ] Golden fixtures in `testdata/mime/`: at least the list in ARCHITECTURE section 8, with `-update` flag.
+- [x] `internal/ingest`: pipeline steps 1 to 7 from ARCHITECTURE 3.4 (quota and rate-limit hooks are no-ops until Phase 10; retention nudge is a no-op until Phase 10), ULID generator, metadata extraction (FR-008), text derivation (FR-009), attachment list, parse warnings, FTS indexing. `X-Tags` and plus-address tags are extracted into the ingest result but stored in Phase 5.
+- [x] Golden fixtures in `testdata/mime/`: at least the list in ARCHITECTURE section 8, with `-update` flag.
 - [ ] `internal/smtpd` (FR-001, FR-003, FR-005, FR-020): go-smtp backend and session following the error contract (ARCHITECTURE 3.3); local mode routing (SPEC 7.2 local column, including recipient routing when `MAILCUBBY_INBOX_DOMAIN` is set); AUTH PLAIN and our LOGIN server; limits; `limitListener` (total and per-IP, admission goroutine).
 - [x] `internal/events`: bus with filters and slow-consumer handling (FR-092 buffer); publish `message.created` (FR-012).
 - [ ] `internal/app`: wire config, store, blob, ingest, smtpd, events; graceful shutdown.
-- [ ] `internal/ingest/assets/sample.eml` and `ingest.SendTest` helper (used by FR-077 in Phase 3b).
+- [x] `internal/ingest/assets/sample.eml` and `ingest.SendTest` helper (used by FR-077 in Phase 3b).
 - [ ] `mailcubby sendmail` subcommand (SPEC FR-115, including ignored sendmail flags and `-t`), and `make seed`.
 - [ ] `internal/testutil`: `StartServer(t, cfg)` (random loopback ports, temp data dir) and SMTP client helpers (`net/smtp`, PLAIN and LOGIN).
 

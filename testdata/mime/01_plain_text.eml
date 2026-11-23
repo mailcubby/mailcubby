@@ -1,0 +1,15 @@
+From: Alice <alice@example.test>
+To: Bob <bob@example.test>
+Date: Mon, 23 Nov 2026 10:00:00 +0000
+Message-ID: <plain-01@example.test>
+Subject: Plain text greeting
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Hello Bob,
+
+This is a simple plain text email with multiple
+lines   and   extra   spaces.
+
+Cheers,
+Alice

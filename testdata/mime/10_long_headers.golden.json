@@ -1,0 +1,27 @@
+{
+  "subject": "Very long folded subject line that spans several RFC 5322 continuation lines to verify unfolding and whitespace normalization in the ingest parser without dropping any words from the final extracted subject value",
+  "from_name": "System Monitor",
+  "from_addr": "monitor@example.test",
+  "to": [
+    {
+      "name": "Ops Team",
+      "address": "ops@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003clong-hdr-10@example.test\u003e",
+  "date_header": "2026-11-23T10:45:00Z",
+  "snippet": "Body of long header test message.",
+  "has_html": false,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 0,
+  "attachments": []
+}

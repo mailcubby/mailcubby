@@ -1,0 +1,36 @@
+{
+  "subject": "Invitation: Weekly sync",
+  "from_name": "Organizer",
+  "from_addr": "organizer@example.test",
+  "to": [
+    {
+      "name": "Attendee",
+      "address": "attendee@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003ccalendar-14@example.test\u003e",
+  "date_header": "2026-11-23T11:05:00Z",
+  "snippet": "You are invited to the Weekly sync on Tuesday at 10:00 UTC.",
+  "has_html": false,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 1,
+  "attachments": [
+    {
+      "part_path": "2",
+      "filename": "invite.ics",
+      "content_type": "text/calendar",
+      "size_bytes": 229,
+      "disposition": "attachment",
+      "sha256": "721b1b79264bc47510a623481b26210a52be18aef0effde9fee76bd6887d0a4f"
+    }
+  ]
+}

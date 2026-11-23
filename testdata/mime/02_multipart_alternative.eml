@@ -1,0 +1,27 @@
+From: Shop Support <support@shop.example.test>
+To: Customer <customer@example.test>
+Cc: Billing <billing@shop.example.test>
+Reply-To: No Reply <noreply@shop.example.test>
+Date: Mon, 23 Nov 2026 10:05:00 +0000
+Message-ID: <alt-02@shop.example.test>
+Subject: Order #1042 confirmed
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="alt-bound-02"
+
+--alt-bound-02
+Content-Type: text/plain; charset="utf-8"
+
+Your order #1042 has been confirmed. Thank you for shopping with us.
+
+--alt-bound-02
+Content-Type: text/html; charset="utf-8"
+
+<!doctype html>
+<html>
+  <body>
+    <h1>Order #1042 confirmed</h1>
+    <p>Thank you for shopping with us.</p>
+  </body>
+</html>
+
+--alt-bound-02--

@@ -1,0 +1,25 @@
+From: Forwarder <fwd@example.test>
+To: Reviewer <reviewer@example.test>
+Date: Mon, 23 Nov 2026 10:25:00 +0000
+Message-ID: <nested-06@example.test>
+Subject: Fwd: Original customer report
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="nested-bound-06"
+
+--nested-bound-06
+Content-Type: text/plain; charset="utf-8"
+
+Forwarding the original email below as an attached message/rfc822 part.
+
+--nested-bound-06
+Content-Type: message/rfc822; name="original.eml"
+Content-Disposition: attachment; filename="original.eml"
+
+From: Reporter <reporter@example.test>
+To: Support <support@example.test>
+Date: Mon, 23 Nov 2026 09:00:00 +0000
+Subject: Original customer report
+
+Something failed on checkout.
+
+--nested-bound-06--

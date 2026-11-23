@@ -1,0 +1,10 @@
+From: Legacy App <legacy@example.test>
+To: Dev <dev@example.test>
+Date: Mon, 23 Nov 2026 11:00:00 +0000
+Message-ID: <eightbit-13@example.test>
+Subject: Eight bit body without charset
+MIME-Version: 1.0
+Content-Type: text/plain
+Content-Transfer-Encoding: 8bit
+
+Café com pão de queijo e açúcar sem parâmetro charset.

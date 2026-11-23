@@ -1,0 +1,27 @@
+{
+  "subject": "Plain text greeting",
+  "from_name": "Alice",
+  "from_addr": "alice@example.test",
+  "to": [
+    {
+      "name": "Bob",
+      "address": "bob@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003cplain-01@example.test\u003e",
+  "date_header": "2026-11-23T10:00:00Z",
+  "snippet": "Hello Bob, This is a simple plain text email with multiple lines and extra spaces. Cheers, Alice",
+  "has_html": false,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 0,
+  "attachments": []
+}

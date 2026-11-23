@@ -1,0 +1,36 @@
+{
+  "subject": "Fwd: Original customer report",
+  "from_name": "Forwarder",
+  "from_addr": "fwd@example.test",
+  "to": [
+    {
+      "name": "Reviewer",
+      "address": "reviewer@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003cnested-06@example.test\u003e",
+  "date_header": "2026-11-23T10:25:00Z",
+  "snippet": "Forwarding the original email below as an attached message/rfc822 part.",
+  "has_html": false,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 1,
+  "attachments": [
+    {
+      "part_path": "2",
+      "filename": "original.eml",
+      "content_type": "message/rfc822",
+      "size_bytes": 177,
+      "disposition": "attachment",
+      "sha256": "018dec3bafd11b750f65881c632bc312e6109cf34a0438c50cfe083e4696cb4e"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+To: Recipient <recipient@example.test>
+Subject: Missing Date and From headers
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+This email deliberately omits both Date and From headers.

@@ -1,0 +1,25 @@
+{
+  "subject": "Missing Date and From headers",
+  "from_name": "",
+  "from_addr": "",
+  "to": [
+    {
+      "name": "Recipient",
+      "address": "recipient@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "snippet": "This email deliberately omits both Date and From headers.",
+  "has_html": false,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 0,
+  "attachments": []
+}

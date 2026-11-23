@@ -1,0 +1,32 @@
+{
+  "subject": "Invoice #9981",
+  "from_name": "Storefront",
+  "from_addr": "orders@shop.example.test",
+  "to": [
+    {
+      "name": "Customer",
+      "address": "customer@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003cxtags-15@shop.example.test\u003e",
+  "date_header": "2026-11-23T11:10:00Z",
+  "snippet": "Invoice #9981 is ready for download.",
+  "has_html": false,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 0,
+  "attachments": [],
+  "extracted_tags": [
+    "invoice",
+    "Staging",
+    "bad-tag-name"
+  ]
+}

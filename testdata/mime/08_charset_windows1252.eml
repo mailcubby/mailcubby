@@ -1,0 +1,10 @@
+From: Billing <billing@example.test>
+To: Buyer <buyer@example.test>
+Date: Mon, 23 Nov 2026 10:35:00 +0000
+Message-ID: <win1252-08@example.test>
+Subject: Windows-1252 price quote
+MIME-Version: 1.0
+Content-Type: text/plain; charset="windows-1252"
+Content-Transfer-Encoding: quoted-printable
+
+Total: =8042.00 =97 =93special offer=94.

@@ -1,0 +1,15 @@
+From: Newsletter <news@example.test>
+To: Reader <reader@example.test>
+Date: Mon, 23 Nov 2026 10:10:00 +0000
+Message-ID: <html-only-03@example.test>
+Subject: Weekly HTML digest
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+
+<!doctype html>
+<html>
+  <body>
+    <h2>Weekly Digest</h2>
+    <p>This email has <strong>only HTML</strong> and no plain text part.</p>
+  </body>
+</html>

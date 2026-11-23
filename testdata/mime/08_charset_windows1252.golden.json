@@ -1,0 +1,27 @@
+{
+  "subject": "Windows-1252 price quote",
+  "from_name": "Billing",
+  "from_addr": "billing@example.test",
+  "to": [
+    {
+      "name": "Buyer",
+      "address": "buyer@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003cwin1252-08@example.test\u003e",
+  "date_header": "2026-11-23T10:35:00Z",
+  "snippet": "Total: €42.00 — “special offer”.",
+  "has_html": false,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 0,
+  "attachments": []
+}

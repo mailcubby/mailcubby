@@ -1,0 +1,33 @@
+From: Accounting <accounting@example.test>
+To: Client <client@example.test>
+Date: Mon, 23 Nov 2026 10:20:00 +0000
+Message-ID: <att-05@example.test>
+Subject: Documents attached (PDF and ZIP)
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mix-bound-05"
+
+--mix-bound-05
+Content-Type: text/plain; charset="utf-8"
+
+Please find the invoice PDF and archive ZIP attached.
+
+--mix-bound-05
+Content-Type: application/pdf
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename*=UTF-8''fatura-jo%C3%A3o-2026.pdf
+
+JVBERi0xLjQKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PgplbmRvYmoKMiAw
+IG9iago8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PgplbmRvYmoKMyAwIG9iago8
+PC9UeXBlL1BhZ2UvUGFyZW50IDIgMCBSL01lZGlhQm94WzAgMCA2MTIgNzkyXT4+CmVuZG9iagp0
+cmFpbGVyCjw8L1Jvb3QgMSAwIFI+PgolJUVPRgo=
+
+--mix-bound-05
+Content-Type: application/zip; name="bundle.zip"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="bundle.zip"
+
+UEsDBBQAAAAIAIAAAAAAAAAAAAAAAAAAAAAJAAAAaGVsbG8udHh0y0jNyclX4AIAUEsBAhQAFAAA
+AAgAgAAAAAAAAAAAAAAAAAAAAAkAAAAAAAAAAAAAAAAAAAAAAABoZWxsby50eHRQSwUGAAAAAAEA
+AQA3AAAAKwAAAAAA
+
+--mix-bound-05--

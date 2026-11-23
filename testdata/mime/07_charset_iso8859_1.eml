@@ -1,0 +1,10 @@
+From: Loja <loja@example.test>
+To: Cliente <cliente@example.test>
+Date: Mon, 23 Nov 2026 10:30:00 +0000
+Message-ID: <iso-07@example.test>
+Subject: ISO-8859-1 body test
+MIME-Version: 1.0
+Content-Type: text/plain; charset="iso-8859-1"
+Content-Transfer-Encoding: quoted-printable
+
+Ol=E1 Jo=E3o, a sua solicita=E7=E3o foi recebida com aten=E7=E3o.

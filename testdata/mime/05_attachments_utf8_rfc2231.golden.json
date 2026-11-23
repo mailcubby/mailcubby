@@ -1,0 +1,44 @@
+{
+  "subject": "Documents attached (PDF and ZIP)",
+  "from_name": "Accounting",
+  "from_addr": "accounting@example.test",
+  "to": [
+    {
+      "name": "Client",
+      "address": "client@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003catt-05@example.test\u003e",
+  "date_header": "2026-11-23T10:20:00Z",
+  "snippet": "Please find the invoice PDF and archive ZIP attached.",
+  "has_html": false,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 2,
+  "attachments": [
+    {
+      "part_path": "2",
+      "filename": "fatura-joão-2026.pdf",
+      "content_type": "application/pdf",
+      "size_bytes": 200,
+      "disposition": "attachment",
+      "sha256": "8a9af1cbbd97242eba60205799dcb06a991d77bcebbf28440f704bbc4c6150f7"
+    },
+    {
+      "part_path": "3",
+      "filename": "bundle.zip",
+      "content_type": "application/zip",
+      "size_bytes": 126,
+      "disposition": "attachment",
+      "sha256": "9ac00cebeececc535586a9a3711dace4286738603db9c7763c3b3c75057ee7a8"
+    }
+  ]
+}

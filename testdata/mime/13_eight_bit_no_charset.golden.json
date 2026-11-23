@@ -1,0 +1,27 @@
+{
+  "subject": "Eight bit body without charset",
+  "from_name": "Legacy App",
+  "from_addr": "legacy@example.test",
+  "to": [
+    {
+      "name": "Dev",
+      "address": "dev@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003ceightbit-13@example.test\u003e",
+  "date_header": "2026-11-23T11:00:00Z",
+  "snippet": "Café com pão de queijo e açúcar sem parâmetro charset.",
+  "has_html": false,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 0,
+  "attachments": []
+}

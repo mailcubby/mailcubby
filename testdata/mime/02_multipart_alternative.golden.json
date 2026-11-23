@@ -1,0 +1,37 @@
+{
+  "subject": "Order #1042 confirmed",
+  "from_name": "Shop Support",
+  "from_addr": "support@shop.example.test",
+  "to": [
+    {
+      "name": "Customer",
+      "address": "customer@example.test"
+    }
+  ],
+  "cc": [
+    {
+      "name": "Billing",
+      "address": "billing@shop.example.test"
+    }
+  ],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [
+    {
+      "name": "No Reply",
+      "address": "noreply@shop.example.test"
+    }
+  ],
+  "message_id_header": "\u003calt-02@shop.example.test\u003e",
+  "date_header": "2026-11-23T10:05:00Z",
+  "snippet": "Your order #1042 has been confirmed. Thank you for shopping with us.",
+  "has_html": true,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 0,
+  "attachments": []
+}

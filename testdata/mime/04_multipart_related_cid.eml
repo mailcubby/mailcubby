@@ -1,0 +1,23 @@
+From: Brand Team <brand@example.test>
+To: Designer <designer@example.test>
+Date: Mon, 23 Nov 2026 10:15:00 +0000
+Message-ID: <cid-04@example.test>
+Subject: Inline CID logo preview
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="rel-bound-04"
+
+--rel-bound-04
+Content-Type: text/html; charset="utf-8"
+
+<html><body><p>Logo: <img src="cid:pixel@example.test" alt="pixel"></p></body></html>
+
+--rel-bound-04
+Content-Type: image/png; name="pixel.png"
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="pixel.png"
+Content-ID: <pixel@example.test>
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YA
+AAAASUVORK5CYII=
+
+--rel-bound-04--

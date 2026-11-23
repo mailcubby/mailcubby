@@ -1,0 +1,12 @@
+From: System Monitor <monitor@example.test>
+To: Ops Team <ops@example.test>
+Date: Mon, 23 Nov 2026 10:45:00 +0000
+Message-ID: <long-hdr-10@example.test>
+X-Trace-Chain: hop-01-alpha-bravo-charlie-delta-echo-foxtrot-golf-hotel-india-juliet-kilo-lima-mike-november-oscar-papa-quebec-romeo-sierra-tango-uniform-victor-whiskey-xray-yankee-zulu; hop-02-alpha-bravo-charlie-delta-echo-foxtrot-golf-hotel-india-juliet-kilo-lima-mike-november-oscar-papa-quebec-romeo-sierra-tango-uniform-victor-whiskey-xray-yankee-zulu; hop-03-alpha-bravo-charlie-delta-echo-foxtrot-golf-hotel-india-juliet-kilo-lima-mike-november-oscar-papa-quebec-romeo-sierra-tango-uniform-victor-whiskey-xray-yankee-zulu
+Subject: Very long folded subject line that spans several RFC 5322 continuation
+ lines to verify unfolding and whitespace normalization in the ingest parser
+ without dropping any words from the final extracted subject value
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Body of long header test message.

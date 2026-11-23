@@ -1,0 +1,27 @@
+{
+  "subject": "ISO-8859-1 body test",
+  "from_name": "Loja",
+  "from_addr": "loja@example.test",
+  "to": [
+    {
+      "name": "Cliente",
+      "address": "cliente@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003ciso-07@example.test\u003e",
+  "date_header": "2026-11-23T10:30:00Z",
+  "snippet": "Olá João, a sua solicitação foi recebida com atenção.",
+  "has_html": false,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 0,
+  "attachments": []
+}

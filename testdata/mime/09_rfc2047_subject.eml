@@ -1,0 +1,9 @@
+From: =?UTF-8?Q?Jo=C3=A3o_Silva?= <joao@example.test>
+To: =?UTF-8?B?TWFyaWEgQ2FybW8=?= <maria@example.test>
+Date: Mon, 23 Nov 2026 10:40:00 +0000
+Message-ID: <rfc2047-09@example.test>
+Subject: =?UTF-8?Q?Fatura_de_Jo=C3=A3o_=E2=80=94_Novembro?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Encoded subject and display names using RFC 2047 Q and B encodings.

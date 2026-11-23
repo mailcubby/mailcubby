@@ -1,0 +1,59 @@
+From: Mailcubby Demo <demo@mailcubby.test>
+To: Developer <dev@example.test>
+Subject: Welcome to Mailcubby — sample test email
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mc-mixed-boundary"
+
+--mc-mixed-boundary
+Content-Type: multipart/related; boundary="mc-related-boundary"
+
+--mc-related-boundary
+Content-Type: multipart/alternative; boundary="mc-alt-boundary"
+
+--mc-alt-boundary
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Hello from Mailcubby!
+
+This is a built-in sample message with HTML, plain text, an inline PNG image,
+a minimal PDF attachment, and a link: https://mailcubby.dev
+
+--mc-alt-boundary
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+<!doctype html>
+<html lang="en">
+  <body style="font-family: sans-serif; color: #18181b;">
+    <img src="cid:logo@mailcubby.test" alt="Mailcubby" width="16" height="16">
+    <h1>Hello from Mailcubby!</h1>
+    <p>This sample message verifies HTML preview, inline CID images, and PDF attachments.</p>
+    <p><a href="https://mailcubby.dev">Visit Mailcubby</a></p>
+  </body>
+</html>
+
+--mc-alt-boundary--
+
+--mc-related-boundary
+Content-Type: image/png; name="logo.png"
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="logo.png"
+Content-ID: <logo@mailcubby.test>
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YA
+AAAASUVORK5CYII=
+
+--mc-related-boundary--
+
+--mc-mixed-boundary
+Content-Type: application/pdf; name="sample.pdf"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="sample.pdf"
+
+JVBERi0xLjQKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PgplbmRvYmoKMiAw
+IG9iago8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PgplbmRvYmoKMyAwIG9iago8
+PC9UeXBlL1BhZ2UvUGFyZW50IDIgMCBSL01lZGlhQm94WzAgMCA2MTIgNzkyXT4+CmVuZG9iagp0
+cmFpbGVyCjw8L1Jvb3QgMSAwIFI+PgolJUVPRgo=
+
+--mc-mixed-boundary--

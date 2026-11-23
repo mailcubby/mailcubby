@@ -1,0 +1,30 @@
+{
+  "subject": "Malformed MIME boundary",
+  "from_name": "Broken Mailer",
+  "from_addr": "broken@example.test",
+  "to": [
+    {
+      "name": "Catcher",
+      "address": "catcher@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003cmalformed-12@example.test\u003e",
+  "date_header": "2026-11-23T10:55:00Z",
+  "snippet": "First part before truncation. --wrong-boundary-never-closed Content-Type: text/plain; charset=\"utf-8\" Trailing content with missing closing boundary.",
+  "has_html": false,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 0,
+  "attachments": [],
+  "parse_warnings": [
+    "Missing Boundary: Boundary \"expected-boundary\" was not closed correctly"
+  ]
+}

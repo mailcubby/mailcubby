@@ -1,0 +1,17 @@
+From: Broken Mailer <broken@example.test>
+To: Catcher <catcher@example.test>
+Date: Mon, 23 Nov 2026 10:55:00 +0000
+Message-ID: <malformed-12@example.test>
+Subject: Malformed MIME boundary
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="expected-boundary"
+
+--expected-boundary
+Content-Type: text/plain; charset="utf-8"
+
+First part before truncation.
+
+--wrong-boundary-never-closed
+Content-Type: text/plain; charset="utf-8"
+
+Trailing content with missing closing boundary.

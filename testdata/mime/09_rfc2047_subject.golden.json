@@ -1,0 +1,27 @@
+{
+  "subject": "Fatura de João — Novembro",
+  "from_name": "João Silva",
+  "from_addr": "joao@example.test",
+  "to": [
+    {
+      "name": "Maria Carmo",
+      "address": "maria@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003crfc2047-09@example.test\u003e",
+  "date_header": "2026-11-23T10:40:00Z",
+  "snippet": "Encoded subject and display names using RFC 2047 Q and B encodings.",
+  "has_html": false,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 0,
+  "attachments": []
+}

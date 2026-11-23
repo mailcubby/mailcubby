@@ -1,0 +1,27 @@
+{
+  "subject": "Weekly HTML digest",
+  "from_name": "Newsletter",
+  "from_addr": "news@example.test",
+  "to": [
+    {
+      "name": "Reader",
+      "address": "reader@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003chtml-only-03@example.test\u003e",
+  "date_header": "2026-11-23T10:10:00Z",
+  "snippet": "------------- Weekly Digest ------------- This email has *only HTML* and no plain text part.",
+  "has_html": true,
+  "has_text": false,
+  "text_generated": true,
+  "attachment_count": 0,
+  "attachments": []
+}

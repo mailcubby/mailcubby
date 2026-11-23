@@ -1,0 +1,10 @@
+From: Storefront <orders@shop.example.test>
+To: Customer <customer@example.test>
+Date: Mon, 23 Nov 2026 11:10:00 +0000
+Message-ID: <xtags-15@shop.example.test>
+Subject: Invoice #9981
+X-Tags: invoice, Staging, bad/tag name
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Invoice #9981 is ready for download.
