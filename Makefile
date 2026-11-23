@@ -170,6 +170,7 @@ check: ## Verify generated code is up to date, then lint, test, and build-all
 	$(MAKE) test
 	$(MAKE) test-web
 	$(MAKE) build-all
+	pnpm --dir web check:bundle
 
 bench: ## Run Go benchmarks (store, search, ingest)
 	@pkgs=""; \
