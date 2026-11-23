@@ -333,7 +333,7 @@ Unknown operators are treated as plain text. The parser MUST produce parameteris
 | `mailcubby serve` (default) | Run SMTP + HTTP + workers. |
 | `mailcubby version` | Print version, commit, build date. |
 | `mailcubby keygen` | Print a new base64 `MAILCUBBY_APP_KEY`. |
-| `mailcubby healthcheck [--url]` | Exit 0 if `/readyz` returns 200 within 2 s, else exit 1 (for Docker `HEALTHCHECK` in a distroless image, no shell). Default URL: `http://127.0.0.1:<port of MAILCUBBY_HTTP_ADDR>/readyz` (`https` with certificate verification skipped when `MAILCUBBY_HTTP_TLS_CERT` is set). |
+| `mailcubby healthcheck [--url]` | Exit 0 if `/readyz` returns 200 within 2 s, else exit 1 (for Docker `HEALTHCHECK` in a distroless image, no shell). Default URL: `http://127.0.0.1:<port of MAILCUBBY_HTTP_ADDR>/readyz`. |
 | `mailcubby migrate status` | Show applied migrations. Migrations run automatically on `serve`. |
 | `mailcubby admin create-user --email --name [--admin]` | Print an invite link for a new user. |
 | `mailcubby admin reset-password --email` | Print a single-use reset link. |
@@ -550,7 +550,6 @@ Environment variables only (no config file in v1). Variables marked (secret) als
 | Variable | Default | Description |
 |---|---|---|
 | `MAILCUBBY_HTTP_ADDR` | `:8025` | Listen address. |
-| `MAILCUBBY_HTTP_TLS_CERT` / `MAILCUBBY_HTTP_TLS_KEY` | empty | Serve HTTPS directly (normally a reverse proxy terminates TLS). Hot-reloaded. |
 | `MAILCUBBY_TRUSTED_PROXIES` | empty | Comma-separated CIDRs whose `X-Forwarded-For` / `X-Forwarded-Proto` are trusted. |
 | `MAILCUBBY_SESSION_TTL` | `30d` | Absolute session lifetime. |
 | `MAILCUBBY_SESSION_IDLE_TIMEOUT` | `7d` | Idle timeout. |
@@ -581,8 +580,6 @@ Environment variables only (no config file in v1). Variables marked (secret) als
 | `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` | `5` | Failures per IP or per username within the window before lockout. |
 | `MAILCUBBY_SMTP_AUTH_LOCKOUT` | `15m` | Window and lockout duration. |
 | `MAILCUBBY_SMTP_RATE_LIMIT` | `600/m` | Messages per project. `0` disables. |
-| `MAILCUBBY_SMTP_PROXY_PROTOCOL` | `false` | Expect PROXY protocol v1/v2 headers. |
-| `MAILCUBBY_SMTP_PROXY_PROTOCOL_TRUSTED` | empty | CIDRs allowed to send PROXY headers (required when enabled). |
 
 ### 9.4 Retention and storage
 
@@ -842,7 +839,7 @@ In-memory (single process), sliding windows; state is lost on restart, which is 
 - HTTP login: `MAILCUBBY_LOGIN_RATE_LIMIT` per (IP, email) and 5x that per IP; `429` with `Retry-After`.
 - Invite preview/accept and password reset: 20 requests per 15 min per IP.
 - API: `MAILCUBBY_API_RATE_LIMIT` per token or session (token bucket).
-- Client IP is the socket address, or `X-Forwarded-For` (rightmost untrusted hop) only when the peer is in `MAILCUBBY_TRUSTED_PROXIES`. For SMTP, PROXY protocol headers are honoured only from `MAILCUBBY_SMTP_PROXY_PROTOCOL_TRUSTED`.
+- Client IP is the socket address, or `X-Forwarded-For` (rightmost untrusted hop) only when the peer is in `MAILCUBBY_TRUSTED_PROXIES`.
 
 ### 12.5 Tenant isolation
 
@@ -898,6 +895,8 @@ Listed so v1 design does not block them. Do not implement in v1.
 15. Mailpit API compatibility shim; Mailpit data import.
 16. Message links/OTP extraction endpoint for tests.
 17. Per-user read state.
-18. Built-in ACME certificates (certmagic) for SMTP and HTTP. Stretch goal in PLAN Phase 12; if it does not land, v1 uses certificate files only.
+18. Built-in ACME certificates (certmagic) for SMTP and HTTP; v1 uses certificate files only.
 19. Serving the UI and API under a sub-path (`MAILCUBBY_BASE_PATH`); v1 is served from the root of its host.
 20. Inline PDF preview of attachments (needs a PDF-specific CSP that browser viewers accept).
+21. PROXY protocol v1/v2 support for SMTP behind TCP load balancers (`MAILCUBBY_SMTP_PROXY_PROTOCOL` / `MAILCUBBY_SMTP_PROXY_PROTOCOL_TRUSTED`).
+22. Direct HTTPS listener (`MAILCUBBY_HTTP_TLS_CERT` / `MAILCUBBY_HTTP_TLS_KEY`); v1 terminates HTTPS at a reverse proxy (Caddy, Traefik, nginx).

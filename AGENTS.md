@@ -40,10 +40,8 @@ Status: pre-alpha. Copyright NOOP, PolyForm Shield 1.0.0 license (source-availab
 | `golang.org/x/crypto` | v0.59.0 | argon2id |
 | `golang.org/x/net` | v0.63.0 | `html` tokenizer for render rewriting |
 | `golang.org/x/sync` | v0.25.0 | `errgroup`, `semaphore` |
-| `github.com/pires/go-proxyproto` | v0.16.0 | PROXY protocol for SMTP |
 | `golangci-lint` (dev tool) | v2.15.0 | Release binary via `make tools` |
 | GoReleaser (CI tool) | v2.20.3 | Releases and multi-arch images |
-| `github.com/caddyserver/certmagic` | v0.25.6 | Optional, Phase 12 stretch only. Do not add earlier. |
 
 HTTP routing uses the standard library `net/http.ServeMux` (Go 1.22+ method and wildcard patterns). Do not add chi, gin, echo or similar. Logging uses `log/slog`. HKDF uses stdlib `crypto/hkdf`.
 

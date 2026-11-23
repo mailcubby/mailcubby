@@ -31,15 +31,15 @@ In Google Antigravity, `AGENTS.md` is loaded automatically; type `/next-phase` (
 **Goal**: an empty but complete skeleton that builds, lints, tests and produces a Docker image serving a placeholder UI.
 
 Tasks:
-- [ ] `go.mod` (`module github.com/mailcubby/mailcubby`, `go 1.27`, `toolchain go1.27.4`); `cmd/mailcubby/main.go` with `serve` (placeholder HTTP server on `MAILCUBBY_HTTP_ADDR`, default `:8025`, read directly from the environment until Phase 1) and `version` subcommands; `version`, `commit`, `date` vars in `package main` set via `-ldflags`.
-- [ ] `Makefile` with all targets from `AGENTS.md` section 5. Targets whose inputs do not exist yet are no-ops that print why (`generate` without `sqlc.yaml`/`openapi.yaml`, `seed`, `e2e`, `bench`); `make help` lists every target. `make tools` downloads pinned `sqlc` v1.31.1 and `golangci-lint` v2.15.0 release binaries into `./bin/` for the host OS/arch. `make check` detects generated-file changes with a hash snapshot (not `git diff`).
-- [ ] `.golangci.yml` (v2 format) with the linters listed in `AGENTS.md`; `depguard` rule denying `github.com/go-chi`, `github.com/gin-gonic`, `github.com/labstack/echo`, `github.com/sirupsen/logrus`, `go.uber.org/zap`; generated `internal/store/sqlc/` excluded.
-- [ ] `web/` Vite + React 19 + TypeScript 6 app with Tailwind v4 (`@tailwindcss/vite`), shadcn/ui initialised (`components.json`), TanStack Router (file routes, `routeTree.gen.ts` committed) and Query, Biome config (generated files ignored), Vitest config with one passing test, Inter font, `globals.css` with the tokens from `docs/UI.md`, light/dark/system theme with `public/theme.js`. One route `/` rendering "Mailcubby" with a theme toggle. `pnpm` scripts: `dev`, `build`, `test`, `lint`, `typecheck`, `gen:api`. Exact versions from `AGENTS.md` section 3 (no `^`/`~`), `packageManager: "pnpm@12.21.0"`.
-- [ ] Vite config: `base: '/'`, dev proxy for `/api` and `/render` to `http://localhost:8025`.
-- [ ] `internal/web` with `//go:embed all:dist`, `dist/.gitkeep`, SPA fallback, cache headers, `/assets/` 404 for missing files, "UI not built" fallback page (ARCHITECTURE 3.13); `make web` syncs `web/dist` into `internal/web/dist`.
-- [ ] `deploy/Dockerfile` (multi-stage as in ARCHITECTURE 9.1), `deploy/compose.local.yml`, `.dockerignore`.
-- [ ] `.github/workflows/ci.yml`: job `check` (setup-go from `go.mod`, setup-node 26 + pnpm 12.21.0, `make tools`, `make deps`, `make check`), job `race` (`make test-race`), job `docker` (build image; assert the gzip-compressed size of `docker save` is under 25 MB). Runs on push and PR.
-- [ ] `internal/clock` (Clock interface with `Now`, `NewTicker`, `NewTimer`/`After`; real and fake implementations; the fake advances only when the test calls `Advance`) since every later phase uses it.
+- [x] `go.mod` (`module github.com/mailcubby/mailcubby`, `go 1.27`, `toolchain go1.27.4`); `cmd/mailcubby/main.go` with `serve` (placeholder HTTP server on `MAILCUBBY_HTTP_ADDR`, default `:8025`, read directly from the environment until Phase 1) and `version` subcommands; `version`, `commit`, `date` vars in `package main` set via `-ldflags`.
+- [x] `Makefile` with all targets from `AGENTS.md` section 5. Targets whose inputs do not exist yet are no-ops that print why (`generate` without `sqlc.yaml`/`openapi.yaml`, `seed`, `e2e`, `bench`); `make help` lists every target. `make tools` downloads pinned `sqlc` v1.31.1 and `golangci-lint` v2.15.0 release binaries into `./bin/` for the host OS/arch. `make check` detects generated-file changes with a hash snapshot (not `git diff`).
+- [x] `.golangci.yml` (v2 format) with the linters listed in `AGENTS.md`; `depguard` rule denying `github.com/go-chi`, `github.com/gin-gonic`, `github.com/labstack/echo`, `github.com/sirupsen/logrus`, `go.uber.org/zap`; generated `internal/store/sqlc/` excluded.
+- [x] `web/` Vite + React 19 + TypeScript 6 app with Tailwind v4 (`@tailwindcss/vite`), shadcn/ui initialised (`components.json`), TanStack Router (file routes, `routeTree.gen.ts` committed) and Query, Biome config (generated files ignored), Vitest config with one passing test, Inter font, `globals.css` with the tokens from `docs/UI.md`, light/dark/system theme with `public/theme.js`. One route `/` rendering "Mailcubby" with a theme toggle. `pnpm` scripts: `dev`, `build`, `test`, `lint`, `typecheck`, `gen:api`. Exact versions from `AGENTS.md` section 3 (no `^`/`~`), `packageManager: "pnpm@12.21.0"`.
+- [x] Vite config: `base: '/'`, dev proxy for `/api` and `/render` to `http://localhost:8025`.
+- [x] `internal/web` with `//go:embed all:dist`, `dist/.gitkeep`, SPA fallback, cache headers, `/assets/` 404 for missing files, "UI not built" fallback page (ARCHITECTURE 3.13); `make web` syncs `web/dist` into `internal/web/dist`.
+- [x] `deploy/Dockerfile` (multi-stage as in ARCHITECTURE 9.1), `deploy/compose.local.yml`, `.dockerignore`.
+- [x] `.github/workflows/ci.yml`: job `check` (setup-go from `go.mod`, setup-node 26 + pnpm 12.21.0, `make tools`, `make deps`, `make check`), job `race` (`make test-race`), job `docker` (build image; assert the gzip-compressed size of `docker save` is under 25 MB). Runs on push and PR.
+- [x] `internal/clock` (Clock interface with `Now`, `NewTicker`, `NewTimer`/`After`; real and fake implementations; the fake advances only when the test calls `Advance`) since every later phase uses it.
 
 Files: `go.mod`, `cmd/mailcubby/`, `internal/web/`, `internal/clock/`, `Makefile`, `.golangci.yml`, `web/**`, `deploy/Dockerfile`, `deploy/compose.local.yml`, `.dockerignore`, `.github/workflows/ci.yml`.
 
@@ -375,23 +375,20 @@ Acceptance:
 
 ---
 
-## Phase 12: TLS, PROXY protocol, packaging, docs polish
+## Phase 12: TLS, packaging, docs polish
 
 **Goal**: production deployment story.
 
 Tasks:
-- [ ] `internal/tlsutil.Reloader` (mtime polling) for SMTP STARTTLS, implicit TLS listener (FR-002), optional HTTPS listener.
-- [ ] PROXY protocol in `limitListener` with trusted CIDRs (ARCHITECTURE 3.3).
+- [ ] `internal/tlsutil.Reloader` (mtime polling) for SMTP STARTTLS and implicit TLS listener (FR-002).
 - [ ] `.goreleaser.yaml`, `deploy/Dockerfile.goreleaser`, `.github/workflows/release.yml`: binaries for linux/darwin/windows x amd64/arm64, multi-arch images on `ghcr.io/mailcubby/mailcubby`, checksums; image size check (NFR-006).
 - [ ] `deploy/compose.server.yml` with Caddy and a shared certificate volume whose key files are readable by UID 65532 (ARCHITECTURE 9.3 pitfall), `deploy/Caddyfile` alternative, `deploy/compose.local.yml` final.
 - [ ] README polish: install, local and server quick starts, reverse proxy notes (Caddy, Traefik, nginx with `proxy_buffering off` for SSE), backups, upgrades, Mailpit migration notes (ports, `X-Tags`, sendmail).
-- [ ] Stretch (optional, skip if time is short): built-in ACME with certmagic v0.25.6 behind `MAILCUBBY_ACME_DOMAINS` / `MAILCUBBY_ACME_EMAIL`; requires an ADR and the dependency table update (stop condition: ask the owner first).
 
-Files: `internal/tlsutil/`, `internal/smtpd/`, `internal/api/`, `internal/app/`, `.goreleaser.yaml`, `deploy/**`, `.github/workflows/release.yml`, `README.md`.
+Files: `internal/tlsutil/`, `internal/smtpd/`, `internal/app/`, `.goreleaser.yaml`, `deploy/**`, `.github/workflows/release.yml`, `README.md`.
 
 Acceptance:
 - Replacing cert files on disk switches the served certificate after the next poll without restart (test with two generated certs and the fake clock).
-- PROXY header from an untrusted IP is rejected; from a trusted IP the logged remote IP is the original client; a client that never sends the header does not block other connections.
 - `goreleaser release --snapshot --clean` succeeds; images for amd64 and arm64 are each under 25 MB compressed (requires Docker; otherwise blocked).
 - Following the README server quick start on a fresh VM yields a working instance with STARTTLS on 587 (owner).
 
@@ -423,6 +420,6 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
 - 2026-11-23, doc review: inline PDF preview removed from v1 (browser PDF viewers do not render under the attachment CSP sandbox); PDFs are downloaded.
 - 2026-11-23, doc review: `messages.pk` uses `AUTOINCREMENT` and FTS rows are deleted by a trigger, so cascades and retention can never leave stale FTS rows matching reused rowids.
 - 2026-11-23, doc review: Playwright e2e starts in Phase 4a (not Phase 13) so autonomous UI phases have automated acceptance; `mailcubby sendmail` and `make seed` moved to Phase 2.
-- **Owner** (default: keep, implement in Phase 12): are PROXY protocol support and the direct HTTPS listener needed in v1? Both add surface; NOOP's own deployment (Caddy + direct SMTP port) needs neither.
-- **Owner** (default: skip): should the certmagic ACME stretch goal be dropped from v1 entirely?
-- **Owner** (default: no commits): should the agent commit after each task or phase during autonomous runs (AGENTS.md section 7, item 10)?
+- 2026-11-23, Phase 0 (owner decision): PROXY protocol support and the direct HTTPS listener are NOT needed in v1; moved to the roadmap in `docs/SPEC.md` and removed from Phase 12.
+- 2026-11-23, Phase 0 (owner decision): certmagic ACME stretch goal dropped from v1 (roadmap only).
+- 2026-11-23, Phase 0 (owner decision): commits are enabled during autonomous runs — make one local Conventional Commit per completed task, never push.

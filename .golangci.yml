@@ -1,0 +1,73 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - depguard
+    - errcheck
+    - errorlint
+    - gocritic
+    - gosec
+    - govet
+    - misspell
+    - noctx
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - unparam
+
+  settings:
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: github.com/go-chi
+              desc: use standard library net/http.ServeMux (AGENTS.md section 3)
+            - pkg: github.com/gin-gonic
+              desc: use standard library net/http.ServeMux (AGENTS.md section 3)
+            - pkg: github.com/labstack/echo
+              desc: use standard library net/http.ServeMux (AGENTS.md section 3)
+            - pkg: github.com/sirupsen/logrus
+              desc: use standard library log/slog (AGENTS.md section 3)
+            - pkg: go.uber.org/zap
+              desc: use standard library log/slog (AGENTS.md section 3)
+    revive:
+      rules:
+        - name: exported
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: increment-decrement
+        - name: var-declaration
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+
+  exclusions:
+    generated: strict
+    paths:
+      - ^internal/store/sqlc/
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/mailcubby/mailcubby
+
+  exclusions:
+    generated: strict
+    paths:
+      - ^internal/store/sqlc/
