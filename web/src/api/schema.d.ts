@@ -141,6 +141,45 @@ export interface paths {
         get: operations["listMessages"];
         put?: never;
         post?: never;
+        /** Delete all messages in the project */
+        delete: operations["deleteAllMessages"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/messages/wait": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        /** Wait until a new or matching message arrives in the project */
+        get: operations["waitMessage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/messages/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply a bulk action to multiple messages in the project */
+        post: operations["bulkMessages"];
         delete?: never;
         options?: never;
         head?: never;
@@ -161,10 +200,12 @@ export interface paths {
         get: operations["getMessage"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete a single message */
+        delete: operations["deleteMessage"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update message seen state */
+        patch: operations["patchMessage"];
         trace?: never;
     };
     "/api/v1/projects/{project}/messages/{id}/raw": {
@@ -260,6 +301,62 @@ export interface paths {
         };
         /** Download or inline-display a message attachment */
         get: operations["getMessageAttachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/send-test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ingest the built-in sample message into the project */
+        post: operations["sendTestMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Subscribe to realtime Server-Sent Events */
+        get: operations["streamEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/render/{project}/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: components["parameters"]["MessageID"];
+            };
+            cookie?: never;
+        };
+        /** Serve rewritten email HTML with strict sandbox CSP headers */
+        get: operations["renderMessageHTML"];
         put?: never;
         post?: never;
         delete?: never;
@@ -480,6 +577,18 @@ export interface components {
             remote_resource_count: number;
             parse_warnings?: string[];
             headers?: components["schemas"]["Header"][];
+        };
+        PatchMessageRequest: {
+            seen?: boolean;
+        };
+        BulkMessagesRequest: {
+            ids: string[];
+            /** @enum {string} */
+            action: "delete" | "seen" | "unseen";
+        };
+        AffectedResponse: {
+            /** Format: int64 */
+            affected: number;
         };
     };
     responses: {
@@ -774,6 +883,101 @@ export interface operations {
             404: components["responses"]["ErrorResponse"];
         };
     };
+    deleteAllMessages: {
+        parameters: {
+            query?: {
+                /** @description Search query filter (implemented in Phase 5; rejected if non-empty until then) */
+                query?: string;
+            };
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Number of deleted messages */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AffectedResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    waitMessage: {
+        parameters: {
+            query?: {
+                /** @description Search query filter (implemented in Phase 5; rejected if non-empty until then) */
+                query?: string;
+                /** @description ULID, RFC 3339 timestamp, or 'now' (default) */
+                since?: string;
+                /** @description Go duration string (default 30s, max MAILCUBBY_API_WAIT_MAX_TIMEOUT) */
+                timeout?: string;
+            };
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching message */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageSummary"];
+                };
+            };
+            /** @description Timed out without a matching message */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            503: components["responses"]["ErrorResponse"];
+        };
+    };
+    bulkMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkMessagesRequest"];
+            };
+        };
+        responses: {
+            /** @description Number of affected messages */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AffectedResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+        };
+    };
     getMessage: {
         parameters: {
             query?: never;
@@ -795,6 +999,57 @@ export interface operations {
                     "application/json": components["schemas"]["MessageDetail"];
                 };
             };
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: components["parameters"]["MessageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Message deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    patchMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: components["parameters"]["MessageID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated message summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageSummary"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
             404: components["responses"]["ErrorResponse"];
         };
     };
@@ -920,6 +1175,80 @@ export interface operations {
                 };
             };
             400: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    sendTestMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sample message created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageSummary"];
+                };
+            };
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    streamEvents: {
+        parameters: {
+            query?: {
+                /** @description Optional project slug filter */
+                project?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server-Sent Events stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    renderMessageHTML: {
+        parameters: {
+            query?: {
+                /** @description Set to 1 to allow remote HTTPS images when enabled */
+                images?: "1";
+            };
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: components["parameters"]["MessageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sandboxed HTML preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
             404: components["responses"]["ErrorResponse"];
         };
     };

@@ -22,6 +22,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
 	"github.com/mailcubby/mailcubby/internal/ingest"
+	"github.com/mailcubby/mailcubby/internal/render"
 	"github.com/mailcubby/mailcubby/internal/secrets"
 	"github.com/mailcubby/mailcubby/internal/smtpd"
 	"github.com/mailcubby/mailcubby/internal/store"
@@ -157,10 +158,13 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 
 	handler := opts.HTTPHandler
 	if handler == nil {
+		renderer := render.New(blobs)
 		a.apiSrv = api.New(cfg, st, blobs, bus, api.Options{
 			Version:        ver,
 			Clock:          clk,
 			Logger:         log,
+			Ingestor:       ing,
+			Renderer:       renderer,
 			WebHandler:     web.Handler(),
 			ListenersReady: a.listenersReady.Load,
 		})
@@ -208,6 +212,11 @@ func (a *App) Serve(ctx context.Context) error {
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
+
+		// Signal long-lived SSE and wait handlers to exit before http.Server.Shutdown (ARCHITECTURE 3.10).
+		if a.apiSrv != nil {
+			a.apiSrv.BeginShutdown()
+		}
 
 		// 1. Stop accepting SMTP and HTTP connections and wait for in-flight work.
 		var sg errgroup.Group

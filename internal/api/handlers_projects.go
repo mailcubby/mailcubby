@@ -198,8 +198,8 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		s.bus.Publish(events.Event{
 			Type:      events.TypeProjectCreated,
 			ProjectID: proj.ID,
-			Payload: map[string]any{
-				"project": proj.Slug,
+			Payload: events.ProjectCreatedPayload{
+				Project: proj.Slug,
 			},
 		})
 	}
@@ -333,11 +333,12 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		s.bus.Publish(events.Event{
 			Type:      events.TypeProjectUpdated,
 			ProjectID: updated.ID,
-			Payload: map[string]any{
-				"project":       updated.Slug,
-				"message_count": updated.MessageCount,
-				"unread_count":  updated.UnreadCount,
-				"size_bytes":    updated.SizeBytes,
+			Payload: events.ProjectUpdatedPayload{
+				Project:       updated.Slug,
+				MessageCount:  updated.MessageCount,
+				UnreadCount:   updated.UnreadCount,
+				SizeBytes:     updated.SizeBytes,
+				LastMessageAt: updated.LastMessageAt,
 			},
 		})
 	}
@@ -394,8 +395,8 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		s.bus.Publish(events.Event{
 			Type:      events.TypeProjectDeleted,
 			ProjectID: pctx.Project.ID,
-			Payload: map[string]any{
-				"project": pctx.Project.Slug,
+			Payload: events.ProjectDeletedPayload{
+				Project: pctx.Project.Slug,
 			},
 		})
 	}

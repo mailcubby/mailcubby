@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/mailcubby/mailcubby/internal/ingest"
+	"github.com/mailcubby/mailcubby/internal/render"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
@@ -222,10 +223,26 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	var renderURL *string
+	var (
+		renderURL           *string
+		remoteResourceCount int
+	)
 	if msg.HasHTML {
 		u := fmt.Sprintf("/render/%s/%s", pctx.Project.Slug, msg.ID)
 		renderURL = &u
+		if s.renderer != nil {
+			res, renderErr := s.renderer.Render(r.Context(), pctx.Project.ID, msg.ID, msg.BlobPath)
+			if renderErr != nil && !errors.Is(renderErr, render.ErrNoHTML) {
+				s.log.Warn("compute remote resource count failed",
+					"request_id", RequestIDFromContext(r.Context()),
+					"project_id", pctx.Project.ID,
+					"message_id", msg.ID,
+					"error", renderErr,
+				)
+			} else if renderErr == nil {
+				remoteResourceCount = res.RemoteResourceCount
+			}
+		}
 	}
 
 	warnings := msg.ParseWarnings
@@ -241,7 +258,6 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		rcptTo = []string{}
 	}
 
-	// TODO(phase-3b): populate remote_resource_count from internal/render.
 	resp := messageDetailResponse{
 		messageSummaryResponse: toMessageSummary(msg),
 		ReplyTo:                toAddressResponses(msg.ReplyTo),
@@ -261,7 +277,7 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		TextTruncated:       content.TextTruncated,
 		Attachments:         attResp,
 		RenderURL:           renderURL,
-		RemoteResourceCount: 0,
+		RemoteResourceCount: remoteResourceCount,
 		ParseWarnings:       warnings,
 		Headers:             headers,
 	}

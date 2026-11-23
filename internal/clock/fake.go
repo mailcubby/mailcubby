@@ -29,6 +29,20 @@ func (f *Fake) Now() time.Time {
 	return f.now
 }
 
+// TimerCount returns the number of currently active timers registered on f.
+func (f *Fake) TimerCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.timers)
+}
+
+// TickerCount returns the number of currently active tickers registered on f.
+func (f *Fake) TickerCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.tickers)
+}
+
 // Advance moves the fake clock forward by d and fires any timers or tickers
 // whose deadline is at or before the new time. Non-positive durations are a no-op.
 func (f *Fake) Advance(d time.Duration) {

@@ -13,6 +13,8 @@ import (
 	"github.com/mailcubby/mailcubby/internal/clock"
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
+	"github.com/mailcubby/mailcubby/internal/ingest"
+	"github.com/mailcubby/mailcubby/internal/render"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
@@ -30,6 +32,8 @@ type Options struct {
 	Version        string
 	Clock          clock.Clock
 	Logger         *slog.Logger
+	Ingestor       *ingest.Ingestor
+	Renderer       *render.Renderer
 	WebHandler     http.Handler
 	ListenersReady func() bool
 }
@@ -40,6 +44,8 @@ type Server struct {
 	store          *store.Store
 	blobs          *blob.Store
 	bus            *events.Bus
+	ingestor       *ingest.Ingestor
+	renderer       *render.Renderer
 	clk            clock.Clock
 	log            *slog.Logger
 	version        string
@@ -49,11 +55,15 @@ type Server struct {
 	routes  []Route
 	handler http.Handler
 
-	sparkMu    sync.Mutex
-	sparkCache map[int64]sparklineEntry
-	unsubSpark func()
-	sparkDone  chan struct{}
-	closeOnce  sync.Once
+	sse *sseTracker
+
+	sparkMu      sync.Mutex
+	sparkCache   map[int64]sparklineEntry
+	unsubSpark   func()
+	sparkDone    chan struct{}
+	shutdownCh   chan struct{}
+	shutdownOnce sync.Once
+	closeOnce    sync.Once
 }
 
 type sparklineEntry struct {
@@ -78,17 +88,30 @@ func New(cfg config.Config, st *store.Store, blobs *blob.Store, bus *events.Bus,
 		ver = "dev"
 	}
 
+	ing := opts.Ingestor
+	if ing == nil && st != nil && blobs != nil {
+		ing = ingest.New(st, blobs, clk, bus, log)
+	}
+	rend := opts.Renderer
+	if rend == nil && blobs != nil {
+		rend = render.New(blobs)
+	}
+
 	s := &Server{
 		cfg:            cfg,
 		store:          st,
 		blobs:          blobs,
 		bus:            bus,
+		ingestor:       ing,
+		renderer:       rend,
 		clk:            clk,
 		log:            log,
 		version:        ver,
 		webHandler:     opts.WebHandler,
 		listenersReady: opts.ListenersReady,
+		sse:            newSSETracker(cfg.SSEMaxConnectionsPerUser),
 		sparkCache:     make(map[int64]sparklineEntry),
+		shutdownCh:     make(chan struct{}),
 	}
 	s.routes = s.buildRoutes()
 	s.handler = s.withMiddleware(s.buildMux())
@@ -138,8 +161,17 @@ func (s *Server) Routes() []Route {
 	return out
 }
 
+// BeginShutdown signals long-lived streaming handlers (SSE and wait) to exit
+// immediately so http.Server.Shutdown does not wait for their timeouts (ARCHITECTURE 3.10).
+func (s *Server) BeginShutdown() {
+	s.shutdownOnce.Do(func() {
+		close(s.shutdownCh)
+	})
+}
+
 // Close releases background subscriptions owned by Server. It is safe to call multiple times.
 func (s *Server) Close() {
+	s.BeginShutdown()
 	s.closeOnce.Do(func() {
 		if s.unsubSpark != nil {
 			s.unsubSpark()

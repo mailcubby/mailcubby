@@ -52,14 +52,24 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodPatch, Pattern: "/api/v1/projects/{project}", Need: PermOwner, Handler: s.handleUpdateProject},
 		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}", Need: PermOwner, Handler: s.handleDeleteProject},
 
-		// Messages read surface (SPEC 8.4)
+		// Messages (SPEC 8.4)
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages", Need: PermViewer, Handler: s.handleListMessages},
+		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}/messages", Need: PermMember, Handler: s.handleDeleteAllMessages},
+		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/wait", Need: PermViewer, Handler: s.handleWaitMessage},
+		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/messages/bulk", Need: PermMember, Handler: s.handleBulkMessages},
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}", Need: PermViewer, Handler: s.handleGetMessage},
+		{Method: http.MethodPatch, Pattern: "/api/v1/projects/{project}/messages/{id}", Need: PermMember, Handler: s.handlePatchMessage},
+		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}/messages/{id}", Need: PermMember, Handler: s.handleDeleteMessage},
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}/raw", Need: PermViewerTech, Handler: s.handleGetMessageRaw},
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}/eml", Need: PermViewerTech, Handler: s.handleGetMessageEML},
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}/html", Need: PermViewerTech, Handler: s.handleGetMessageHTML},
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}/headers", Need: PermViewerTech, Handler: s.handleGetMessageHeaders},
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}/attachments/{attachment_id}", Need: PermViewer, Handler: s.handleGetMessageAttachment},
+		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/send-test", Need: PermMember, Handler: s.handleSendTest},
+
+		// Events & Render (SPEC 8.9)
+		{Method: http.MethodGet, Pattern: "/api/v1/events", Need: PermUser, Handler: s.handleEvents},
+		{Method: http.MethodGet, Pattern: "/render/{project}/{id}", Need: PermViewer, Handler: s.handleRenderMessage},
 	}
 }
 
@@ -80,8 +90,8 @@ func (s *Server) buildMux() http.Handler {
 			return
 		}
 
-		// Preserve JSON errors (404/405) for unmatched /api paths instead of plain text or SPA fallback.
-		if isAPIPath(r.URL.Path) || r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
+		// Preserve JSON errors (404/405) for unmatched /api and /render paths instead of plain text or SPA fallback.
+		if isAPIPath(r.URL.Path) || isRenderPath(r.URL.Path) || r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
 			rec := httptest.NewRecorder()
 			apiMux.ServeHTTP(rec, r)
 			if rec.Code == http.StatusMethodNotAllowed {
@@ -105,4 +115,8 @@ func (s *Server) buildMux() http.Handler {
 
 func isAPIPath(p string) bool {
 	return p == "/api" || strings.HasPrefix(p, "/api/")
+}
+
+func isRenderPath(p string) bool {
+	return p == "/render" || strings.HasPrefix(p, "/render/")
 }
