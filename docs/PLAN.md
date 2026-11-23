@@ -63,7 +63,7 @@ Tasks:
 - [x] `internal/store`: open writer and reader handles with the DSNs and open order of ARCHITECTURE 3.5 (`_auto_vacuum=INCREMENTAL` on the writer), goose Provider migrations at startup, `WithTx`, error mapping (`ErrNotFound`, `ErrConflict`).
 - [x] `sqlc.yaml` (schema: `00001_init.sql` only) and first queries: projects CRUD and counters, settings get/set. `make generate` wired.
 - [x] `internal/store/isolation_test.go` query lint (ARCHITECTURE section 7, item 3), passing on the initial queries.
-- [ ] `internal/testutil`: `NewStore(t)` (migrated store in `t.TempDir()`).
+- [x] `internal/testutil`: `NewStore(t)` (migrated store in `t.TempDir()`).
 - [ ] `mailcubby migrate status`.
 
 Files: `internal/config/`, `internal/secrets/`, `internal/store/`, `migrations/`, `sqlc.yaml`, `internal/testutil/`, `cmd/mailcubby/`, `internal/cli/`.
