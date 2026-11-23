@@ -11,6 +11,7 @@ require (
 	github.com/klauspost/compress v1.20.5
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/pressly/goose/v3 v3.30.1
+	golang.org/x/net v0.62.0
 	golang.org/x/sync v0.25.0
 	modernc.org/sqlite v1.63.0
 )
@@ -40,7 +41,6 @@ require (
 	github.com/sethvargo/go-retry v0.5.0 // indirect
 	github.com/ssor/bom v0.0.0-20170718123548-6386211fdfcf // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 	modernc.org/libc v1.80.2 // indirect
