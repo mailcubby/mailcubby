@@ -155,7 +155,7 @@ Acceptance:
 
 Tasks:
 - [x] Playwright harness (ARCHITECTURE 8 "E2E harness"): `web/playwright.config.ts`, `globalSetup` starting the built binary, helpers to send fixtures with `bin/mailcubby sendmail`, `make e2e`, `make deps` installs Chromium.
-- [ ] App shell: theme (light/dark/system), layout, routes from `docs/UI.md` section 2 (local-mode subset), typed API client (`openapi-fetch`), query key factory, `usePersistentState`, error handling (UI 4 item 15).
+- [x] App shell: theme (light/dark/system), layout, routes from `docs/UI.md` section 2 (local-mode subset), typed API client (`openapi-fetch`), query key factory, `usePersistentState`, error handling (UI 4 item 15).
 - [ ] Projects home (UI 3.3) with counts, sparkline, local-mode SMTP banner (from `/meta`).
 - [ ] Project inbox with three resizable panes (UI 3.4), virtualised message list with infinite scroll, unread state, multi-select and bulk bar (delete, mark read/unread).
 - [ ] Message view header and tabs 1 to 7 (FR-072, UI 3.5): sandboxed preview iframe with device sizes, rotation, zoom, dark-mode toggle, remote images toggle; text; HTML source and headers with lazy Shiki (JavaScript regex engine); raw (virtualised); attachments; tech.

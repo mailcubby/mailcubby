@@ -1,0 +1,16 @@
+import type { InputHTMLAttributes } from "react";
+import { cn } from "@/lib/utils";
+
+export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {}
+
+export function Input({ className, ...props }: InputProps) {
+  return (
+    <input
+      className={cn(
+        "h-8 w-full rounded-md border border-border bg-surface px-2.5 text-[13px] text-foreground placeholder:text-muted-foreground transition-colors focus-visible:border-accent disabled:cursor-not-allowed disabled:opacity-50",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
