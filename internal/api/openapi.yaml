@@ -1,0 +1,882 @@
+openapi: 3.1.0
+info:
+  title: Mailcubby API
+  version: 0.1.0
+  description: Self-hosted multi-tenant email testing server REST API.
+  license:
+    name: PolyForm Shield 1.0.0
+    url: https://polyformproject.org/licenses/shield/1.0.0
+
+paths:
+  /healthz:
+    get:
+      operationId: getHealthz
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Process is running
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /readyz:
+    get:
+      operationId: getReadyz
+      summary: Readiness probe
+      responses:
+        "200":
+          description: Instance is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          description: Instance is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+
+  /api/v1/openapi.yaml:
+    get:
+      operationId: getOpenAPI
+      summary: OpenAPI 3.1 specification
+      responses:
+        "200":
+          description: OpenAPI YAML document
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /api/v1/meta:
+    get:
+      operationId: getMeta
+      summary: Instance metadata and public SMTP connection info
+      responses:
+        "200":
+          description: Instance metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaResponse"
+
+  /api/v1/auth/me:
+    get:
+      operationId: getAuthMe
+      summary: Current caller identity and project memberships
+      responses:
+        "200":
+          description: Caller identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthMeResponse"
+
+  /api/v1/projects:
+    get:
+      operationId: listProjects
+      summary: List accessible projects with counters and 24-hour sparkline
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectSummary"
+    post:
+      operationId: createProject
+      summary: Create a new project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDetail"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+    get:
+      operationId: getProject
+      summary: Get project metadata and settings
+      responses:
+        "200":
+          description: Project detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDetail"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+    patch:
+      operationId: updateProject
+      summary: Update project metadata, slug, or settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectRequest"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDetail"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+    delete:
+      operationId: deleteProject
+      summary: Delete a project after confirming its slug
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteProjectRequest"
+      responses:
+        "204":
+          description: Project deleted
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/messages:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+    get:
+      operationId: listMessages
+      summary: List project messages newest first with cursor pagination
+      parameters:
+        - name: query
+          in: query
+          required: false
+          description: Search query (implemented in Phase 5)
+          schema:
+            type: string
+        - name: tag
+          in: query
+          required: false
+          description: Tag name filter (implemented in Phase 5)
+          schema:
+            type: string
+        - name: credential
+          in: query
+          required: false
+          description: SMTP credential ID filter (implemented in Phase 8)
+          schema:
+            type: integer
+            format: int64
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque pagination cursor from next_cursor
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Page size (default 50, max 200)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: Paginated message summaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageListResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/messages/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - $ref: "#/components/parameters/MessageID"
+    get:
+      operationId: getMessage
+      summary: Get full message detail
+      responses:
+        "200":
+          description: Message detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageDetail"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/messages/{id}/raw:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - $ref: "#/components/parameters/MessageID"
+    get:
+      operationId: getMessageRaw
+      summary: Get raw RFC 5322 message source as plain text
+      responses:
+        "200":
+          description: Raw message source
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/messages/{id}/eml:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - $ref: "#/components/parameters/MessageID"
+    get:
+      operationId: getMessageEML
+      summary: Download raw message as an .eml attachment
+      responses:
+        "200":
+          description: Raw RFC 5322 .eml file
+          content:
+            message/rfc822:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/messages/{id}/html:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - $ref: "#/components/parameters/MessageID"
+    get:
+      operationId: getMessageHTML
+      summary: Get extracted HTML source as plain text
+      responses:
+        "200":
+          description: HTML body source
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/messages/{id}/headers:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - $ref: "#/components/parameters/MessageID"
+    get:
+      operationId: getMessageHeaders
+      summary: Get top-level message headers in original order
+      responses:
+        "200":
+          description: Ordered list of headers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Header"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/messages/{id}/attachments/{attachment_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - $ref: "#/components/parameters/MessageID"
+      - name: attachment_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: getMessageAttachment
+      summary: Download or inline-display a message attachment
+      parameters:
+        - name: inline
+          in: query
+          required: false
+          description: Set to 1 for inline disposition (raster images only)
+          schema:
+            type: string
+            enum: ["1"]
+      responses:
+        "200":
+          description: Attachment content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+components:
+  parameters:
+    ProjectSlug:
+      name: project
+      in: path
+      required: true
+      schema:
+        type: string
+    MessageID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    ErrorResponse:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+  schemas:
+    ProjectColor:
+      type: string
+      enum:
+        - slate
+        - red
+        - orange
+        - amber
+        - lime
+        - green
+        - teal
+        - cyan
+        - blue
+        - violet
+        - fuchsia
+        - pink
+
+    ProjectRole:
+      type: string
+      enum:
+        - owner
+        - member
+        - viewer
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - bad_request
+                - validation_failed
+                - unauthorized
+                - forbidden
+                - not_found
+                - method_not_allowed
+                - conflict
+                - login_required
+                - gone
+                - payload_too_large
+                - rate_limited
+                - internal
+                - service_unavailable
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties:
+                type: string
+
+    ReadyResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        reason:
+          type: string
+
+    MetaResponse:
+      type: object
+      required:
+        - mode
+        - version
+        - instance_name
+        - setup_required
+        - base_url
+        - features
+        - inbox_domain
+        - smtp
+      properties:
+        mode:
+          type: string
+          enum: [local, server]
+        version:
+          type: string
+        instance_name:
+          type: string
+        setup_required:
+          type: boolean
+        base_url:
+          type: string
+        features:
+          type: object
+          required: [remote_images, recipient_routing]
+          properties:
+            remote_images:
+              type: string
+              enum: [opt-in, "off"]
+            recipient_routing:
+              type: boolean
+        inbox_domain:
+          type: string
+        smtp:
+          type: object
+          required: [host, port, tls_mode]
+          properties:
+            host:
+              type: string
+            port:
+              type: integer
+            tls_mode:
+              type: string
+              enum: [starttls, tls, none]
+
+    AuthMeResponse:
+      type: object
+      required: [user, csrf_token, memberships]
+      properties:
+        user:
+          type: object
+          required: [id, email, name, is_admin, can_create_projects]
+          properties:
+            id:
+              type: integer
+              format: int64
+            email:
+              type: string
+            name:
+              type: string
+            is_admin:
+              type: boolean
+            can_create_projects:
+              type: boolean
+        csrf_token:
+          type: string
+        memberships:
+          type: array
+          items:
+            type: object
+            required: [project, role]
+            properties:
+              project:
+                type: string
+              role:
+                $ref: "#/components/schemas/ProjectRole"
+        token:
+          type: object
+          required: [scope]
+          properties:
+            scope:
+              type: string
+              enum: [read, write]
+            project:
+              type: ["string", "null"]
+
+    ProjectSummary:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - color
+        - role
+        - message_count
+        - unread_count
+        - size_bytes
+        - last_message_at
+        - sparkline
+      properties:
+        id:
+          type: integer
+          format: int64
+        slug:
+          type: string
+        name:
+          type: string
+        color:
+          $ref: "#/components/schemas/ProjectColor"
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+        message_count:
+          type: integer
+          format: int64
+        unread_count:
+          type: integer
+          format: int64
+        size_bytes:
+          type: integer
+          format: int64
+        last_message_at:
+          type: ["string", "null"]
+          format: date-time
+        sparkline:
+          type: array
+          items:
+            type: integer
+            format: int64
+          minItems: 24
+          maxItems: 24
+
+    ProjectSettings:
+      type: object
+      required:
+        - retention_max_age
+        - retention_max_messages
+        - retention_max_bytes
+        - recipient_routing_enabled
+        - plus_address_tags
+        - viewer_hide_technical
+        - members_can_reveal_smtp
+      properties:
+        retention_max_age:
+          type: ["integer", "null"]
+          format: int64
+          description: Max message age in seconds (null inherits global default, 0 disables limit)
+        retention_max_messages:
+          type: ["integer", "null"]
+          format: int64
+          description: Max message count (null inherits global default, 0 disables limit)
+        retention_max_bytes:
+          type: ["integer", "null"]
+          format: int64
+          description: Max raw bytes (null inherits global default, 0 disables limit)
+        recipient_routing_enabled:
+          type: boolean
+        plus_address_tags:
+          type: boolean
+        viewer_hide_technical:
+          type: boolean
+        members_can_reveal_smtp:
+          type: boolean
+
+    ProjectDetail:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - color
+        - role
+        - message_count
+        - unread_count
+        - size_bytes
+        - last_message_at
+        - created_at
+        - updated_at
+        - settings
+      properties:
+        id:
+          type: integer
+          format: int64
+        slug:
+          type: string
+        name:
+          type: string
+        color:
+          $ref: "#/components/schemas/ProjectColor"
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+        message_count:
+          type: integer
+          format: int64
+        unread_count:
+          type: integer
+          format: int64
+        size_bytes:
+          type: integer
+          format: int64
+        last_message_at:
+          type: ["string", "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        settings:
+          $ref: "#/components/schemas/ProjectSettings"
+
+    CreateProjectRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        slug:
+          type: string
+        color:
+          $ref: "#/components/schemas/ProjectColor"
+
+    UpdateProjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        slug:
+          type: string
+        color:
+          $ref: "#/components/schemas/ProjectColor"
+        settings:
+          type: object
+          properties:
+            retention_max_age:
+              type: ["integer", "null"]
+              format: int64
+              minimum: 0
+            retention_max_messages:
+              type: ["integer", "null"]
+              format: int64
+              minimum: 0
+            retention_max_bytes:
+              type: ["integer", "null"]
+              format: int64
+              minimum: 0
+            recipient_routing_enabled:
+              type: boolean
+            plus_address_tags:
+              type: boolean
+            viewer_hide_technical:
+              type: boolean
+            members_can_reveal_smtp:
+              type: boolean
+
+    DeleteProjectRequest:
+      type: object
+      required: [confirm_slug]
+      properties:
+        confirm_slug:
+          type: string
+
+    Address:
+      type: object
+      required: [name, address]
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+
+    Header:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+
+    AttachmentSummary:
+      type: object
+      required:
+        - id
+        - filename
+        - content_type
+        - size_bytes
+        - content_id
+        - disposition
+      properties:
+        id:
+          type: integer
+          format: int64
+        filename:
+          type: string
+        content_type:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+        content_id:
+          type: ["string", "null"]
+        disposition:
+          type: string
+          enum: [attachment, inline]
+
+    MessageEnvelope:
+      type: object
+      required: [mail_from, rcpt_to, remote_ip, helo, tls, auth_user]
+      properties:
+        mail_from:
+          type: string
+        rcpt_to:
+          type: array
+          items:
+            type: string
+        remote_ip:
+          type: ["string", "null"]
+        helo:
+          type: ["string", "null"]
+        tls:
+          type: boolean
+        auth_user:
+          type: ["string", "null"]
+
+    MessageSummary:
+      type: object
+      required:
+        - id
+        - received_at
+        - from
+        - to
+        - cc
+        - subject
+        - snippet
+        - size_bytes
+        - seen
+        - attachment_count
+        - has_html
+        - has_text
+        - tags
+      properties:
+        id:
+          type: string
+        received_at:
+          type: string
+          format: date-time
+        from:
+          $ref: "#/components/schemas/Address"
+        to:
+          type: array
+          items:
+            $ref: "#/components/schemas/Address"
+        cc:
+          type: array
+          items:
+            $ref: "#/components/schemas/Address"
+        subject:
+          type: string
+        snippet:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+        seen:
+          type: boolean
+        attachment_count:
+          type: integer
+          format: int64
+        has_html:
+          type: boolean
+        has_text:
+          type: boolean
+        tags:
+          type: array
+          items:
+            type: string
+        credential_label:
+          type: string
+
+    MessageListResponse:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageSummary"
+        next_cursor:
+          type: ["string", "null"]
+
+    MessageDetail:
+      allOf:
+        - $ref: "#/components/schemas/MessageSummary"
+        - type: object
+          required:
+            - reply_to
+            - bcc
+            - message_id_header
+            - date_header
+            - text
+            - text_generated
+            - text_truncated
+            - attachments
+            - render_url
+            - remote_resource_count
+          properties:
+            reply_to:
+              type: array
+              items:
+                $ref: "#/components/schemas/Address"
+            bcc:
+              type: array
+              items:
+                $ref: "#/components/schemas/Address"
+            envelope:
+              $ref: "#/components/schemas/MessageEnvelope"
+            message_id_header:
+              type: ["string", "null"]
+            date_header:
+              type: ["string", "null"]
+              format: date-time
+            text:
+              type: string
+            text_generated:
+              type: boolean
+            text_truncated:
+              type: boolean
+            attachments:
+              type: array
+              items:
+                $ref: "#/components/schemas/AttachmentSummary"
+            render_url:
+              type: ["string", "null"]
+            remote_resource_count:
+              type: integer
+            parse_warnings:
+              type: array
+              items:
+                type: string
+            headers:
+              type: array
+              items:
+                $ref: "#/components/schemas/Header"

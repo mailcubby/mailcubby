@@ -11,10 +11,12 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/mailcubby/mailcubby/internal/api"
 	"github.com/mailcubby/mailcubby/internal/blob"
 	"github.com/mailcubby/mailcubby/internal/clock"
 	"github.com/mailcubby/mailcubby/internal/config"
@@ -49,12 +51,14 @@ type App struct {
 	blobs    *blob.Store
 	bus      *events.Bus
 	ingestor *ingest.Ingestor
+	apiSrv   *api.Server
 	smtpSrv  *smtpd.Server
 	httpSrv  *http.Server
 	smtpLn   net.Listener
 	httpLn   net.Listener
 
-	closeOnce sync.Once
+	listenersReady atomic.Bool
+	closeOnce      sync.Once
 }
 
 // Open initializes storage, default local project, event bus, ingestor, SMTP
@@ -120,19 +124,6 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 	ing := ingest.New(st, blobs, clk, bus, log)
 	smtpSrv := smtpd.New(cfg, st, ing, clk, log)
 
-	handler := opts.HTTPHandler
-	if handler == nil {
-		handler = web.Handler()
-	}
-	httpSrv := &http.Server{
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       60 * time.Second,
-		WriteTimeout:      60 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    64 << 10,
-	}
-
 	var lc net.ListenConfig
 	smtpLn, err := lc.Listen(ctx, "tcp", cfg.SMTPAddr)
 	if err != nil {
@@ -149,7 +140,7 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		return nil, fmt.Errorf("app: listen http %s: %w", cfg.HTTPAddr, err)
 	}
 
-	return &App{
+	a := &App{
 		cfg:      cfg,
 		clk:      clk,
 		log:      log,
@@ -159,10 +150,25 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		bus:      bus,
 		ingestor: ing,
 		smtpSrv:  smtpSrv,
-		httpSrv:  httpSrv,
 		smtpLn:   smtpLn,
 		httpLn:   httpLn,
-	}, nil
+	}
+	a.listenersReady.Store(true)
+
+	handler := opts.HTTPHandler
+	if handler == nil {
+		a.apiSrv = api.New(cfg, st, blobs, bus, api.Options{
+			Version:        ver,
+			Clock:          clk,
+			Logger:         log,
+			WebHandler:     web.Handler(),
+			ListenersReady: a.listenersReady.Load,
+		})
+		handler = a.apiSrv.Handler()
+	}
+	a.httpSrv = api.NewHTTPServer(handler)
+
+	return a, nil
 }
 
 // Run opens and serves Mailcubby until ctx is cancelled or a listener fails.
@@ -197,6 +203,7 @@ func (a *App) Serve(ctx context.Context) error {
 
 	g.Go(func() error {
 		<-gctx.Done()
+		a.listenersReady.Store(false)
 		a.log.Info("shutting down")
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -226,6 +233,7 @@ func (a *App) Serve(ctx context.Context) error {
 func (a *App) Close() error {
 	var err error
 	a.closeOnce.Do(func() {
+		a.listenersReady.Store(false)
 		var errs []error
 		if a.smtpLn != nil {
 			if cerr := a.smtpLn.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) {
@@ -236,6 +244,9 @@ func (a *App) Close() error {
 			if cerr := a.httpLn.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) {
 				errs = append(errs, cerr)
 			}
+		}
+		if a.apiSrv != nil {
+			a.apiSrv.Close()
 		}
 		if a.bus != nil {
 			a.bus.Close()
