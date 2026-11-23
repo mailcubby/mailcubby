@@ -1,4 +1,5 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
+import { InboxLayout } from "@/features/inbox/InboxLayout";
 
 export type InboxFilter = "all" | "unread";
 
@@ -14,9 +15,5 @@ export const Route = createFileRoute("/p/$project")({
     }
     return {};
   },
-  component: ProjectInboxRoute,
+  component: InboxLayout,
 });
-
-function ProjectInboxRoute() {
-  return <Outlet />;
-}
