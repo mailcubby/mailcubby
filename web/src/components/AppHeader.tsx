@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Inbox, Monitor, Moon, Sun } from "lucide-react";
+import { Inbox, Keyboard, Monitor, Moon, Search, SlidersHorizontal, Sun } from "lucide-react";
+import { useAppCommands } from "@/components/AppCommandContext";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { metaQueryOptions } from "@/lib/queries";
 import { type ThemePreference, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -54,6 +56,7 @@ export function ThemeToggle() {
 
 export function AppHeader() {
   const { data: meta } = useQuery(metaQueryOptions());
+  const { openPalette, openShortcuts } = useAppCommands();
   const instanceName = meta?.instance_name || "Mailcubby";
 
   return (
@@ -75,7 +78,40 @@ export function AppHeader() {
         ) : null}
       </div>
 
-      <nav aria-label="Application utilities" className="flex items-center gap-2">
+      <nav aria-label="Application utilities" className="flex items-center gap-1.5 sm:gap-2">
+        <button
+          type="button"
+          aria-label="Open command palette"
+          onClick={openPalette}
+          className="inline-flex h-7 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <Search className="size-3.5" aria-hidden="true" />
+          <span className="hidden sm:inline">Search</span>
+          <kbd className="rounded-xs border border-border bg-surface px-1 py-0.25 font-mono text-[10px] text-muted-foreground">
+            ⌘K
+          </kbd>
+        </button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts (?)"
+          onClick={openShortcuts}
+          className="size-7"
+        >
+          <Keyboard className="size-3.5" aria-hidden="true" />
+        </Button>
+
+        <Link
+          to="/account/preferences"
+          aria-label="Preferences"
+          title="Preferences (g a)"
+          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <SlidersHorizontal className="size-3.5" aria-hidden="true" />
+        </Link>
+
         <ThemeToggle />
       </nav>
     </header>

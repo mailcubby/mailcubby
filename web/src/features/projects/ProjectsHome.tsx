@@ -1,14 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { Copy, Inbox, LayoutGrid, List, Plus, Search, Terminal } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useAppCommands } from "@/components/AppCommandContext";
+import { useRealtime } from "@/components/RealtimeProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CreateProjectDialog } from "@/features/projects/CreateProjectDialog";
 import { ProjectCard } from "@/features/projects/ProjectCard";
 import { getApiErrorMessage } from "@/lib/api";
 import { copyToClipboard } from "@/lib/clipboard";
+import { useClock24hPreference, useSingleKeyShortcutsPreference } from "@/lib/preferences";
 import { metaQueryOptions, projectsQueryOptions } from "@/lib/queries";
+import { type KeyShortcutBinding, useKeyShortcuts } from "@/lib/shortcuts";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { cn } from "@/lib/utils";
 
@@ -22,10 +25,16 @@ function isViewMode(value: unknown): value is ViewMode {
 
 export function ProjectsHome() {
   const filterId = useId();
+  const filterRef = useRef<HTMLInputElement | null>(null);
+  const cardRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   const [filter, setFilter] = useState("");
   const [viewMode, setViewMode] = usePersistentState<ViewMode>("projects-view", "grid", isViewMode);
-  const [createOpen, setCreateOpen] = useState(false);
   const [now, setNow] = useState(() => new Date());
+
+  const { openCreateProject } = useAppCommands();
+  const { highlightedProjectSlugs } = useRealtime();
+  const [singleKeyEnabled] = useSingleKeyShortcutsPreference();
+  const [clock24h] = useClock24hPreference();
 
   const { data: meta } = useQuery(metaQueryOptions());
   const { data: projects, isPending, error, refetch } = useQuery(projectsQueryOptions());
@@ -53,6 +62,60 @@ export function ProjectsHome() {
     );
   }, [projects, filter]);
 
+  const moveCardFocus = useCallback(
+    (delta: number) => {
+      if (filteredProjects.length === 0) {
+        return;
+      }
+      const activeEl = document.activeElement;
+      const currentIdx =
+        activeEl instanceof HTMLAnchorElement ? cardRefs.current.indexOf(activeEl) : -1;
+      let nextIdx: number;
+      if (currentIdx === -1) {
+        nextIdx = delta > 0 ? 0 : filteredProjects.length - 1;
+      } else {
+        nextIdx = Math.max(0, Math.min(filteredProjects.length - 1, currentIdx + delta));
+      }
+      cardRefs.current[nextIdx]?.focus();
+    },
+    [filteredProjects.length],
+  );
+
+  const bindings = useMemo<KeyShortcutBinding[]>(
+    () => [
+      {
+        keys: "/",
+        handler: () => {
+          filterRef.current?.focus();
+          filterRef.current?.select();
+        },
+      },
+      {
+        keys: "n",
+        handler: () => openCreateProject(),
+      },
+      {
+        keys: "j",
+        handler: () => moveCardFocus(1),
+      },
+      {
+        keys: "k",
+        handler: () => moveCardFocus(-1),
+      },
+      {
+        keys: "ArrowDown",
+        handler: () => moveCardFocus(1),
+      },
+      {
+        keys: "ArrowUp",
+        handler: () => moveCardFocus(-1),
+      },
+    ],
+    [moveCardFocus, openCreateProject],
+  );
+
+  useKeyShortcuts(bindings, { singleKeyEnabled });
+
   const smtpHost = meta?.smtp.host ?? "localhost";
   const smtpPort = meta?.smtp.port ?? 1025;
   const smtpEndpoint = `${smtpHost}:${smtpPort}`;
@@ -67,7 +130,7 @@ export function ProjectsHome() {
               Select a project inbox or send mail over SMTP to capture messages.
             </p>
           </div>
-          <Button variant="default" size="sm" onClick={() => setCreateOpen(true)}>
+          <Button variant="default" size="sm" onClick={openCreateProject}>
             <Plus className="size-3.5" aria-hidden="true" />
             <span>New project</span>
           </Button>
@@ -121,9 +184,10 @@ export function ProjectsHome() {
               aria-hidden="true"
             />
             <Input
+              ref={filterRef}
               id={filterId}
               type="search"
-              placeholder="Filter projects..."
+              placeholder="Filter projects... (/)"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               className="pl-8"
@@ -209,7 +273,7 @@ export function ProjectsHome() {
                 Clear filter
               </Button>
             ) : (
-              <Button variant="default" size="sm" onClick={() => setCreateOpen(true)}>
+              <Button variant="default" size="sm" onClick={openCreateProject}>
                 <Plus className="size-3.5" aria-hidden="true" />
                 <span>New project</span>
               </Button>
@@ -217,20 +281,38 @@ export function ProjectsHome() {
           </div>
         ) : viewMode === "list" ? (
           <div className="flex flex-col gap-1.5">
-            {filteredProjects.map((project) => (
-              <ProjectCard key={project.id} project={project} viewMode="list" now={now} />
+            {filteredProjects.map((project, idx) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                viewMode="list"
+                now={now}
+                hour24={clock24h}
+                highlighted={highlightedProjectSlugs.has(project.slug)}
+                linkRef={(el) => {
+                  cardRefs.current[idx] = el;
+                }}
+              />
             ))}
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredProjects.map((project) => (
-              <ProjectCard key={project.id} project={project} viewMode="grid" now={now} />
+            {filteredProjects.map((project, idx) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                viewMode="grid"
+                now={now}
+                hour24={clock24h}
+                highlighted={highlightedProjectSlugs.has(project.slug)}
+                linkRef={(el) => {
+                  cardRefs.current[idx] = el;
+                }}
+              />
             ))}
           </div>
         )}
       </div>
-
-      <CreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
     </main>
   );
 }

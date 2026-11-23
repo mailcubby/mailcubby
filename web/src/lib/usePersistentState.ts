@@ -29,12 +29,16 @@ export function readPersistentValue<T>(
   }
 }
 
+const SAME_TAB_EVENT = "mailcubby:storage";
+
 export function writePersistentValue<T>(key: string, value: T): void {
   if (typeof window === "undefined") {
     return;
   }
+  const storageKey = toStorageKey(key);
   try {
-    window.localStorage.setItem(toStorageKey(key), JSON.stringify(value));
+    window.localStorage.setItem(storageKey, JSON.stringify(value));
+    window.dispatchEvent(new CustomEvent(SAME_TAB_EVENT, { detail: storageKey }));
   } catch {
     // Ignore storage quota or private-mode restrictions.
   }
@@ -65,14 +69,25 @@ export function usePersistentState<T>(
     if (typeof window === "undefined") {
       return;
     }
+    const syncFromStorage = () => {
+      setValue(readPersistentValue(storageKey, defaultValue, validate));
+    };
     const handleStorage = (event: StorageEvent) => {
       if (event.key === storageKey || event.key === null) {
-        setValue(readPersistentValue(storageKey, defaultValue, validate));
+        syncFromStorage();
+      }
+    };
+    const handleSameTab = (event: Event) => {
+      const custom = event as CustomEvent<string>;
+      if (custom.detail === storageKey) {
+        syncFromStorage();
       }
     };
     window.addEventListener("storage", handleStorage);
+    window.addEventListener(SAME_TAB_EVENT, handleSameTab);
     return () => {
       window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(SAME_TAB_EVENT, handleSameTab);
     };
   }, [storageKey, defaultValue, validate]);
 

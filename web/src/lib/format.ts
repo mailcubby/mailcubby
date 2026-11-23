@@ -3,10 +3,16 @@ import type { Address, ProjectColor } from "@/lib/api";
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 
-const timeFormatter = new Intl.DateTimeFormat("en-GB", {
+const timeFormatter24 = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
+});
+
+const timeFormatter12 = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
 });
 
 const monthDayFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -20,15 +26,23 @@ const monthDayYearFormatter = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
 });
 
-const exactLocalFormatter = new Intl.DateTimeFormat(undefined, {
+const exactLocalFormatter24 = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "medium",
+  hour12: false,
+});
+
+const exactLocalFormatter12 = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "medium",
+  hour12: true,
 });
 
 const exactUtcFormatter = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "medium",
   timeStyle: "medium",
   timeZone: "UTC",
+  hour12: false,
 });
 
 const numberFormatter = new Intl.NumberFormat();
@@ -49,7 +63,11 @@ function startOfLocalDay(d: Date): number {
  * Formats a timestamp relative to `now` following docs/UI.md section 4 item 11:
  * `now`, `3m`, `2h`, `Yesterday 14:03`, `12 Nov`, or `12 Nov 2025` for prior years.
  */
-export function formatRelativeTime(value: string | number | Date, now: Date = new Date()): string {
+export function formatRelativeTime(
+  value: string | number | Date,
+  now: Date = new Date(),
+  hour24 = true,
+): string {
   const date = toDate(value);
   const timeMs = date.getTime();
   if (Number.isNaN(timeMs)) {
@@ -77,7 +95,7 @@ export function formatRelativeTime(value: string | number | Date, now: Date = ne
   }
 
   if (dayDiff === 1) {
-    return `Yesterday ${timeFormatter.format(date)}`;
+    return `Yesterday ${(hour24 ? timeFormatter24 : timeFormatter12).format(date)}`;
   }
 
   if (date.getFullYear() === now.getFullYear()) {
@@ -87,7 +105,10 @@ export function formatRelativeTime(value: string | number | Date, now: Date = ne
   return monthDayYearFormatter.format(date);
 }
 
-export function formatExactTimestamp(value: string | number | Date): {
+export function formatExactTimestamp(
+  value: string | number | Date,
+  hour24 = true,
+): {
   local: string;
   utc: string;
   combined: string;
@@ -96,7 +117,7 @@ export function formatExactTimestamp(value: string | number | Date): {
   if (Number.isNaN(date.getTime())) {
     return { local: "", utc: "", combined: "" };
   }
-  const local = exactLocalFormatter.format(date);
+  const local = (hour24 ? exactLocalFormatter24 : exactLocalFormatter12).format(date);
   const utc = `${exactUtcFormatter.format(date)} UTC`;
   return {
     local,

@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccountPreferencesRouteImport } from './routes/account.preferences'
 import { Route as PProjectRouteImport } from './routes/p.$project'
 import { Route as PProjectIndexRouteImport } from './routes/p.$project.index'
 import { Route as PProjectMMessageIdRouteImport } from './routes/p.$project.m.$messageId'
@@ -17,6 +18,11 @@ import { Route as PProjectMMessageIdRouteImport } from './routes/p.$project.m.$m
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountPreferencesRoute = AccountPreferencesRouteImport.update({
+  id: '/account/preferences',
+  path: '/account/preferences',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PProjectRoute = PProjectRouteImport.update({
@@ -37,30 +43,39 @@ const PProjectMMessageIdRoute = PProjectMMessageIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/account/preferences': typeof AccountPreferencesRoute
   '/p/$project': typeof PProjectRouteWithChildren
   '/p/$project/': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/account/preferences': typeof AccountPreferencesRoute
   '/p/$project': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/account/preferences': typeof AccountPreferencesRoute
   '/p/$project': typeof PProjectRouteWithChildren
   '/p/$project/': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/p/$project' | '/p/$project/' | '/p/$project/m/$messageId'
+  fullPaths:
+    | '/'
+    | '/account/preferences'
+    | '/p/$project'
+    | '/p/$project/'
+    | '/p/$project/m/$messageId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/p/$project' | '/p/$project/m/$messageId'
+  to: '/' | '/account/preferences' | '/p/$project' | '/p/$project/m/$messageId'
   id:
     | '__root__'
     | '/'
+    | '/account/preferences'
     | '/p/$project'
     | '/p/$project/'
     | '/p/$project/m/$messageId'
@@ -68,6 +83,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccountPreferencesRoute: typeof AccountPreferencesRoute
   PProjectRoute: typeof PProjectRouteWithChildren
 }
 
@@ -78,6 +94,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account/preferences': {
+      id: '/account/preferences'
+      path: '/account/preferences'
+      fullPath: '/account/preferences'
+      preLoaderRoute: typeof AccountPreferencesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/p/$project': {
@@ -120,6 +143,7 @@ const PProjectRouteWithChildren = PProjectRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccountPreferencesRoute: AccountPreferencesRoute,
   PProjectRoute: PProjectRouteWithChildren,
 }
 export const routeTree = rootRouteImport
