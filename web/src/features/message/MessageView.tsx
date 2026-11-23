@@ -1,8 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { AlertCircle } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef } from "react";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,8 +14,10 @@ import { PreviewTab } from "@/features/message/PreviewTab";
 import { RawTab } from "@/features/message/RawTab";
 import { TechTab } from "@/features/message/TechTab";
 import { TextTab } from "@/features/message/TextTab";
-import { ApiError, api, getApiErrorMessage, unwrap, unwrapVoid } from "@/lib/api";
-import { queryKeys } from "@/lib/queryKeys";
+import { ApiError, getApiErrorMessage } from "@/lib/api";
+import { useMarkReadDelayPreference, useSingleKeyShortcutsPreference } from "@/lib/preferences";
+import { messageDetailQueryOptions } from "@/lib/queries";
+import { type KeyShortcutBinding, useKeyShortcuts } from "@/lib/shortcuts";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { cn } from "@/lib/utils";
 import { isMessageTab, type MessageTab } from "@/routes/p.$project.m.$messageId";
@@ -26,13 +27,40 @@ interface TabDefinition {
   label: string;
 }
 
+interface NetworkInformationLike {
+  saveData?: boolean;
+}
+
+const NUMBER_KEY_TO_TAB: ReadonlyArray<{ key: string; tab: MessageTab }> = [
+  { key: "1", tab: "preview" },
+  { key: "2", tab: "text" },
+  { key: "3", tab: "source" },
+  { key: "4", tab: "headers" },
+  { key: "5", tab: "raw" },
+  { key: "6", tab: "attachments" },
+  { key: "7", tab: "tech" },
+];
+
+const prefetchedRenderUrls = new Set<string>();
+
+function isSaveDataEnabled(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  const nav = navigator as Navigator & { connection?: NetworkInformationLike };
+  return Boolean(nav.connection?.saveData);
+}
+
 export function MessageView() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { project: projectSlug, messageId } = useParams({ from: "/p/$project/m/$messageId" });
   const search = useSearch({ from: "/p/$project/m/$messageId" });
-  const { project, messages, invalidateInbox } = useInboxContext();
+  const { project, messages, deleteMessageWithUndo, toggleMessageSeen, isUpdatingSeen } =
+    useInboxContext();
 
+  const [markReadDelay] = useMarkReadDelayPreference();
+  const [singleKeyEnabled] = useSingleKeyShortcutsPreference();
   const [savedTab, setSavedTab] = usePersistentState<MessageTab>(
     "message-tab",
     "preview",
@@ -46,76 +74,56 @@ export function MessageView() {
     isPending,
     error,
     refetch,
-  } = useQuery({
-    queryKey: queryKeys.message(projectSlug, messageId),
-    queryFn: async () =>
-      unwrap(
-        await api.GET("/api/v1/projects/{project}/messages/{id}", {
-          params: { path: { project: projectSlug, id: messageId } },
-        }),
-      ),
-    retry: (count, err) => {
-      if (err instanceof ApiError && err.status === 404) {
-        return false;
-      }
-      return count < 1;
-    },
-  });
+  } = useQuery(messageDetailQueryOptions(projectSlug, messageId));
 
-  const seenMutation = useMutation({
-    mutationFn: async (seen: boolean) =>
-      unwrap(
-        await api.PATCH("/api/v1/projects/{project}/messages/{id}", {
-          params: { path: { project: projectSlug, id: messageId } },
-          body: { seen },
-        }),
-      ),
-    onSuccess: async (updated) => {
-      queryClient.setQueryData(queryKeys.message(projectSlug, messageId), (prev: unknown) => {
-        if (prev && typeof prev === "object") {
-          return { ...(prev as Record<string, unknown>), seen: updated.seen };
-        }
-        return prev;
-      });
-      await invalidateInbox();
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async () =>
-      unwrapVoid(
-        await api.DELETE("/api/v1/projects/{project}/messages/{id}", {
-          params: { path: { project: projectSlug, id: messageId } },
-        }),
-      ),
-    onSuccess: async () => {
-      toast.success("Message deleted");
-      const currentIdx = messages.findIndex((m) => m.id === messageId);
-      const nextMsg =
-        currentIdx >= 0 ? (messages[currentIdx + 1] ?? messages[currentIdx - 1]) : undefined;
-      await invalidateInbox();
-      if (nextMsg) {
-        void navigate({
-          to: "/p/$project/m/$messageId",
-          params: { project: projectSlug, messageId: nextMsg.id },
-        });
-      } else {
-        void navigate({ to: "/p/$project", params: { project: projectSlug } });
-      }
-    },
-  });
-
-  // Mark message seen when opened by a member/owner (FR-075).
+  // Mark message seen after configured delay when opened by a member/owner (FR-075, UI 3.7).
   useEffect(() => {
-    if (!message || message.seen || project.role === "viewer") {
+    if (!message || message.seen || project.role === "viewer" || markReadDelay === "never") {
       return;
     }
     if (autoMarkedRef.current === message.id) {
       return;
     }
-    autoMarkedRef.current = message.id;
-    seenMutation.mutate(true);
-  }, [message, project.role, seenMutation]);
+    if (markReadDelay === 0) {
+      autoMarkedRef.current = message.id;
+      toggleMessageSeen(message, true);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      autoMarkedRef.current = message.id;
+      toggleMessageSeen(message, true);
+    }, markReadDelay);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [message, project.role, markReadDelay, toggleMessageSeen]);
+
+  const currentIdx = messages.findIndex((m) => m.id === messageId);
+  const previousMessage = currentIdx > 0 ? messages[currentIdx - 1] : undefined;
+  const nextMessage =
+    currentIdx >= 0 && currentIdx < messages.length - 1 ? messages[currentIdx + 1] : undefined;
+
+  // Prefetch next and previous message details + warm next message render cache on fast connections (UI 4 item 7).
+  useEffect(() => {
+    if (nextMessage) {
+      void queryClient.prefetchQuery(messageDetailQueryOptions(projectSlug, nextMessage.id));
+      if (nextMessage.has_html && !isSaveDataEnabled()) {
+        const renderUrl = `/render/${encodeURIComponent(projectSlug)}/${encodeURIComponent(nextMessage.id)}`;
+        if (!prefetchedRenderUrls.has(renderUrl)) {
+          prefetchedRenderUrls.add(renderUrl);
+          if (prefetchedRenderUrls.size > 64) {
+            prefetchedRenderUrls.clear();
+          }
+          void fetch(renderUrl, { credentials: "same-origin" }).catch(() => {
+            prefetchedRenderUrls.delete(renderUrl);
+          });
+        }
+      }
+    }
+    if (previousMessage) {
+      void queryClient.prefetchQuery(messageDetailQueryOptions(projectSlug, previousMessage.id));
+    }
+  }, [queryClient, projectSlug, nextMessage, previousMessage]);
 
   const hasPreview = Boolean(message?.has_html && message?.render_url);
   const hideTechnical = project.role === "viewer" && project.settings.viewer_hide_technical;
@@ -156,6 +164,19 @@ export function MessageView() {
     [navigate, projectSlug, messageId, setSavedTab],
   );
 
+  // Number keys 1 to 7 switch message tabs (UI 3.5 & 4 item 2).
+  const tabShortcutBindings = useMemo<KeyShortcutBinding[]>(
+    () =>
+      NUMBER_KEY_TO_TAB.map(({ key, tab }) => ({
+        keys: key,
+        enabled: availableTabs.some((t) => t.id === tab),
+        handler: () => selectTab(tab),
+      })),
+    [availableTabs, selectTab],
+  );
+
+  useKeyShortcuts(tabShortcutBindings, { singleKeyEnabled });
+
   const handleTabKeyDown = (e: KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
     let nextIndex: number | null = null;
     if (e.key === "ArrowRight") {
@@ -177,11 +198,6 @@ export function MessageView() {
       tabRefs.current[nextTab.id]?.focus();
     }
   };
-
-  const currentIdx = messages.findIndex((m) => m.id === messageId);
-  const previousMessage = currentIdx > 0 ? messages[currentIdx - 1] : undefined;
-  const nextMessage =
-    currentIdx >= 0 && currentIdx < messages.length - 1 ? messages[currentIdx + 1] : undefined;
 
   if (isPending) {
     return (
@@ -242,10 +258,9 @@ export function MessageView() {
             });
           }
         }}
-        onToggleSeen={() => seenMutation.mutate(!message.seen)}
-        onDelete={() => deleteMutation.mutate()}
-        isUpdatingSeen={seenMutation.isPending}
-        isDeleting={deleteMutation.isPending}
+        onToggleSeen={() => toggleMessageSeen(message)}
+        onDelete={() => deleteMessageWithUndo(message)}
+        isUpdatingSeen={isUpdatingSeen}
       />
 
       <div

@@ -1,5 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import { api, unwrap } from "@/lib/api";
+import { ApiError, api, unwrap } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function metaQueryOptions() {
@@ -37,5 +37,24 @@ export function projectQueryOptions(project: string) {
       ),
     staleTime: 10_000,
     retry: false,
+  });
+}
+
+export function messageDetailQueryOptions(project: string, messageId: string) {
+  return queryOptions({
+    queryKey: queryKeys.message(project, messageId),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/projects/{project}/messages/{id}", {
+          params: { path: { project, id: messageId } },
+        }),
+      ),
+    staleTime: 30_000,
+    retry: (count, err) => {
+      if (err instanceof ApiError && err.status === 404) {
+        return false;
+      }
+      return count < 1;
+    },
   });
 }

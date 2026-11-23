@@ -1,16 +1,31 @@
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useAppCommands } from "@/components/AppCommandContext";
 import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InboxProvider } from "@/features/inbox/InboxContext";
 import { InboxSidebar } from "@/features/inbox/InboxSidebar";
 import { MessageListPane } from "@/features/inbox/MessageListPane";
-import { ApiError, api, getApiErrorMessage, unwrap } from "@/lib/api";
+import {
+  ApiError,
+  api,
+  getApiErrorMessage,
+  type MessageDetail,
+  type MessageSummary,
+  type ProjectDetail,
+  type ProjectSummary,
+  unwrap,
+} from "@/lib/api";
+import { scheduleOptimisticDelete } from "@/lib/pendingDeletes";
+import { useSingleKeyShortcutsPreference } from "@/lib/preferences";
 import { metaQueryOptions, projectQueryOptions } from "@/lib/queries";
 import { queryKeys } from "@/lib/queryKeys";
+import { type KeyShortcutBinding, useKeyShortcuts } from "@/lib/shortcuts";
+import { type MessageInfiniteData, updateMessagesInPages } from "@/lib/sseReducer";
 import { usePersistentState } from "@/lib/usePersistentState";
 import type { InboxFilter } from "@/routes/p.$project";
 
@@ -66,6 +81,9 @@ export function InboxLayout() {
   const activeMessageId = params.messageId;
   const filter: InboxFilter = search.filter === "unread" ? "unread" : "all";
 
+  const { openPalette, setActiveInbox } = useAppCommands();
+  const [singleKeyEnabled] = useSingleKeyShortcutsPreference();
+
   const viewportWidth = useViewportWidth();
   const isDesktop = viewportWidth >= 1024;
   const isMobile = viewportWidth < 768;
@@ -81,6 +99,8 @@ export function InboxLayout() {
     isBoolean,
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const readingPaneRef = useRef<HTMLDivElement | null>(null);
 
   const { data: meta } = useQuery(metaQueryOptions());
   const {
@@ -111,7 +131,7 @@ export function InboxLayout() {
     [messagesQuery.data],
   );
 
-  // Phase 4a filters unread client-side until Phase 5 adds server-side `query=is:unread`.
+  // Phase 4 filters unread client-side until Phase 5 adds server-side `query=is:unread`.
   const visibleMessages = useMemo(
     () => (filter === "unread" ? allMessages.filter((m) => !m.seen) : allMessages),
     [allMessages, filter],
@@ -145,6 +165,157 @@ export function InboxLayout() {
       queryClient.invalidateQueries({ queryKey: queryKeys.messages(projectSlug) }),
     ]);
   }, [queryClient, projectSlug]);
+
+  const seenMutation = useMutation({
+    mutationFn: async ({ id, seen }: { id: string; seen: boolean }) =>
+      unwrap(
+        await api.PATCH("/api/v1/projects/{project}/messages/{id}", {
+          params: { path: { project: projectSlug, id } },
+          body: { seen },
+        }),
+      ),
+    onMutate: ({ id, seen }) => {
+      // Optimistically reflect seen state in cached list, detail, and unread count.
+      const existing = allMessages.find((m) => m.id === id);
+      const changed = existing ? existing.seen !== seen : true;
+      const listQueries = queryClient.getQueriesData<MessageInfiniteData>({
+        predicate: (q) =>
+          q.queryKey.length === 4 &&
+          q.queryKey[0] === "projects" &&
+          q.queryKey[1] === projectSlug &&
+          q.queryKey[2] === "messages" &&
+          typeof q.queryKey[3] === "object" &&
+          q.queryKey[3] !== null,
+      });
+      for (const [key, current] of listQueries) {
+        const next = updateMessagesInPages(current, [id], { seen });
+        if (next !== current) {
+          queryClient.setQueryData<MessageInfiniteData>(key, next);
+        }
+      }
+      queryClient.setQueryData<MessageDetail>(queryKeys.message(projectSlug, id), (prev) =>
+        prev ? { ...prev, seen } : prev,
+      );
+      if (changed) {
+        const delta = seen ? -1 : 1;
+        queryClient.setQueryData<ProjectDetail>(queryKeys.project(projectSlug), (prev) =>
+          prev ? { ...prev, unread_count: Math.max(0, prev.unread_count + delta) } : prev,
+        );
+        queryClient.setQueryData<ProjectSummary[]>(queryKeys.projects(), (prev) =>
+          prev?.map((p) =>
+            p.slug === projectSlug
+              ? { ...p, unread_count: Math.max(0, p.unread_count + delta) }
+              : p,
+          ),
+        );
+      }
+      return { id, previousSeen: existing?.seen };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx) {
+        void invalidateInbox();
+      }
+    },
+  });
+
+  const toggleMessageSeen = useCallback(
+    (message: MessageSummary, nextSeen?: boolean) => {
+      if (project?.role === "viewer") {
+        return;
+      }
+      const targetSeen = nextSeen ?? !message.seen;
+      seenMutation.mutate({ id: message.id, seen: targetSeen });
+    },
+    [project?.role, seenMutation],
+  );
+
+  const deleteMessageWithUndo = useCallback(
+    (message: MessageSummary) => {
+      if (project?.role === "viewer") {
+        return;
+      }
+      const currentIdx = visibleMessages.findIndex((m) => m.id === message.id);
+      const nextMsg =
+        currentIdx >= 0
+          ? (visibleMessages[currentIdx + 1] ?? visibleMessages[currentIdx - 1])
+          : undefined;
+
+      scheduleOptimisticDelete(queryClient, projectSlug, message);
+
+      if (activeMessageId === message.id) {
+        if (nextMsg) {
+          void navigate({
+            to: "/p/$project/m/$messageId",
+            params: { project: projectSlug, messageId: nextMsg.id },
+          });
+        } else {
+          void navigate({ to: "/p/$project", params: { project: projectSlug } });
+        }
+      }
+    },
+    [project?.role, visibleMessages, queryClient, projectSlug, activeMessageId, navigate],
+  );
+
+  const sendTestMutation = useMutation({
+    mutationFn: async () =>
+      unwrap(
+        await api.POST("/api/v1/projects/{project}/send-test", {
+          params: { path: { project: projectSlug } },
+        }),
+      ),
+    onSuccess: async (created) => {
+      toast.success("Test email sent");
+      await invalidateInbox();
+      void navigate({
+        to: "/p/$project/m/$messageId",
+        params: { project: projectSlug, messageId: created.id },
+      });
+    },
+  });
+
+  const toggleSidebar = useCallback(() => {
+    if (isDesktop) {
+      setSidebarCollapsed((prev) => !prev);
+    } else {
+      setDrawerOpen((prev) => !prev);
+    }
+  }, [isDesktop, setSidebarCollapsed]);
+
+  const sendTestMutate = sendTestMutation.mutate;
+  useEffect(() => {
+    if (!project) {
+      setActiveInbox(null);
+      return;
+    }
+    setActiveInbox({
+      projectSlug: project.slug,
+      projectName: project.name,
+      messageCount: project.message_count,
+      messages: allMessages,
+      toggleSidebar,
+      openDeleteAll: () => setDeleteAllOpen(true),
+      sendTestEmail: () => sendTestMutate(),
+    });
+    return () => {
+      setActiveInbox(null);
+    };
+  }, [project, allMessages, toggleSidebar, sendTestMutate, setActiveInbox]);
+
+  const layoutShortcuts = useMemo<KeyShortcutBinding[]>(
+    () => [
+      {
+        keys: "[",
+        handler: toggleSidebar,
+      },
+      {
+        keys: "/",
+        handler: openPalette,
+      },
+    ],
+    [toggleSidebar, openPalette],
+  );
+
+  useKeyShortcuts(layoutShortcuts, { singleKeyEnabled });
 
   if (projectError) {
     const isNotFound = projectError instanceof ApiError && projectError.status === 404;
@@ -214,6 +385,11 @@ export function InboxLayout() {
       onFetchNextPage={() => void messagesQuery.fetchNextPage()}
       onRefresh={() => void invalidateInbox()}
       onMutated={invalidateInbox}
+      onDeleteSingle={deleteMessageWithUndo}
+      onToggleSeen={toggleMessageSeen}
+      readingPaneRef={readingPaneRef}
+      deleteAllOpen={deleteAllOpen}
+      onDeleteAllOpenChange={setDeleteAllOpen}
       showSidebarTrigger={!isDesktop || sidebarCollapsed}
       onOpenSidebar={() => {
         if (isDesktop) {
@@ -232,7 +408,11 @@ export function InboxLayout() {
     filter,
     activeMessageId,
     isLoadingMessages: messagesQuery.isPending,
+    readingPaneRef,
     invalidateInbox,
+    deleteMessageWithUndo,
+    toggleMessageSeen,
+    isUpdatingSeen: seenMutation.isPending,
   };
 
   return (
@@ -291,7 +471,11 @@ export function InboxLayout() {
               defaultSize={`${sidebarCollapsed ? Math.max(55, paneSizes.reading) : paneSizes.reading}%`}
               minSize="30%"
             >
-              <div className="h-full min-w-0 overflow-hidden bg-background">
+              <div
+                ref={readingPaneRef}
+                tabIndex={-1}
+                className="h-full min-w-0 overflow-hidden bg-background"
+              >
                 <Outlet />
               </div>
             </ResizablePanel>
@@ -309,7 +493,7 @@ export function InboxLayout() {
                   <span>Back to {project.name}</span>
                 </Link>
               </div>
-              <div className="min-h-0 flex-1 overflow-hidden">
+              <div ref={readingPaneRef} tabIndex={-1} className="min-h-0 flex-1 overflow-hidden">
                 <Outlet />
               </div>
             </div>
@@ -323,7 +507,11 @@ export function InboxLayout() {
             </ResizablePanel>
             <ResizableHandle aria-label="Resize message list" />
             <ResizablePanel id="reading" defaultSize="60%" minSize="35%">
-              <div className="h-full min-w-0 overflow-hidden bg-background">
+              <div
+                ref={readingPaneRef}
+                tabIndex={-1}
+                className="h-full min-w-0 overflow-hidden bg-background"
+              >
                 <Outlet />
               </div>
             </ResizablePanel>

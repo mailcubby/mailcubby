@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, type RefObject, useContext } from "react";
 import type { MessageSummary, ProjectDetail } from "@/lib/api";
 import type { InboxFilter } from "@/routes/p.$project";
 
@@ -9,7 +9,11 @@ export interface InboxContextValue {
   filter: InboxFilter;
   activeMessageId: string | undefined;
   isLoadingMessages: boolean;
+  readingPaneRef: RefObject<HTMLDivElement | null>;
   invalidateInbox: () => Promise<void>;
+  deleteMessageWithUndo: (message: MessageSummary) => void;
+  toggleMessageSeen: (message: MessageSummary, nextSeen?: boolean) => void;
+  isUpdatingSeen: boolean;
 }
 
 const InboxContext = createContext<InboxContextValue | null>(null);

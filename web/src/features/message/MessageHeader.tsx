@@ -12,10 +12,10 @@ import {
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/dialog";
 import type { Address, MessageDetail } from "@/lib/api";
 import { copyToClipboard } from "@/lib/clipboard";
 import { formatAddress, formatBytes, formatExactTimestamp, formatRelativeTime } from "@/lib/format";
+import { useClock24hPreference } from "@/lib/preferences";
 
 export interface MessageHeaderProps {
   projectSlug: string;
@@ -27,7 +27,6 @@ export interface MessageHeaderProps {
   onToggleSeen: () => void;
   onDelete: () => void;
   isUpdatingSeen: boolean;
-  isDeleting: boolean;
 }
 
 function AddressList({ label, addresses }: { label: string; addresses: ReadonlyArray<Address> }) {
@@ -86,13 +85,12 @@ export function MessageHeader({
   onToggleSeen,
   onDelete,
   isUpdatingSeen,
-  isDeleting,
 }: MessageHeaderProps) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [clock24h] = useClock24hPreference();
 
   const subject = message.subject.trim() || "(no subject)";
-  const relative = formatRelativeTime(message.received_at);
-  const exact = formatExactTimestamp(message.received_at).combined;
+  const relative = formatRelativeTime(message.received_at, new Date(), clock24h);
+  const exact = formatExactTimestamp(message.received_at, clock24h).combined;
   const emlHref = `/api/v1/projects/${encodeURIComponent(projectSlug)}/messages/${encodeURIComponent(message.id)}/eml`;
 
   return (
@@ -120,7 +118,7 @@ export function MessageHeader({
             variant="ghost"
             size="icon"
             aria-label="Previous message"
-            title="Previous message"
+            title="Previous message (k)"
             disabled={!hasPrevious}
             onClick={onPrevious}
             className="size-7"
@@ -131,7 +129,7 @@ export function MessageHeader({
             variant="ghost"
             size="icon"
             aria-label="Next message"
-            title="Next message"
+            title="Next message (j)"
             disabled={!hasNext}
             onClick={onNext}
             className="size-7"
@@ -145,7 +143,7 @@ export function MessageHeader({
             variant="ghost"
             size="icon"
             aria-label={message.seen ? "Mark unread" : "Mark read"}
-            title={message.seen ? "Mark unread" : "Mark read"}
+            title={message.seen ? "Mark unread (u)" : "Mark read (u)"}
             disabled={isUpdatingSeen}
             onClick={onToggleSeen}
             className="size-7"
@@ -195,9 +193,8 @@ export function MessageHeader({
             variant="ghost"
             size="icon"
             aria-label="Delete message"
-            title="Delete message"
-            disabled={isDeleting}
-            onClick={() => setConfirmDelete(true)}
+            title="Delete message (e)"
+            onClick={onDelete}
             className="size-7 text-muted-foreground hover:text-destructive"
           >
             <Trash2 className="size-3.5" aria-hidden="true" />
@@ -243,20 +240,6 @@ export function MessageHeader({
           ))}
         </div>
       ) : null}
-
-      <ConfirmDialog
-        open={confirmDelete}
-        onOpenChange={setConfirmDelete}
-        title="Delete message?"
-        description={`Permanently delete "${subject}"?`}
-        confirmLabel="Delete"
-        destructive
-        pending={isDeleting}
-        onConfirm={() => {
-          setConfirmDelete(false);
-          onDelete();
-        }}
-      />
     </header>
   );
 }

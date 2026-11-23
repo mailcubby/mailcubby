@@ -1,7 +1,8 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+  ArrowUp,
   CheckSquare,
   Mail,
   MailOpen,
@@ -11,8 +12,17 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type MouseEvent,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
+import { useRealtime } from "@/components/RealtimeProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
@@ -24,10 +34,18 @@ import {
   formatRelativeTime,
   getSenderLabel,
 } from "@/lib/format";
+import {
+  useClock24hPreference,
+  useDensityPreference,
+  useSingleKeyShortcutsPreference,
+} from "@/lib/preferences";
+import { messageDetailQueryOptions } from "@/lib/queries";
+import { type KeyShortcutBinding, useKeyShortcuts } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import type { InboxFilter } from "@/routes/p.$project";
 
 const SKELETON_ROWS = ["r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8"] as const;
+const HOVER_PREFETCH_DELAY_MS = 100;
 
 export interface MessageListPaneProps {
   project: ProjectDetail;
@@ -40,6 +58,11 @@ export interface MessageListPaneProps {
   onFetchNextPage: () => void;
   onRefresh: () => void;
   onMutated: () => Promise<void>;
+  onDeleteSingle: (message: MessageSummary) => void;
+  onToggleSeen: (message: MessageSummary) => void;
+  readingPaneRef: RefObject<HTMLDivElement | null>;
+  deleteAllOpen: boolean;
+  onDeleteAllOpenChange: (open: boolean) => void;
   showSidebarTrigger?: boolean;
   onOpenSidebar?: () => void;
 }
@@ -55,22 +78,56 @@ export function MessageListPane({
   onFetchNextPage,
   onRefresh,
   onMutated,
+  onDeleteSingle,
+  onToggleSeen,
+  readingPaneRef,
+  deleteAllOpen,
+  onDeleteAllOpenChange,
   showSidebarTrigger = false,
   onOpenSidebar,
 }: MessageListPaneProps) {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const hoverTimerRef = useRef<number | null>(null);
+
+  const { highlightedMessageIds, subscribeArrivals } = useRealtime();
+  const [density] = useDensityPreference();
+  const [singleKeyEnabled] = useSingleKeyShortcutsPreference();
+  const [clock24h] = useClock24hPreference();
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
-  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [newSinceScrolled, setNewSinceScrolled] = useState(0);
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current !== null) {
+        window.clearTimeout(hoverTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Track new arrivals when the list is scrolled down ("N new" pill, UI 4 item 3).
+  useEffect(() => {
+    setNewSinceScrolled(0);
+    return subscribeArrivals((arrivedProject) => {
+      if (arrivedProject !== project.slug) {
+        return;
+      }
+      const el = scrollRef.current;
+      if (el && el.scrollTop > 40) {
+        setNewSinceScrolled((prev) => prev + 1);
+      }
+    });
+  }, [project.slug, subscribeArrivals]);
 
   // Prune selection when project changes or deleted messages disappear.
   useEffect(() => {
@@ -134,7 +191,7 @@ export function MessageListPane({
         }),
       ),
     onSuccess: async (res) => {
-      setConfirmDeleteAll(false);
+      onDeleteAllOpenChange(false);
       setSelectedIds(new Set());
       setLastSelectedIndex(null);
       toast.success(`Deleted ${res.affected} ${res.affected === 1 ? "message" : "messages"}`);
@@ -145,12 +202,21 @@ export function MessageListPane({
     },
   });
 
+  const rowEstimate = density === "compact" ? 56 : 70;
   const rowVirtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 62,
+    estimateSize: () => rowEstimate,
     overscan: 8,
   });
+
+  const prevDensityRef = useRef(density);
+  useEffect(() => {
+    if (prevDensityRef.current !== density) {
+      prevDensityRef.current = density;
+      rowVirtualizer.measure();
+    }
+  }, [density, rowVirtualizer]);
 
   const virtualItems = rowVirtualizer.getVirtualItems();
 
@@ -163,6 +229,21 @@ export function MessageListPane({
       onFetchNextPage();
     }
   }, [virtualItems, messages.length, hasNextPage, isFetchingNextPage, onFetchNextPage]);
+
+  const openMessageByIndex = useCallback(
+    (index: number) => {
+      const target = messages[index];
+      if (!target) {
+        return;
+      }
+      rowVirtualizer.scrollToIndex(index, { align: "auto" });
+      void navigate({
+        to: "/p/$project/m/$messageId",
+        params: { project: project.slug, messageId: target.id },
+      });
+    },
+    [messages, navigate, project.slug, rowVirtualizer],
+  );
 
   const handleToggleSelect = useCallback(
     (id: string, index: number, shiftKey: boolean) => {
@@ -189,14 +270,181 @@ export function MessageListPane({
     [lastSelectedIndex, messages],
   );
 
-  const selectedArray = Array.from(selectedIds);
+  const selectedArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
+  const bulkMutate = bulkMutation.mutate;
+
+  const inboxShortcuts = useMemo<KeyShortcutBinding[]>(() => {
+    const currentIdx = activeMessageId ? messages.findIndex((m) => m.id === activeMessageId) : -1;
+    const activeMsg = currentIdx >= 0 ? messages[currentIdx] : undefined;
+
+    const moveSelection = (delta: number, extend: boolean) => {
+      if (messages.length === 0) {
+        return;
+      }
+      let nextIdx: number;
+      if (currentIdx === -1) {
+        nextIdx = delta > 0 ? 0 : messages.length - 1;
+      } else {
+        nextIdx = Math.max(0, Math.min(messages.length - 1, currentIdx + delta));
+      }
+      const nextMsg = messages[nextIdx];
+      if (!nextMsg) {
+        return;
+      }
+      if (extend) {
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (activeMsg) {
+            next.add(activeMsg.id);
+          }
+          next.add(nextMsg.id);
+          return next;
+        });
+        setLastSelectedIndex(nextIdx);
+      }
+      openMessageByIndex(nextIdx);
+    };
+
+    const deleteCurrentOrBulk = () => {
+      if (selectedArray.length > 0) {
+        setConfirmBulkDelete(true);
+        return;
+      }
+      if (activeMsg) {
+        onDeleteSingle(activeMsg);
+      }
+    };
+
+    return [
+      {
+        keys: "j",
+        handler: () => moveSelection(1, false),
+      },
+      {
+        keys: "k",
+        handler: () => moveSelection(-1, false),
+      },
+      {
+        keys: "Shift+j",
+        handler: () => moveSelection(1, true),
+      },
+      {
+        keys: "Shift+k",
+        handler: () => moveSelection(-1, true),
+      },
+      {
+        keys: "o",
+        handler: () => {
+          if (activeMsg) {
+            readingPaneRef.current?.focus();
+          } else if (messages.length > 0) {
+            openMessageByIndex(0);
+          }
+        },
+      },
+      {
+        keys: "Enter",
+        when: (event) => {
+          const target = event.target;
+          return target === scrollRef.current || target === document.body;
+        },
+        handler: () => {
+          if (activeMsg) {
+            readingPaneRef.current?.focus();
+          } else if (messages.length > 0) {
+            openMessageByIndex(0);
+          }
+        },
+      },
+      {
+        keys: "Escape",
+        handler: () => {
+          if (selectedIds.size > 0) {
+            setSelectedIds(new Set());
+            setLastSelectedIndex(null);
+            return;
+          }
+          scrollRef.current?.focus();
+        },
+      },
+      {
+        keys: "x",
+        handler: () => {
+          const idx = Math.max(currentIdx, 0);
+          const target = messages[idx];
+          if (target) {
+            handleToggleSelect(target.id, idx, false);
+          }
+        },
+      },
+      {
+        keys: "e",
+        handler: deleteCurrentOrBulk,
+      },
+      {
+        keys: "#",
+        handler: deleteCurrentOrBulk,
+      },
+      {
+        keys: "Delete",
+        handler: deleteCurrentOrBulk,
+      },
+      {
+        keys: "u",
+        handler: () => {
+          if (selectedArray.length > 0) {
+            const anyUnread = messages.some((m) => selectedIds.has(m.id) && !m.seen);
+            bulkMutate({ ids: selectedArray, action: anyUnread ? "seen" : "unseen" });
+            return;
+          }
+          if (activeMsg) {
+            onToggleSeen(activeMsg);
+          }
+        },
+      },
+    ];
+  }, [
+    activeMessageId,
+    messages,
+    openMessageByIndex,
+    selectedArray,
+    selectedIds,
+    onDeleteSingle,
+    onToggleSeen,
+    readingPaneRef,
+    handleToggleSelect,
+    bulkMutate,
+  ]);
+
+  useKeyShortcuts(inboxShortcuts, { singleKeyEnabled });
+
+  const scheduleHoverPrefetch = useCallback(
+    (messageId: string) => {
+      if (hoverTimerRef.current !== null) {
+        window.clearTimeout(hoverTimerRef.current);
+      }
+      hoverTimerRef.current = window.setTimeout(() => {
+        hoverTimerRef.current = null;
+        void queryClient.prefetchQuery(messageDetailQueryOptions(project.slug, messageId));
+      }, HOVER_PREFETCH_DELAY_MS);
+    },
+    [queryClient, project.slug],
+  );
+
+  const cancelHoverPrefetch = useCallback(() => {
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  }, []);
+
   const allLoadedSelected = messages.length > 0 && selectedIds.size === messages.length;
   const headingLabel = filter === "unread" ? "Unread" : "Inbox";
 
   return (
     <section
       aria-label="Message list"
-      className="flex h-full min-w-0 flex-col bg-surface text-[13px]"
+      className="relative flex h-full min-w-0 flex-col bg-surface text-[13px]"
     >
       {selectedIds.size > 0 ? (
         <div
@@ -275,7 +523,7 @@ export function MessageListPane({
                 variant="ghost"
                 size="icon"
                 aria-label="Open sidebar"
-                title="Open sidebar"
+                title="Open sidebar ([)"
                 onClick={onOpenSidebar}
                 className="size-7"
               >
@@ -316,7 +564,7 @@ export function MessageListPane({
                 variant="ghost"
                 size="xs"
                 className="text-muted-foreground hover:text-destructive"
-                onClick={() => setConfirmDeleteAll(true)}
+                onClick={() => onDeleteAllOpenChange(true)}
               >
                 <Trash2 className="size-3.5" aria-hidden="true" />
                 <span>Delete all</span>
@@ -326,6 +574,22 @@ export function MessageListPane({
         </div>
       )}
 
+      {newSinceScrolled > 0 ? (
+        <div className="pointer-events-none absolute top-13 right-0 left-0 z-20 flex justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+              setNewSinceScrolled(0);
+            }}
+            className="pointer-events-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-3 py-1 text-xs font-medium text-accent-foreground shadow-md transition-opacity hover:opacity-95"
+          >
+            <ArrowUp className="size-3" aria-hidden="true" />
+            <span className="tabular-nums">{formatCount(newSinceScrolled)} new</span>
+          </button>
+        </div>
+      ) : null}
+
       <div
         ref={scrollRef}
         role="listbox"
@@ -333,6 +597,11 @@ export function MessageListPane({
         aria-multiselectable="true"
         aria-activedescendant={activeMessageId ? `msg-row-${activeMessageId}` : undefined}
         aria-label={`${project.name} messages`}
+        onScroll={(e) => {
+          if (e.currentTarget.scrollTop <= 16 && newSinceScrolled > 0) {
+            setNewSinceScrolled(0);
+          }
+        }}
         className="min-h-0 flex-1 overflow-y-auto"
       >
         {isLoading ? (
@@ -368,10 +637,11 @@ export function MessageListPane({
               }
               const isSelected = selectedIds.has(msg.id);
               const isActive = activeMessageId === msg.id;
+              const isArrived = highlightedMessageIds.has(msg.id);
               const sender = getSenderLabel(msg.from);
               const subject = msg.subject.trim() || "(no subject)";
-              const relTime = formatRelativeTime(msg.received_at, now);
-              const exactTime = formatExactTimestamp(msg.received_at).combined;
+              const relTime = formatRelativeTime(msg.received_at, now, clock24h);
+              const exactTime = formatExactTimestamp(msg.received_at, clock24h).combined;
               const visibleTags = msg.tags.slice(0, 2);
               const extraTags = Math.max(0, msg.tags.length - 2);
 
@@ -399,12 +669,16 @@ export function MessageListPane({
                   role="option"
                   tabIndex={-1}
                   aria-selected={isActive || isSelected}
+                  onMouseEnter={() => scheduleHoverPrefetch(msg.id)}
+                  onMouseLeave={cancelHoverPrefetch}
                   style={{
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   className={cn(
-                    "absolute top-0 left-0 flex w-full items-start gap-2.5 border-b border-border px-3 py-2.5 transition-colors duration-150",
+                    "absolute top-0 left-0 flex w-full items-start gap-2.5 border-b border-border px-3 transition-colors duration-150",
+                    density === "compact" ? "py-1.5" : "py-3",
                     isActive ? "bg-accent/10" : isSelected ? "bg-muted/70" : "hover:bg-muted/40",
+                    isArrived && "arrival-highlight",
                   )}
                 >
                   <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
@@ -513,8 +787,8 @@ export function MessageListPane({
       />
 
       <ConfirmDialog
-        open={confirmDeleteAll}
-        onOpenChange={setConfirmDeleteAll}
+        open={deleteAllOpen}
+        onOpenChange={onDeleteAllOpenChange}
         title={`Delete all ${formatCount(project.message_count)} messages?`}
         description={`This permanently deletes all ${formatCount(project.message_count)} ${project.message_count === 1 ? "message" : "messages"} in ${project.name}. This cannot be undone.`}
         confirmLabel="Delete all"

@@ -1,14 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { Image, ImageOff, Monitor, Moon, RotateCw, Smartphone, Sun, Tablet } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { MessageDetail } from "@/lib/api";
+import { useSingleKeyShortcutsPreference } from "@/lib/preferences";
 import { metaQueryOptions } from "@/lib/queries";
+import { type KeyShortcutBinding, useKeyShortcuts } from "@/lib/shortcuts";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { cn } from "@/lib/utils";
 
 type DeviceKind = "desktop" | "tablet" | "mobile";
 type ZoomOption = "fit" | 50 | 75 | 100 | 125 | 150 | 200;
+
+const DEVICE_ORDER: ReadonlyArray<DeviceKind> = ["desktop", "tablet", "mobile"];
 
 function isDeviceKind(value: unknown): value is DeviceKind {
   return value === "desktop" || value === "tablet" || value === "mobile";
@@ -38,6 +42,7 @@ export interface PreviewTabProps {
 
 export function PreviewTab({ message }: PreviewTabProps) {
   const { data: meta } = useQuery(metaQueryOptions());
+  const [singleKeyEnabled] = useSingleKeyShortcutsPreference();
   const [device, setDevice] = usePersistentState<DeviceKind>(
     "preview-device",
     "desktop",
@@ -49,6 +54,39 @@ export function PreviewTab({ message }: PreviewTabProps) {
   // Remote images opt-in is strictly per-message and never persisted (UI 4 item 9).
   const [loadRemoteImages, setLoadRemoteImages] = useState(false);
 
+  const remoteImagesPolicy = meta?.features.remote_images ?? "opt-in";
+  const allowRemoteToggle = remoteImagesPolicy === "opt-in";
+
+  const previewShortcuts = useMemo<KeyShortcutBinding[]>(
+    () => [
+      {
+        keys: "d",
+        enabled: Boolean(message.render_url),
+        handler: () => {
+          setDevice((prev) => {
+            const next =
+              DEVICE_ORDER[(DEVICE_ORDER.indexOf(prev) + 1) % DEVICE_ORDER.length] ?? "desktop";
+            if (next === "desktop") {
+              setRotated(false);
+            }
+            return next;
+          });
+        },
+      },
+      {
+        keys: "i",
+        enabled:
+          Boolean(message.render_url) && allowRemoteToggle && message.remote_resource_count > 0,
+        handler: () => {
+          setLoadRemoteImages((prev) => !prev);
+        },
+      },
+    ],
+    [message.render_url, message.remote_resource_count, allowRemoteToggle, setDevice],
+  );
+
+  useKeyShortcuts(previewShortcuts, { singleKeyEnabled });
+
   if (!message.render_url) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
@@ -57,8 +95,6 @@ export function PreviewTab({ message }: PreviewTabProps) {
     );
   }
 
-  const remoteImagesPolicy = meta?.features.remote_images ?? "opt-in";
-  const allowRemoteToggle = remoteImagesPolicy === "opt-in";
   const iframeSrc =
     allowRemoteToggle && loadRemoteImages ? `${message.render_url}?images=1` : message.render_url;
 
