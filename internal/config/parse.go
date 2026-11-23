@@ -309,6 +309,81 @@ func ValidateSlug(s string) error {
 	return nil
 }
 
+// latinFold maps common Latin diacritic runes to ASCII equivalents (SPEC 7.3).
+var latinFold = map[rune]string{
+	'à': "a", 'á': "a", 'â': "a", 'ã': "a", 'ä': "a", 'å': "a", 'ā': "a", 'ă': "a", 'ą': "a",
+	'æ': "ae",
+	'ç': "c", 'ć': "c", 'ĉ': "c", 'ċ': "c", 'č': "c",
+	'ď': "d", 'đ': "d", 'ð': "d",
+	'è': "e", 'é': "e", 'ê': "e", 'ë': "e", 'ē': "e", 'ĕ': "e", 'ė': "e", 'ę': "e", 'ě': "e",
+	'ĝ': "g", 'ğ': "g", 'ġ': "g", 'ģ': "g",
+	'ĥ': "h", 'ħ': "h",
+	'ì': "i", 'í': "i", 'î': "i", 'ï': "i", 'ĩ': "i", 'ī': "i", 'ĭ': "i", 'į': "i", 'ı': "i",
+	'ĵ': "j",
+	'ķ': "k",
+	'ĺ': "l", 'ļ': "l", 'ľ': "l", 'ŀ': "l", 'ł': "l",
+	'ñ': "n", 'ń': "n", 'ņ': "n", 'ň': "n",
+	'ò': "o", 'ó': "o", 'ô': "o", 'õ': "o", 'ö': "o", 'ø': "o", 'ō': "o", 'ŏ': "o", 'ő': "o",
+	'œ': "oe",
+	'ŕ': "r", 'ŗ': "r", 'ř': "r",
+	'ś': "s", 'ŝ': "s", 'ş': "s", 'š': "s", 'ß': "ss",
+	'ţ': "t", 'ť': "t", 'ŧ': "t", 'þ': "th",
+	'ù': "u", 'ú': "u", 'û': "u", 'ü': "u", 'ũ': "u", 'ū': "u", 'ŭ': "u", 'ů': "u", 'ű': "u", 'ų': "u",
+	'ŵ': "w",
+	'ý': "y", 'ÿ': "y", 'ŷ': "y",
+	'ź': "z", 'ż': "z", 'ž': "z",
+}
+
+// Slugify converts an arbitrary name or SMTP username into a valid project slug
+// following SPEC 7.3: lowercase, transliterate Latin diacritics, replace invalid
+// characters with '-', collapse repeats, trim '-', truncate to 63 bytes, fall
+// back to fallback when empty, and append "-1" for reserved slugs.
+func Slugify(raw, fallback string) string {
+	if fallback == "" {
+		fallback = defaultProject
+	}
+
+	var b strings.Builder
+	b.Grow(len(raw))
+	lastDash := true
+
+	writeRune := func(r rune) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+		} else if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+
+	for _, r := range strings.ToLower(raw) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			writeRune(r)
+			continue
+		}
+		if repl, ok := latinFold[r]; ok {
+			for _, cr := range repl {
+				writeRune(cr)
+			}
+			continue
+		}
+		writeRune('-')
+	}
+
+	slug := strings.Trim(b.String(), "-")
+	if len(slug) > 63 {
+		slug = strings.TrimRight(slug[:63], "-")
+	}
+	if slug == "" {
+		return fallback
+	}
+	if _, reserved := reservedSlugs[slug]; reserved {
+		return slug + "-1"
+	}
+	return slug
+}
+
 func validateDomain(d string) error {
 	if len(d) == 0 || len(d) > 253 {
 		return fmt.Errorf("domain %q must be between 1 and 253 characters", d)
