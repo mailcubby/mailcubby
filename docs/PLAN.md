@@ -88,10 +88,10 @@ Tasks:
 - [x] Golden fixtures in `testdata/mime/`: at least the list in ARCHITECTURE section 8, with `-update` flag.
 - [x] `internal/smtpd` (FR-001, FR-003, FR-005, FR-020): go-smtp backend and session following the error contract (ARCHITECTURE 3.3); local mode routing (SPEC 7.2 local column, including recipient routing when `MAILCUBBY_INBOX_DOMAIN` is set); AUTH PLAIN and our LOGIN server; limits; `limitListener` (total and per-IP, admission goroutine).
 - [x] `internal/events`: bus with filters and slow-consumer handling (FR-092 buffer); publish `message.created` (FR-012).
-- [ ] `internal/app`: wire config, store, blob, ingest, smtpd, events; graceful shutdown.
+- [x] `internal/app`: wire config, store, blob, ingest, smtpd, events; graceful shutdown.
 - [x] `internal/ingest/assets/sample.eml` and `ingest.SendTest` helper (used by FR-077 in Phase 3b).
-- [ ] `mailcubby sendmail` subcommand (SPEC FR-115, including ignored sendmail flags and `-t`), and `make seed`.
-- [ ] `internal/testutil`: `StartServer(t, cfg)` (random loopback ports, temp data dir) and SMTP client helpers (`net/smtp`, PLAIN and LOGIN).
+- [x] `mailcubby sendmail` subcommand (SPEC FR-115, including ignored sendmail flags and `-t`), and `make seed`.
+- [x] `internal/testutil`: `StartServer(t, cfg)` (random loopback ports, temp data dir) and SMTP client helpers (`net/smtp`, PLAIN and LOGIN).
 
 Files: `internal/blob/`, `internal/search/`, `internal/ingest/`, `internal/smtpd/`, `internal/events/`, `internal/app/`, `internal/cli/`, `testdata/mime/`, `internal/testutil/`, `internal/store/queries/` (messages, attachments), `Makefile`.
 
@@ -424,3 +424,4 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
 - 2026-11-23, Phase 0 (owner decision): certmagic ACME stretch goal dropped from v1 (roadmap only).
 - 2026-11-23, Phase 0 (owner decision): commits are enabled during autonomous runs — make one local Conventional Commit per completed task, never push.
 - 2026-11-23, Phase 1: Setting both `<VAR>` and `<VAR>_FILE` for a secret fails config validation rather than silently preferring one; paired env vars (`MAILCUBBY_ADMIN_EMAIL`/`MAILCUBBY_ADMIN_PASSWORD`, `MAILCUBBY_SMTP_TLS_CERT`/`MAILCUBBY_SMTP_TLS_KEY`) must be set together; `MAILCUBBY_SESSION_IDLE_TIMEOUT` must not exceed `MAILCUBBY_SESSION_TTL`; `mailcubby migrate status` reports all embedded migrations as `pending` without creating `app.db` when the database file does not exist yet.
+- 2026-11-23, Phase 2: In recipient routing (`MAILCUBBY_INBOX_DOMAIN`), candidate slugs are validated against SPEC 7.3 `ValidateSlug` (reserved or invalid slugs are treated as non-routed rather than creating invalid project slugs); `parse_warnings_json` stores a JSON array of human-readable warning strings (`NULL` when empty) and excludes `enmime.ErrorPlainTextFromHTML` because HTML-only text derivation is tracked explicitly via `text_generated`; `mailcubby sendmail` falls back to an empty SMTP reverse-path (`MAIL FROM:<>`) when neither `-f` nor a valid `From` header is present.

@@ -8,15 +8,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mailcubby/mailcubby/internal/app"
+	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/secrets"
-	"github.com/mailcubby/mailcubby/internal/web"
 )
 
 func TestVersionSubcommand(t *testing.T) {
 	t.Parallel()
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"version"}, &stdout, &stderr, func(string) (string, bool) { return "", false })
+	code := run([]string{"version"}, strings.NewReader(""), &stdout, &stderr, func(string) (string, bool) { return "", false })
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d (stderr: %q)", code, stderr.String())
 	}
@@ -48,7 +49,7 @@ func TestUnknownSubcommand(t *testing.T) {
 	t.Parallel()
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"nope"}, &stdout, &stderr, func(string) (string, bool) { return "", false })
+	code := run([]string{"nope"}, strings.NewReader(""), &stdout, &stderr, func(string) (string, bool) { return "", false })
 	if code != 2 {
 		t.Fatalf("expected exit code 2, got %d", code)
 	}
@@ -57,15 +58,37 @@ func TestUnknownSubcommand(t *testing.T) {
 	}
 }
 
-func TestServeHTTPShutdown(t *testing.T) {
+func TestAppRunImmediateShutdown(t *testing.T) {
 	t.Parallel()
 
+	dir := t.TempDir()
+	cfg, err := config.Load(func(k string) (string, bool) {
+		switch k {
+		case "MAILCUBBY_DATA_DIR":
+			return dir, true
+		case "MAILCUBBY_SMTP_ADDR":
+			return "127.0.0.1:0", true
+		case "MAILCUBBY_HTTP_ADDR":
+			return "127.0.0.1:0", true
+		default:
+			return "", false
+		}
+	})
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := serveHTTP(ctx, "127.0.0.1:0", web.Handler(), logger); err != nil {
-		t.Fatalf("serveHTTP returned unexpected error: %v", err)
+	a, err := app.Open(ctx, cfg, app.Options{Logger: logger, Version: "test"})
+	if err != nil {
+		cancel()
+		t.Fatalf("app.Open returned unexpected error: %v", err)
+	}
+	cancel()
+	if err := a.Serve(ctx); err != nil {
+		t.Fatalf("a.Serve returned unexpected error: %v", err)
 	}
 }
 
@@ -78,7 +101,7 @@ func TestServeRejectsServerMode(t *testing.T) {
 		"MAILCUBBY_APP_KEY":  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 	}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"serve"}, &stdout, &stderr, func(k string) (string, bool) {
+	code := run([]string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(k string) (string, bool) {
 		v, ok := env[k]
 		return v, ok
 	})
@@ -97,7 +120,7 @@ func TestServeInvalidConfig(t *testing.T) {
 		"MAILCUBBY_SMTP_MAX_MESSAGE_BYTES": "abc",
 	}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"serve"}, &stdout, &stderr, func(k string) (string, bool) {
+	code := run([]string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(k string) (string, bool) {
 		v, ok := env[k]
 		return v, ok
 	})
@@ -113,7 +136,7 @@ func TestKeygenSubcommand(t *testing.T) {
 	t.Parallel()
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"keygen"}, &stdout, &stderr, func(string) (string, bool) { return "", false })
+	code := run([]string{"keygen"}, strings.NewReader(""), &stdout, &stderr, func(string) (string, bool) { return "", false })
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d (stderr: %q)", code, stderr.String())
 	}
@@ -127,7 +150,7 @@ func TestMigrateStatusSubcommand(t *testing.T) {
 
 	dir := t.TempDir()
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"migrate", "status"}, &stdout, &stderr, func(k string) (string, bool) {
+	code := run([]string{"migrate", "status"}, strings.NewReader(""), &stdout, &stderr, func(k string) (string, bool) {
 		if k == "MAILCUBBY_DATA_DIR" {
 			return dir, true
 		}

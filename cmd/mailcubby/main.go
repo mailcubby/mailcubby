@@ -3,24 +3,17 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
-	"time"
 
+	"github.com/mailcubby/mailcubby/internal/app"
 	"github.com/mailcubby/mailcubby/internal/cli"
 	"github.com/mailcubby/mailcubby/internal/config"
-	"github.com/mailcubby/mailcubby/internal/secrets"
-	"github.com/mailcubby/mailcubby/internal/store"
-	"github.com/mailcubby/mailcubby/internal/web"
 )
 
 // Build metadata populated via -ldflags.
@@ -30,13 +23,11 @@ var (
 	date    = "unknown"
 )
 
-const shutdownTimeout = 30 * time.Second
-
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, os.LookupEnv))
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.LookupEnv))
 }
 
-func run(args []string, stdout, stderr io.Writer, lookupEnv func(string) (string, bool)) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer, lookupEnv func(string) (string, bool)) int {
 	subcmd := "serve"
 	var subargs []string
 	if len(args) > 0 {
@@ -51,6 +42,8 @@ func run(args []string, stdout, stderr io.Writer, lookupEnv func(string) (string
 		return cli.RunKeygen(subargs, stdout, stderr)
 	case "migrate":
 		return cli.RunMigrate(context.Background(), subargs, stdout, stderr, lookupEnv)
+	case "sendmail":
+		return cli.RunSendmail(subargs, stdin, stdout, stderr, lookupEnv)
 	case "version", "-version", "--version":
 		return runVersion(subargs, stdout, stderr)
 	case "help", "-h", "--help":
@@ -70,6 +63,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  serve     Run the Mailcubby server (default)")
 	_, _ = fmt.Fprintln(w, "  keygen    Generate a base64 MAILCUBBY_APP_KEY")
 	_, _ = fmt.Fprintln(w, "  migrate   Inspect database migration status")
+	_, _ = fmt.Fprintln(w, "  sendmail  Submit a message from stdin over SMTP")
 	_, _ = fmt.Fprintln(w, "  version   Print version, commit, and build date")
 }
 
@@ -114,30 +108,13 @@ func runServe(args []string, stdout, stderr io.Writer, lookupEnv func(string) (s
 	}
 
 	logger := newLogger(stdout, cfg.LogLevel, cfg.LogFormat)
-	logger.Warn("running in local mode without authentication; do not expose to the internet")
-
-	if len(cfg.AppKey) == 0 {
-		if _, err := secrets.LoadOrCreateLocalKey(cfg.DataDir); err != nil {
-			logger.Error("failed to initialize local app key", "error", err)
-			return 1
-		}
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	st, err := store.Open(ctx, filepath.Join(cfg.DataDir, store.DBFilename))
-	if err != nil {
-		logger.Error("failed to open store", "error", err)
-		return 1
-	}
-	defer func() {
-		if closeErr := st.Close(); closeErr != nil {
-			logger.Error("failed to close store", "error", closeErr)
-		}
-	}()
-
-	if err := serveHTTP(ctx, cfg.HTTPAddr, web.Handler(), logger); err != nil {
+	if err := app.Run(ctx, cfg, app.Options{
+		Logger:  logger,
+		Version: version,
+	}); err != nil {
 		logger.Error("server exited with error", "error", err)
 		return 1
 	}
@@ -150,44 +127,4 @@ func newLogger(w io.Writer, level slog.Level, format config.LogFormat) *slog.Log
 		return slog.New(slog.NewJSONHandler(w, opts))
 	}
 	return slog.New(slog.NewTextHandler(w, opts))
-}
-
-func serveHTTP(ctx context.Context, addr string, handler http.Handler, logger *slog.Logger) error {
-	var lc net.ListenConfig
-	ln, err := lc.Listen(ctx, "tcp", addr)
-	if err != nil {
-		return fmt.Errorf("listen %s: %w", addr, err)
-	}
-
-	srv := &http.Server{
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       60 * time.Second,
-		WriteTimeout:      60 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    64 << 10,
-	}
-
-	errCh := make(chan error, 1)
-	go func() {
-		logger.Info("listening", "http_addr", ln.Addr().String(), "version", version)
-		if serveErr := srv.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			errCh <- serveErr
-			return
-		}
-		errCh <- nil
-	}()
-
-	select {
-	case err := <-errCh:
-		return err
-	case <-ctx.Done():
-		logger.Info("shutting down")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("shutdown http server: %w", err)
-		}
-		return <-errCh
-	}
 }
