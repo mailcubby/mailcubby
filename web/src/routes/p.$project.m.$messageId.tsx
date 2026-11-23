@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { MessageView } from "@/features/message/MessageView";
 
 export type MessageTab = "preview" | "text" | "source" | "headers" | "raw" | "attachments" | "tech";
 
@@ -27,9 +28,5 @@ export const Route = createFileRoute("/p/$project/m/$messageId")({
     }
     return {};
   },
-  component: MessageViewRoute,
+  component: MessageView,
 });
-
-function MessageViewRoute() {
-  return null;
-}
