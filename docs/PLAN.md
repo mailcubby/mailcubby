@@ -177,12 +177,12 @@ Acceptance:
 **Goal**: the premium details of UI section 4 for local mode. **Milestone M1: "Mailpit-lite local works".**
 
 Tasks:
-- [ ] SSE client: cache updates on `message.created/updated/deleted`, `project.updated`; arrival highlight, "N new" pill, document title count, `aria-live` announcements; connection indicator; invalidate on reconnect.
-- [ ] Keyboard shortcuts (UI section 4 item 2) with help overlay; single-key shortcuts off inside inputs and via preferences; `/account/preferences` page (local mode).
-- [ ] Command palette with projects, core actions and recent messages.
-- [ ] Optimistic delete with undo; mark read after delay (preference); skeletons; prefetch next/previous.
-- [ ] Initial JS budget check script (`pnpm --dir web check:bundle`, gzip of the entry chunk and its static imports under 250 KB) run by `make check`.
-- [ ] Vitest tests for the shortcuts hook and the SSE cache reducer.
+- [x] SSE client: cache updates on `message.created/updated/deleted`, `project.updated`; arrival highlight, "N new" pill, document title count, `aria-live` announcements; connection indicator; invalidate on reconnect.
+- [x] Keyboard shortcuts (UI section 4 item 2) with help overlay; single-key shortcuts off inside inputs and via preferences; `/account/preferences` page (local mode).
+- [x] Command palette with projects, core actions and recent messages.
+- [x] Optimistic delete with undo; mark read after delay (preference); skeletons; prefetch next/previous.
+- [x] Initial JS budget check script (`pnpm --dir web check:bundle`, gzip of the entry chunk and its static imports under 250 KB) run by `make check`.
+- [x] Vitest tests for the shortcuts hook and the SSE cache reducer.
 
 Files: `web/src/**`, `web/e2e/**`, `web/package.json`.
 
@@ -428,3 +428,4 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
 - 2026-11-23, Phase 3a: In project settings JSON (`GET`/`PATCH /api/v1/projects/{project}`), `retention_max_age` is represented as `integer | null` in seconds (`0` disables limit, `null` inherits global default, matching `retention_max_age_s`); message list cursors encode the last returned message ULID as unpadded base64url and return `400 bad_request` when invalid; `MessageDetail.remote_resource_count` returns `0` until Phase 3b adds `internal/render`; `GET /readyz` returns `{"status":"ok"}` on `200` and `{"status":"unavailable","reason":"..."}` on `503`.
 - 2026-11-23, Phase 3b: Non-empty `?query` on `DELETE /api/v1/projects/{project}/messages` and `GET /api/v1/projects/{project}/messages/wait` returns `400 bad_request` until Phase 5 implements search filtering (avoiding accidental unfiltered deletes); `POST /messages/bulk` requires 1 to 1000 non-empty IDs (deduplicated) and returns `affected` equal to rows deleted or whose `seen` flag changed; deleting messages recomputes `projects.last_message_at` (`NULL` when empty); `wait` with omitted `since` or `since=now` waits only for messages arriving after subscription; `golang.org/x/net` was promoted from indirect to direct at `v0.62.0` (already in `go.mod`) rather than upgrading offline to `v0.63.0`.
 - 2026-11-23, Phase 4a: Lazy Shiki highlighting (HTML source and Headers highlighted view) uses `codeToTokens` with `createJavaScriptRegexEngine()` and renders tokens as React `<span>` elements so `dangerouslySetInnerHTML` is never used anywhere in `web/src`; UI primitives in `web/src/components/ui/` use native HTML (`<dialog>` with `showModal()`, `closedby="any"` + fallback), Tailwind v4, `sonner`, and `react-resizable-panels` without adding unlisted Radix packages; the sidebar "Unread" view filters loaded messages client-side until Phase 5 adds server-side `query=is:unread`; opening an unseen message in local mode marks it seen immediately and deletes confirm via modal dialog until Phase 4b adds configurable read delay and optimistic undo delete.
+- 2026-11-23, Phase 4b: Command palette is implemented directly on native modal `<dialog>` (`showModal()`, `closedby="any"` + pointer fallback, ARIA `combobox`/`listbox` with fuzzy search) instead of installing `cmdk`, keeping the dependency footprint minimal and initial JS well under the 250 KB gzip budget (`138.34 KB` gzip); preferences toggles use native `<input type="checkbox" role="switch">` with explicit `<label htmlFor>` association rather than an unlisted `input-switch-polyfill`; in the inbox `/` opens the command palette until Phase 5 adds the message search bar, and `t` tag-editing shortcut is deferred to Phase 5 alongside tags.
