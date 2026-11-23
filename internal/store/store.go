@@ -18,6 +18,7 @@ import (
 	// Register the pure-Go modernc.org/sqlite database/sql driver.
 	_ "modernc.org/sqlite"
 
+	"github.com/mailcubby/mailcubby/internal/store/sqlc"
 	"github.com/mailcubby/mailcubby/migrations"
 )
 
@@ -33,12 +34,15 @@ const (
 type Store struct {
 	writer *sql.DB
 	reader *sql.DB
+	writeQ *sqlc.Queries
+	readQ  *sqlc.Queries
 	path   string
 }
 
 // Tx represents an active SQLite write transaction.
 type Tx struct {
 	tx *sql.Tx
+	q  *sqlc.Queries
 }
 
 // SQLTx returns the underlying *sql.Tx for packages that execute custom
@@ -116,6 +120,8 @@ func Open(ctx context.Context, dbPath string) (*Store, error) {
 	return &Store{
 		writer: writer,
 		reader: reader,
+		writeQ: sqlc.New(writer),
+		readQ:  sqlc.New(reader),
 		path:   absPath,
 	}, nil
 }
@@ -165,7 +171,7 @@ func (s *Store) WithTx(ctx context.Context, fn func(tx *Tx) error) (err error) {
 		}
 	}()
 
-	if err := fn(&Tx{tx: sqlTx}); err != nil {
+	if err := fn(&Tx{tx: sqlTx, q: s.writeQ.WithTx(sqlTx)}); err != nil {
 		return err
 	}
 	if err := sqlTx.Commit(); err != nil {

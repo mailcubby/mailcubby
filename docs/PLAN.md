@@ -61,7 +61,7 @@ Tasks:
 - [x] `internal/secrets`: APP_KEY load (base64 std/url, 32 bytes), local-mode generation to `$DATA_DIR/app.key` (0600), HKDF subkey, AES-256-GCM seal/open with version byte and AAD (SPEC FR-061). `mailcubby keygen` subcommand.
 - [x] `migrations/00001_init.sql` with every table and index from SPEC section 10 (except FTS), including `messages.pk ... AUTOINCREMENT`, `message_tags.project_id` and the nullable `invites.role` checks; `migrations/00002_fts.sql` with `messages_fts` and the `messages_fts_delete` trigger; `migrations/embed.go`.
 - [x] `internal/store`: open writer and reader handles with the DSNs and open order of ARCHITECTURE 3.5 (`_auto_vacuum=INCREMENTAL` on the writer), goose Provider migrations at startup, `WithTx`, error mapping (`ErrNotFound`, `ErrConflict`).
-- [ ] `sqlc.yaml` (schema: `00001_init.sql` only) and first queries: projects CRUD and counters, settings get/set. `make generate` wired.
+- [x] `sqlc.yaml` (schema: `00001_init.sql` only) and first queries: projects CRUD and counters, settings get/set. `make generate` wired.
 - [ ] `internal/store/isolation_test.go` query lint (ARCHITECTURE section 7, item 3), passing on the initial queries.
 - [ ] `internal/testutil`: `NewStore(t)` (migrated store in `t.TempDir()`).
 - [ ] `mailcubby migrate status`.
