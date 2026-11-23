@@ -2,7 +2,11 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
+	"math/rand/v2"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -274,5 +278,341 @@ func TestEnsureProjectConcurrent(t *testing.T) {
 	}
 	if createdTotal != 1 {
 		t.Fatalf("expected exactly 1 creator, got %d", createdTotal)
+	}
+}
+
+func TestMessageMutationsAndTenantIsolation(t *testing.T) {
+	t.Parallel()
+
+	// FR-034, FR-075, FR-076, FR-078: mutations maintain counters and never cross project boundaries.
+	st := testutil.NewStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 11, 23, 15, 0, 0, 0, time.UTC)
+
+	pA, err := st.CreateProject(ctx, store.CreateProjectParams{
+		Slug:     "alpha",
+		Name:     "Alpha",
+		Color:    "blue",
+		Settings: store.DefaultProjectSettings(),
+		Now:      now,
+	})
+	if err != nil {
+		t.Fatalf("CreateProject alpha: %v", err)
+	}
+	pB, err := st.CreateProject(ctx, store.CreateProjectParams{
+		Slug:     "beta",
+		Name:     "Beta",
+		Color:    "green",
+		Settings: store.DefaultProjectSettings(),
+		Now:      now,
+	})
+	if err != nil {
+		t.Fatalf("CreateProject beta: %v", err)
+	}
+
+	insertMsg := func(projectID int64, id string, size int64, at time.Time) {
+		t.Helper()
+		err := st.WithTx(ctx, func(tx *store.Tx) error {
+			if _, txErr := tx.InsertMessage(ctx, store.InsertMessageParams{
+				ID:           id,
+				ProjectID:    projectID,
+				ReceivedAt:   at,
+				Subject:      "Subj " + id,
+				EnvelopeFrom: "a@example.test",
+				EnvelopeTo:   []string{"b@example.test"},
+				SizeBytes:    size,
+				BlobPath:     fmt.Sprintf("%d/2026/11/%s.eml.zst", projectID, id),
+			}); txErr != nil {
+				return txErr
+			}
+			return tx.UpdateProjectCounters(ctx, projectID, store.ProjectCounterDelta{
+				MessageDelta:  1,
+				UnreadDelta:   1,
+				SizeDelta:     size,
+				LastMessageAt: &at,
+				Now:           at,
+			})
+		})
+		if err != nil {
+			t.Fatalf("insertMsg %s: %v", id, err)
+		}
+	}
+
+	idA1 := "01JBBBBBBBBBBBBBBBBBBBBBB1"
+	idA2 := "01JBBBBBBBBBBBBBBBBBBBBBB2"
+	idA3 := "01JBBBBBBBBBBBBBBBBBBBBBB3"
+	idB1 := "01JBBBBBBBBBBBBBBBBBBBBBB4"
+
+	insertMsg(pA.ID, idA1, 100, now)
+	insertMsg(pA.ID, idA2, 250, now.Add(time.Minute))
+	insertMsg(pA.ID, idA3, 400, now.Add(2*time.Minute))
+	insertMsg(pB.ID, idB1, 999, now.Add(3*time.Minute))
+
+	// GetLatestMessageAfterID & GetLatestMessageSinceTime (FR-078).
+	latest, err := st.GetLatestMessageAfterID(ctx, pA.ID, idA1)
+	if err != nil || latest.ID != idA3 {
+		t.Fatalf("GetLatestMessageAfterID = (%q, %v), want %q", latest.ID, err, idA3)
+	}
+	if _, err := st.GetLatestMessageAfterID(ctx, pA.ID, idA3); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("GetLatestMessageAfterID after newest = %v, want ErrNotFound", err)
+	}
+	latestSince, err := st.GetLatestMessageSinceTime(ctx, pA.ID, now.Add(90*time.Second))
+	if err != nil || latestSince.ID != idA3 {
+		t.Fatalf("GetLatestMessageSinceTime = (%q, %v), want %q", latestSince.ID, err, idA3)
+	}
+
+	// Single SetMessageSeen: idempotent and isolated.
+	msg, proj, changed, err := st.SetMessageSeen(ctx, pA.ID, idA1, true, now.Add(4*time.Minute))
+	if err != nil || !changed || !msg.Seen || proj.UnreadCount != 2 {
+		t.Fatalf("SetMessageSeen true = (seen=%v, changed=%v, unread=%d, err=%v)", msg.Seen, changed, proj.UnreadCount, err)
+	}
+	// Repeating seen=true is a no-op.
+	_, proj, changed, err = st.SetMessageSeen(ctx, pA.ID, idA1, true, now.Add(4*time.Minute))
+	if err != nil || changed || proj.UnreadCount != 2 {
+		t.Fatalf("SetMessageSeen idempotent = (changed=%v, unread=%d, err=%v)", changed, proj.UnreadCount, err)
+	}
+	// Cross-tenant SetMessageSeen must return ErrNotFound.
+	if _, _, _, err := st.SetMessageSeen(ctx, pA.ID, idB1, true, now); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-tenant SetMessageSeen = %v, want ErrNotFound", err)
+	}
+
+	// BulkSetMessagesSeen with duplicate + cross-tenant IDs.
+	changedIDs, proj, err := st.BulkSetMessagesSeen(ctx, pA.ID, []string{idA1, idA2, idA2, idB1, "01JNONEXISTENT000000000000"}, true, now.Add(5*time.Minute))
+	if err != nil {
+		t.Fatalf("BulkSetMessagesSeen: %v", err)
+	}
+	if len(changedIDs) != 1 || changedIDs[0] != idA2 || proj.UnreadCount != 1 {
+		t.Fatalf("BulkSetMessagesSeen = (changed=%v, unread=%d), want [%s] and unread=1", changedIDs, proj.UnreadCount, idA2)
+	}
+
+	// DeleteMessage removes newest message and recalculates last_message_at.
+	del, proj, err := st.DeleteMessage(ctx, pA.ID, idA3, now.Add(6*time.Minute))
+	if err != nil {
+		t.Fatalf("DeleteMessage: %v", err)
+	}
+	if del.ID != idA3 || !del.WasUnread || proj.MessageCount != 2 || proj.UnreadCount != 0 || proj.SizeBytes != 350 {
+		t.Fatalf("DeleteMessage = (del=%+v, proj=%+v)", del, proj)
+	}
+	if proj.LastMessageAt == nil || !proj.LastMessageAt.Equal(now.Add(time.Minute)) {
+		t.Fatalf("last_message_at after deleting newest = %v, want %v", proj.LastMessageAt, now.Add(time.Minute))
+	}
+
+	// Cross-tenant DeleteMessage must fail and leave pB intact.
+	if _, _, err := st.DeleteMessage(ctx, pA.ID, idB1, now); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-tenant DeleteMessage = %v, want ErrNotFound", err)
+	}
+
+	// BulkDeleteMessages with cross-tenant ID must only delete pA's message.
+	deleted, proj, err := st.BulkDeleteMessages(ctx, pA.ID, []string{idA1, idA1, idB1}, now.Add(7*time.Minute))
+	if err != nil {
+		t.Fatalf("BulkDeleteMessages: %v", err)
+	}
+	if len(deleted) != 1 || deleted[0].ID != idA1 || proj.MessageCount != 1 || proj.SizeBytes != 250 {
+		t.Fatalf("BulkDeleteMessages = (deleted=%+v, proj=%+v)", deleted, proj)
+	}
+
+	// DeleteAllMessages clears remaining pA messages and resets counters + last_message_at.
+	affected, blobs, proj, err := st.DeleteAllMessages(ctx, pA.ID, now.Add(8*time.Minute))
+	if err != nil {
+		t.Fatalf("DeleteAllMessages: %v", err)
+	}
+	if affected != 1 || len(blobs) != 1 || proj.MessageCount != 0 || proj.UnreadCount != 0 || proj.SizeBytes != 0 || proj.LastMessageAt != nil {
+		t.Fatalf("DeleteAllMessages = (affected=%d, blobs=%v, proj=%+v)", affected, blobs, proj)
+	}
+
+	// Project B must remain completely untouched.
+	gotB, err := st.GetProjectByID(ctx, pB.ID)
+	if err != nil {
+		t.Fatalf("GetProjectByID B: %v", err)
+	}
+	if gotB.MessageCount != 1 || gotB.UnreadCount != 1 || gotB.SizeBytes != 999 {
+		t.Fatalf("project B counters mutated: %+v", gotB)
+	}
+}
+
+func TestProjectCountersPropertyFR034(t *testing.T) {
+	t.Parallel()
+
+	// FR-034: property test performing random inserts, deletes, bulk ops, and seen toggles,
+	// asserting maintained counters always equal SQL COUNT(*)/SUM() queries.
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), store.DBFilename)
+	st, err := store.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	verifyDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open verifyDB: %v", err)
+	}
+	t.Cleanup(func() { _ = verifyDB.Close() })
+
+	baseTime := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
+
+	projects := make([]store.Project, 2)
+	for i := range projects {
+		p, err := st.CreateProject(ctx, store.CreateProjectParams{
+			Slug:     fmt.Sprintf("prop-%d", i),
+			Name:     fmt.Sprintf("Prop %d", i),
+			Color:    "slate",
+			Settings: store.DefaultProjectSettings(),
+			Now:      baseTime,
+		})
+		if err != nil {
+			t.Fatalf("CreateProject %d: %v", i, err)
+		}
+		projects[i] = p
+	}
+
+	verifyCounters := func(step int) {
+		t.Helper()
+		for _, p := range projects {
+			got, err := st.GetProjectByID(ctx, p.ID)
+			if err != nil {
+				t.Fatalf("step %d: GetProjectByID %d: %v", step, p.ID, err)
+			}
+			var (
+				wantCount  int64
+				wantUnread int64
+				wantSize   int64
+				wantLast   sql.NullInt64
+			)
+			row := verifyDB.QueryRowContext(ctx, `
+				SELECT
+					COUNT(*),
+					COALESCE(SUM(CASE WHEN seen = 0 THEN 1 ELSE 0 END), 0),
+					COALESCE(SUM(size_bytes), 0),
+					MAX(received_at)
+				FROM messages
+				WHERE project_id = ?`, p.ID)
+			if err := row.Scan(&wantCount, &wantUnread, &wantSize, &wantLast); err != nil {
+				t.Fatalf("step %d: scan aggregate for project %d: %v", step, p.ID, err)
+			}
+			if got.MessageCount != wantCount || got.UnreadCount != wantUnread || got.SizeBytes != wantSize {
+				t.Fatalf("step %d project %d mismatch: got (count=%d unread=%d size=%d), want (count=%d unread=%d size=%d)",
+					step, p.ID, got.MessageCount, got.UnreadCount, got.SizeBytes, wantCount, wantUnread, wantSize)
+			}
+			if wantLast.Valid {
+				if got.LastMessageAt == nil || got.LastMessageAt.UTC().UnixMilli() != wantLast.Int64 {
+					t.Fatalf("step %d project %d last_message_at = %v, want %d", step, p.ID, got.LastMessageAt, wantLast.Int64)
+				}
+			} else if got.LastMessageAt != nil {
+				t.Fatalf("step %d project %d last_message_at = %v, want nil", step, p.ID, got.LastMessageAt)
+			}
+		}
+	}
+
+	//nolint:gosec // Deterministic PRNG for reproducible FR-034 property test.
+	rng := rand.New(rand.NewPCG(34034, 998877))
+	liveIDs := make([][]string, len(projects))
+	seq := 0
+
+	for step := range 250 {
+		pIdx := rng.IntN(len(projects))
+		pID := projects[pIdx].ID
+		opTime := baseTime.Add(time.Duration(step) * time.Second)
+		op := rng.IntN(100)
+
+		switch {
+		case op < 42 || len(liveIDs[pIdx]) == 0:
+			// Insert message with random size.
+			seq++
+			id := fmt.Sprintf("01JPROP%019d", seq)
+			size := int64(100 + rng.IntN(50000))
+			if err := st.WithTx(ctx, func(tx *store.Tx) error {
+				if _, txErr := tx.InsertMessage(ctx, store.InsertMessageParams{
+					ID:           id,
+					ProjectID:    pID,
+					ReceivedAt:   opTime,
+					Subject:      "prop",
+					EnvelopeFrom: "a@example.test",
+					EnvelopeTo:   []string{"b@example.test"},
+					SizeBytes:    size,
+					BlobPath:     fmt.Sprintf("%d/2026/11/%s.eml.zst", pID, id),
+				}); txErr != nil {
+					return txErr
+				}
+				return tx.UpdateProjectCounters(ctx, pID, store.ProjectCounterDelta{
+					MessageDelta:  1,
+					UnreadDelta:   1,
+					SizeDelta:     size,
+					LastMessageAt: &opTime,
+					Now:           opTime,
+				})
+			}); err != nil {
+				t.Fatalf("step %d: insert: %v", step, err)
+			}
+			liveIDs[pIdx] = append(liveIDs[pIdx], id)
+
+		case op < 62:
+			// Single seen toggle.
+			id := liveIDs[pIdx][rng.IntN(len(liveIDs[pIdx]))]
+			seen := rng.IntN(2) == 0
+			if _, _, _, err := st.SetMessageSeen(ctx, pID, id, seen, opTime); err != nil {
+				t.Fatalf("step %d: SetMessageSeen: %v", step, err)
+			}
+
+		case op < 76:
+			// Single delete.
+			idx := rng.IntN(len(liveIDs[pIdx]))
+			id := liveIDs[pIdx][idx]
+			if _, _, err := st.DeleteMessage(ctx, pID, id, opTime); err != nil {
+				t.Fatalf("step %d: DeleteMessage: %v", step, err)
+			}
+			liveIDs[pIdx] = append(liveIDs[pIdx][:idx], liveIDs[pIdx][idx+1:]...)
+
+		case op < 88:
+			// Bulk seen/unseen including duplicates and a cross-project ID.
+			var batch []string
+			n := 1 + rng.IntN(min(4, len(liveIDs[pIdx])))
+			for range n {
+				batch = append(batch, liveIDs[pIdx][rng.IntN(len(liveIDs[pIdx]))])
+			}
+			otherIdx := 1 - pIdx
+			if len(liveIDs[otherIdx]) > 0 {
+				batch = append(batch, liveIDs[otherIdx][0])
+			}
+			batch = append(batch, "01JMISSING0000000000000000")
+			seen := rng.IntN(2) == 0
+			if _, _, err := st.BulkSetMessagesSeen(ctx, pID, batch, seen, opTime); err != nil {
+				t.Fatalf("step %d: BulkSetMessagesSeen: %v", step, err)
+			}
+
+		case op < 97:
+			// Bulk delete including duplicates and cross-project ID.
+			var batch []string
+			toRemove := make(map[string]struct{})
+			n := 1 + rng.IntN(min(3, len(liveIDs[pIdx])))
+			for range n {
+				id := liveIDs[pIdx][rng.IntN(len(liveIDs[pIdx]))]
+				batch = append(batch, id)
+				toRemove[id] = struct{}{}
+			}
+			otherIdx := 1 - pIdx
+			if len(liveIDs[otherIdx]) > 0 {
+				batch = append(batch, liveIDs[otherIdx][0])
+			}
+			if _, _, err := st.BulkDeleteMessages(ctx, pID, batch, opTime); err != nil {
+				t.Fatalf("step %d: BulkDeleteMessages: %v", step, err)
+			}
+			kept := liveIDs[pIdx][:0]
+			for _, id := range liveIDs[pIdx] {
+				if _, removed := toRemove[id]; !removed {
+					kept = append(kept, id)
+				}
+			}
+			liveIDs[pIdx] = kept
+
+		default:
+			// Delete all in this project.
+			if _, _, _, err := st.DeleteAllMessages(ctx, pID, opTime); err != nil {
+				t.Fatalf("step %d: DeleteAllMessages: %v", step, err)
+			}
+			liveIDs[pIdx] = nil
+		}
+
+		verifyCounters(step)
 	}
 }

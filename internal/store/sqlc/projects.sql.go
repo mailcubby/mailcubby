@@ -273,6 +273,65 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 	return items, nil
 }
 
+const resetProjectCounters = `-- name: ResetProjectCounters :one
+UPDATE projects
+SET
+    message_count = 0,
+    unread_count = 0,
+    size_bytes = 0,
+    last_message_at = NULL,
+    updated_at = ?1
+WHERE id = ?2
+RETURNING
+    id,
+    slug,
+    name,
+    color,
+    retention_max_age_s,
+    retention_max_messages,
+    retention_max_bytes,
+    recipient_routing_enabled,
+    plus_address_tags,
+    viewer_hide_technical,
+    members_can_reveal_smtp,
+    message_count,
+    unread_count,
+    size_bytes,
+    last_message_at,
+    created_at,
+    updated_at
+`
+
+type ResetProjectCountersParams struct {
+	UpdatedAt int64
+	ID        int64
+}
+
+func (q *Queries) ResetProjectCounters(ctx context.Context, arg ResetProjectCountersParams) (Project, error) {
+	row := q.db.QueryRowContext(ctx, resetProjectCounters, arg.UpdatedAt, arg.ID)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Color,
+		&i.RetentionMaxAgeS,
+		&i.RetentionMaxMessages,
+		&i.RetentionMaxBytes,
+		&i.RecipientRoutingEnabled,
+		&i.PlusAddressTags,
+		&i.ViewerHideTechnical,
+		&i.MembersCanRevealSmtp,
+		&i.MessageCount,
+		&i.UnreadCount,
+		&i.SizeBytes,
+		&i.LastMessageAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE projects
 SET
@@ -399,4 +458,74 @@ func (q *Queries) UpdateProjectCounters(ctx context.Context, arg UpdateProjectCo
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const updateProjectCountersAndLastMessageAt = `-- name: UpdateProjectCountersAndLastMessageAt :one
+UPDATE projects
+SET
+    message_count = message_count + ?1,
+    unread_count = unread_count + ?2,
+    size_bytes = size_bytes + ?3,
+    last_message_at = ?4,
+    updated_at = ?5
+WHERE id = ?6
+RETURNING
+    id,
+    slug,
+    name,
+    color,
+    retention_max_age_s,
+    retention_max_messages,
+    retention_max_bytes,
+    recipient_routing_enabled,
+    plus_address_tags,
+    viewer_hide_technical,
+    members_can_reveal_smtp,
+    message_count,
+    unread_count,
+    size_bytes,
+    last_message_at,
+    created_at,
+    updated_at
+`
+
+type UpdateProjectCountersAndLastMessageAtParams struct {
+	MessageDelta  int64
+	UnreadDelta   int64
+	SizeDelta     int64
+	LastMessageAt sql.NullInt64
+	UpdatedAt     int64
+	ID            int64
+}
+
+func (q *Queries) UpdateProjectCountersAndLastMessageAt(ctx context.Context, arg UpdateProjectCountersAndLastMessageAtParams) (Project, error) {
+	row := q.db.QueryRowContext(ctx, updateProjectCountersAndLastMessageAt,
+		arg.MessageDelta,
+		arg.UnreadDelta,
+		arg.SizeDelta,
+		arg.LastMessageAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Color,
+		&i.RetentionMaxAgeS,
+		&i.RetentionMaxMessages,
+		&i.RetentionMaxBytes,
+		&i.RecipientRoutingEnabled,
+		&i.PlusAddressTags,
+		&i.ViewerHideTechnical,
+		&i.MembersCanRevealSmtp,
+		&i.MessageCount,
+		&i.UnreadCount,
+		&i.SizeBytes,
+		&i.LastMessageAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

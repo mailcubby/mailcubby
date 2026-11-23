@@ -10,6 +10,37 @@ import (
 	"database/sql"
 )
 
+const deleteAllMessagesByProject = `-- name: DeleteAllMessagesByProject :execrows
+DELETE FROM messages
+WHERE project_id = ?
+`
+
+func (q *Queries) DeleteAllMessagesByProject(ctx context.Context, projectID int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteAllMessagesByProject, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteMessageByID = `-- name: DeleteMessageByID :execrows
+DELETE FROM messages
+WHERE project_id = ? AND id = ?
+`
+
+type DeleteMessageByIDParams struct {
+	ProjectID int64
+	ID        string
+}
+
+func (q *Queries) DeleteMessageByID(ctx context.Context, arg DeleteMessageByIDParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteMessageByID, arg.ProjectID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getAttachmentByID = `-- name: GetAttachmentByID :one
 SELECT
     id,
@@ -46,6 +77,179 @@ func (q *Queries) GetAttachmentByID(ctx context.Context, arg GetAttachmentByIDPa
 		&i.ContentID,
 		&i.Disposition,
 		&i.Sha256,
+	)
+	return i, err
+}
+
+const getLatestMessageAfterID = `-- name: GetLatestMessageAfterID :one
+SELECT
+    pk,
+    id,
+    project_id,
+    smtp_credential_id,
+    received_at,
+    subject,
+    from_name,
+    from_addr,
+    to_json,
+    cc_json,
+    bcc_json,
+    reply_to_json,
+    envelope_from,
+    envelope_to_json,
+    message_id_header,
+    date_header,
+    snippet,
+    has_html,
+    has_text,
+    text_generated,
+    attachment_count,
+    size_bytes,
+    blob_path,
+    seen,
+    remote_ip,
+    helo,
+    auth_user,
+    tls,
+    parse_warnings_json
+FROM messages
+WHERE project_id = ? AND id > ?
+ORDER BY id DESC
+LIMIT 1
+`
+
+type GetLatestMessageAfterIDParams struct {
+	ProjectID int64
+	ID        string
+}
+
+func (q *Queries) GetLatestMessageAfterID(ctx context.Context, arg GetLatestMessageAfterIDParams) (Message, error) {
+	row := q.db.QueryRowContext(ctx, getLatestMessageAfterID, arg.ProjectID, arg.ID)
+	var i Message
+	err := row.Scan(
+		&i.Pk,
+		&i.ID,
+		&i.ProjectID,
+		&i.SmtpCredentialID,
+		&i.ReceivedAt,
+		&i.Subject,
+		&i.FromName,
+		&i.FromAddr,
+		&i.ToJson,
+		&i.CcJson,
+		&i.BccJson,
+		&i.ReplyToJson,
+		&i.EnvelopeFrom,
+		&i.EnvelopeToJson,
+		&i.MessageIDHeader,
+		&i.DateHeader,
+		&i.Snippet,
+		&i.HasHtml,
+		&i.HasText,
+		&i.TextGenerated,
+		&i.AttachmentCount,
+		&i.SizeBytes,
+		&i.BlobPath,
+		&i.Seen,
+		&i.RemoteIp,
+		&i.Helo,
+		&i.AuthUser,
+		&i.Tls,
+		&i.ParseWarningsJson,
+	)
+	return i, err
+}
+
+const getLatestMessageReceivedAt = `-- name: GetLatestMessageReceivedAt :one
+SELECT received_at
+FROM messages
+WHERE project_id = ?
+ORDER BY received_at DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestMessageReceivedAt(ctx context.Context, projectID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getLatestMessageReceivedAt, projectID)
+	var received_at int64
+	err := row.Scan(&received_at)
+	return received_at, err
+}
+
+const getLatestMessageSinceTime = `-- name: GetLatestMessageSinceTime :one
+SELECT
+    pk,
+    id,
+    project_id,
+    smtp_credential_id,
+    received_at,
+    subject,
+    from_name,
+    from_addr,
+    to_json,
+    cc_json,
+    bcc_json,
+    reply_to_json,
+    envelope_from,
+    envelope_to_json,
+    message_id_header,
+    date_header,
+    snippet,
+    has_html,
+    has_text,
+    text_generated,
+    attachment_count,
+    size_bytes,
+    blob_path,
+    seen,
+    remote_ip,
+    helo,
+    auth_user,
+    tls,
+    parse_warnings_json
+FROM messages
+WHERE project_id = ? AND received_at >= ?
+ORDER BY id DESC
+LIMIT 1
+`
+
+type GetLatestMessageSinceTimeParams struct {
+	ProjectID  int64
+	ReceivedAt int64
+}
+
+func (q *Queries) GetLatestMessageSinceTime(ctx context.Context, arg GetLatestMessageSinceTimeParams) (Message, error) {
+	row := q.db.QueryRowContext(ctx, getLatestMessageSinceTime, arg.ProjectID, arg.ReceivedAt)
+	var i Message
+	err := row.Scan(
+		&i.Pk,
+		&i.ID,
+		&i.ProjectID,
+		&i.SmtpCredentialID,
+		&i.ReceivedAt,
+		&i.Subject,
+		&i.FromName,
+		&i.FromAddr,
+		&i.ToJson,
+		&i.CcJson,
+		&i.BccJson,
+		&i.ReplyToJson,
+		&i.EnvelopeFrom,
+		&i.EnvelopeToJson,
+		&i.MessageIDHeader,
+		&i.DateHeader,
+		&i.Snippet,
+		&i.HasHtml,
+		&i.HasText,
+		&i.TextGenerated,
+		&i.AttachmentCount,
+		&i.SizeBytes,
+		&i.BlobPath,
+		&i.Seen,
+		&i.RemoteIp,
+		&i.Helo,
+		&i.AuthUser,
+		&i.Tls,
+		&i.ParseWarningsJson,
 	)
 	return i, err
 }
@@ -455,6 +659,35 @@ func (q *Queries) ListAttachmentsByMessagePK(ctx context.Context, arg ListAttach
 	return items, nil
 }
 
+const listMessageBlobPathsByProject = `-- name: ListMessageBlobPathsByProject :many
+SELECT blob_path
+FROM messages
+WHERE project_id = ?
+`
+
+func (q *Queries) ListMessageBlobPathsByProject(ctx context.Context, projectID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listMessageBlobPathsByProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var blob_path string
+		if err := rows.Scan(&blob_path); err != nil {
+			return nil, err
+		}
+		items = append(items, blob_path)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMessages = `-- name: ListMessages :many
 SELECT
     pk,
@@ -644,4 +877,24 @@ func (q *Queries) ListMessagesBeforeCursor(ctx context.Context, arg ListMessages
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateMessageSeenIfChanged = `-- name: UpdateMessageSeenIfChanged :execrows
+UPDATE messages
+SET seen = ?1
+WHERE project_id = ?2 AND id = ?3 AND seen != ?1
+`
+
+type UpdateMessageSeenIfChangedParams struct {
+	Seen      int64
+	ProjectID int64
+	ID        string
+}
+
+func (q *Queries) UpdateMessageSeenIfChanged(ctx context.Context, arg UpdateMessageSeenIfChangedParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateMessageSeenIfChanged, arg.Seen, arg.ProjectID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

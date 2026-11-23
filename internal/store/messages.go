@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -278,6 +279,330 @@ func (s *Store) GetAttachmentByID(ctx context.Context, projectID, messagePK, att
 		return Attachment{}, fmt.Errorf("store: get attachment %d for message %d in project %d: %w", attachmentID, messagePK, projectID, mapError(err))
 	}
 	return attachmentFromRow(row), nil
+}
+
+// DeletedMessage captures metadata for a message removed from the database so
+// callers can clean up its blob file and emit realtime deletion events.
+type DeletedMessage struct {
+	ID        string
+	BlobPath  string
+	SizeBytes int64
+	WasUnread bool
+}
+
+// SetMessageSeen updates a single message's seen state and maintains the project's
+// unread_count counter atomically (FR-034, FR-075). The bool return value is true
+// only when the message's seen flag actually changed.
+func (s *Store) SetMessageSeen(ctx context.Context, projectID int64, id string, seen bool, now time.Time) (Message, Project, bool, error) {
+	var (
+		msg     Message
+		proj    Project
+		changed bool
+	)
+	err := s.WithTx(ctx, func(tx *Tx) error {
+		var txErr error
+		msg, txErr = tx.GetMessageByID(ctx, projectID, id)
+		if txErr != nil {
+			return txErr
+		}
+		if msg.Seen == seen {
+			proj, txErr = tx.GetProjectByID(ctx, projectID)
+			return txErr
+		}
+
+		affected, txErr := tx.q.UpdateMessageSeenIfChanged(ctx, sqlc.UpdateMessageSeenIfChangedParams{
+			Seen:      boolToInt64(seen),
+			ProjectID: projectID,
+			ID:        id,
+		})
+		if txErr != nil {
+			return fmt.Errorf("store: update message %s seen: %w", id, mapError(txErr))
+		}
+		if affected > 0 {
+			unreadDelta := int64(1)
+			if seen {
+				unreadDelta = -1
+			}
+			if txErr := tx.UpdateProjectCounters(ctx, projectID, ProjectCounterDelta{
+				UnreadDelta: unreadDelta,
+				Now:         now,
+			}); txErr != nil {
+				return txErr
+			}
+			msg.Seen = seen
+			changed = true
+		}
+		proj, txErr = tx.GetProjectByID(ctx, projectID)
+		return txErr
+	})
+	if err != nil {
+		return Message{}, Project{}, false, err
+	}
+	return msg, proj, changed, nil
+}
+
+// DeleteMessage deletes a single message scoped to projectID and updates project
+// counters and last_message_at in the same transaction (FR-034, FR-076).
+func (s *Store) DeleteMessage(ctx context.Context, projectID int64, id string, now time.Time) (DeletedMessage, Project, error) {
+	var (
+		deleted DeletedMessage
+		proj    Project
+	)
+	err := s.WithTx(ctx, func(tx *Tx) error {
+		msg, txErr := tx.GetMessageByID(ctx, projectID, id)
+		if txErr != nil {
+			return txErr
+		}
+		affected, txErr := tx.q.DeleteMessageByID(ctx, sqlc.DeleteMessageByIDParams{
+			ProjectID: projectID,
+			ID:        id,
+		})
+		if txErr != nil {
+			return fmt.Errorf("store: delete message %s in project %d: %w", id, projectID, mapError(txErr))
+		}
+		if affected == 0 {
+			return fmt.Errorf("store: delete message %s in project %d: %w", id, projectID, ErrNotFound)
+		}
+
+		lastMsg, txErr := latestMessageReceivedAtNull(ctx, tx.q, projectID)
+		if txErr != nil {
+			return txErr
+		}
+		unreadDelta := int64(0)
+		if !msg.Seen {
+			unreadDelta = -1
+		}
+		projRow, txErr := tx.q.UpdateProjectCountersAndLastMessageAt(ctx, sqlc.UpdateProjectCountersAndLastMessageAtParams{
+			MessageDelta:  -1,
+			UnreadDelta:   unreadDelta,
+			SizeDelta:     -msg.SizeBytes,
+			LastMessageAt: lastMsg,
+			UpdatedAt:     now.UTC().UnixMilli(),
+			ID:            projectID,
+		})
+		if txErr != nil {
+			return fmt.Errorf("store: update counters after deleting message %s: %w", id, mapError(txErr))
+		}
+		deleted = DeletedMessage{
+			ID:        msg.ID,
+			BlobPath:  msg.BlobPath,
+			SizeBytes: msg.SizeBytes,
+			WasUnread: !msg.Seen,
+		}
+		proj = projectFromRow(projRow)
+		return nil
+	})
+	if err != nil {
+		return DeletedMessage{}, Project{}, err
+	}
+	return deleted, proj, nil
+}
+
+// BulkSetMessagesSeen updates seen state for all matching IDs in projectID in one
+// transaction and adjusts unread_count accordingly (FR-034, FR-075).
+// Returns the IDs whose seen flag actually changed and the updated Project.
+func (s *Store) BulkSetMessagesSeen(ctx context.Context, projectID int64, ids []string, seen bool, now time.Time) ([]string, Project, error) {
+	uniqueIDs := dedupeStrings(ids)
+	var (
+		changedIDs []string
+		proj       Project
+	)
+	err := s.WithTx(ctx, func(tx *Tx) error {
+		seenVal := boolToInt64(seen)
+		for _, id := range uniqueIDs {
+			affected, txErr := tx.q.UpdateMessageSeenIfChanged(ctx, sqlc.UpdateMessageSeenIfChangedParams{
+				Seen:      seenVal,
+				ProjectID: projectID,
+				ID:        id,
+			})
+			if txErr != nil {
+				return fmt.Errorf("store: bulk update message %s seen: %w", id, mapError(txErr))
+			}
+			if affected > 0 {
+				changedIDs = append(changedIDs, id)
+			}
+		}
+		if len(changedIDs) > 0 {
+			unreadDelta := int64(len(changedIDs))
+			if seen {
+				unreadDelta = -unreadDelta
+			}
+			if txErr := tx.UpdateProjectCounters(ctx, projectID, ProjectCounterDelta{
+				UnreadDelta: unreadDelta,
+				Now:         now,
+			}); txErr != nil {
+				return txErr
+			}
+		}
+		var txErr error
+		proj, txErr = tx.GetProjectByID(ctx, projectID)
+		return txErr
+	})
+	if err != nil {
+		return nil, Project{}, err
+	}
+	return changedIDs, proj, nil
+}
+
+// BulkDeleteMessages deletes all matching message IDs in projectID in one transaction,
+// updating project counters and last_message_at (FR-034, FR-076).
+func (s *Store) BulkDeleteMessages(ctx context.Context, projectID int64, ids []string, now time.Time) ([]DeletedMessage, Project, error) {
+	uniqueIDs := dedupeStrings(ids)
+	var (
+		deleted []DeletedMessage
+		proj    Project
+	)
+	err := s.WithTx(ctx, func(tx *Tx) error {
+		var (
+			unreadDelta int64
+			sizeDelta   int64
+		)
+		for _, id := range uniqueIDs {
+			msg, txErr := tx.GetMessageByID(ctx, projectID, id)
+			if txErr != nil {
+				if errors.Is(txErr, ErrNotFound) {
+					continue
+				}
+				return txErr
+			}
+			affected, txErr := tx.q.DeleteMessageByID(ctx, sqlc.DeleteMessageByIDParams{
+				ProjectID: projectID,
+				ID:        id,
+			})
+			if txErr != nil {
+				return fmt.Errorf("store: bulk delete message %s: %w", id, mapError(txErr))
+			}
+			if affected == 0 {
+				continue
+			}
+			if !msg.Seen {
+				unreadDelta--
+			}
+			sizeDelta -= msg.SizeBytes
+			deleted = append(deleted, DeletedMessage{
+				ID:        msg.ID,
+				BlobPath:  msg.BlobPath,
+				SizeBytes: msg.SizeBytes,
+				WasUnread: !msg.Seen,
+			})
+		}
+
+		if len(deleted) == 0 {
+			var txErr error
+			proj, txErr = tx.GetProjectByID(ctx, projectID)
+			return txErr
+		}
+
+		lastMsg, txErr := latestMessageReceivedAtNull(ctx, tx.q, projectID)
+		if txErr != nil {
+			return txErr
+		}
+		projRow, txErr := tx.q.UpdateProjectCountersAndLastMessageAt(ctx, sqlc.UpdateProjectCountersAndLastMessageAtParams{
+			MessageDelta:  -int64(len(deleted)),
+			UnreadDelta:   unreadDelta,
+			SizeDelta:     sizeDelta,
+			LastMessageAt: lastMsg,
+			UpdatedAt:     now.UTC().UnixMilli(),
+			ID:            projectID,
+		})
+		if txErr != nil {
+			return fmt.Errorf("store: update counters after bulk delete: %w", mapError(txErr))
+		}
+		proj = projectFromRow(projRow)
+		return nil
+	})
+	if err != nil {
+		return nil, Project{}, err
+	}
+	return deleted, proj, nil
+}
+
+// DeleteAllMessages deletes every message in projectID in a single transaction,
+// resets project counters to zero, and returns the affected count and blob paths
+// for post-commit best-effort cleanup (FR-034, FR-076).
+func (s *Store) DeleteAllMessages(ctx context.Context, projectID int64, now time.Time) (int64, []string, Project, error) {
+	var (
+		affected  int64
+		blobPaths []string
+		proj      Project
+	)
+	err := s.WithTx(ctx, func(tx *Tx) error {
+		var txErr error
+		blobPaths, txErr = tx.q.ListMessageBlobPathsByProject(ctx, projectID)
+		if txErr != nil {
+			return fmt.Errorf("store: list blob paths for project %d: %w", projectID, mapError(txErr))
+		}
+		affected, txErr = tx.q.DeleteAllMessagesByProject(ctx, projectID)
+		if txErr != nil {
+			return fmt.Errorf("store: delete all messages in project %d: %w", projectID, mapError(txErr))
+		}
+		projRow, txErr := tx.q.ResetProjectCounters(ctx, sqlc.ResetProjectCountersParams{
+			UpdatedAt: now.UTC().UnixMilli(),
+			ID:        projectID,
+		})
+		if txErr != nil {
+			return fmt.Errorf("store: reset counters for project %d: %w", projectID, mapError(txErr))
+		}
+		proj = projectFromRow(projRow)
+		return nil
+	})
+	if err != nil {
+		return 0, nil, Project{}, err
+	}
+	return affected, blobPaths, proj, nil
+}
+
+// GetLatestMessageAfterID returns the newest message in projectID whose ULID is
+// strictly greater than afterID, or ErrNotFound if none exists (FR-078).
+func (s *Store) GetLatestMessageAfterID(ctx context.Context, projectID int64, afterID string) (Message, error) {
+	row, err := s.readQ.GetLatestMessageAfterID(ctx, sqlc.GetLatestMessageAfterIDParams{
+		ProjectID: projectID,
+		ID:        afterID,
+	})
+	if err != nil {
+		return Message{}, fmt.Errorf("store: get latest message after %s in project %d: %w", afterID, projectID, mapError(err))
+	}
+	return messageFromRow(row)
+}
+
+// GetLatestMessageSinceTime returns the newest message in projectID received at
+// or after since, or ErrNotFound if none exists (FR-078).
+func (s *Store) GetLatestMessageSinceTime(ctx context.Context, projectID int64, since time.Time) (Message, error) {
+	row, err := s.readQ.GetLatestMessageSinceTime(ctx, sqlc.GetLatestMessageSinceTimeParams{
+		ProjectID:  projectID,
+		ReceivedAt: since.UTC().UnixMilli(),
+	})
+	if err != nil {
+		return Message{}, fmt.Errorf("store: get latest message since %s in project %d: %w", since.UTC().Format(time.RFC3339), projectID, mapError(err))
+	}
+	return messageFromRow(row)
+}
+
+func latestMessageReceivedAtNull(ctx context.Context, q *sqlc.Queries, projectID int64) (sql.NullInt64, error) {
+	ms, err := q.GetLatestMessageReceivedAt(ctx, projectID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return sql.NullInt64{}, nil
+		}
+		return sql.NullInt64{}, fmt.Errorf("store: get latest received_at for project %d: %w", projectID, mapError(err))
+	}
+	return sql.NullInt64{Int64: ms, Valid: true}, nil
+}
+
+func dedupeStrings(items []string) []string {
+	if len(items) <= 1 {
+		return items
+	}
+	seen := make(map[string]struct{}, len(items))
+	out := make([]string, 0, len(items))
+	for _, s := range items {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }
 
 // InsertAttachment inserts an attachment metadata row inside tx.

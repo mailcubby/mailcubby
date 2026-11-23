@@ -3,10 +3,13 @@
 package events
 
 import (
+	"encoding/json"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+const rfc3339Millis = "2006-01-02T15:04:05.000Z"
 
 // DefaultBufferSize is the per-subscriber event buffer size before slow-consumer
 // disconnection (SPEC FR-092).
@@ -70,10 +73,115 @@ type MessageSummary struct {
 	CredentialLabel string    `json:"credential_label,omitempty"`
 }
 
+// MarshalJSON encodes MessageSummary with RFC 3339 UTC millisecond timestamps (SPEC 8.1).
+func (m MessageSummary) MarshalJSON() ([]byte, error) {
+	type alias struct {
+		ID              string    `json:"id"`
+		ReceivedAt      string    `json:"received_at"`
+		From            Address   `json:"from"`
+		To              []Address `json:"to"`
+		Cc              []Address `json:"cc"`
+		Subject         string    `json:"subject"`
+		Snippet         string    `json:"snippet"`
+		SizeBytes       int64     `json:"size_bytes"`
+		Seen            bool      `json:"seen"`
+		AttachmentCount int64     `json:"attachment_count"`
+		HasHTML         bool      `json:"has_html"`
+		HasText         bool      `json:"has_text"`
+		Tags            []string  `json:"tags"`
+		CredentialLabel string    `json:"credential_label,omitempty"`
+	}
+	to := m.To
+	if to == nil {
+		to = []Address{}
+	}
+	cc := m.Cc
+	if cc == nil {
+		cc = []Address{}
+	}
+	tags := m.Tags
+	if tags == nil {
+		tags = []string{}
+	}
+	return json.Marshal(alias{
+		ID:              m.ID,
+		ReceivedAt:      m.ReceivedAt.UTC().Format(rfc3339Millis),
+		From:            m.From,
+		To:              to,
+		Cc:              cc,
+		Subject:         m.Subject,
+		Snippet:         m.Snippet,
+		SizeBytes:       m.SizeBytes,
+		Seen:            m.Seen,
+		AttachmentCount: m.AttachmentCount,
+		HasHTML:         m.HasHTML,
+		HasText:         m.HasText,
+		Tags:            tags,
+		CredentialLabel: m.CredentialLabel,
+	})
+}
+
 // MessageCreatedPayload is the JSON payload for TypeMessageCreated events.
 type MessageCreatedPayload struct {
 	Project string         `json:"project"`
 	Message MessageSummary `json:"message"`
+}
+
+// MessageUpdatedPayload is the JSON payload for TypeMessageUpdated events (SPEC FR-090).
+type MessageUpdatedPayload struct {
+	Project string   `json:"project"`
+	IDs     []string `json:"ids"`
+	Seen    *bool    `json:"seen,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
+}
+
+// MessageDeletedPayload is the JSON payload for TypeMessageDeleted events (SPEC FR-090).
+type MessageDeletedPayload struct {
+	Project string   `json:"project"`
+	IDs     []string `json:"ids,omitempty"`
+	All     bool     `json:"all,omitempty"`
+}
+
+// ProjectCreatedPayload is the JSON payload for TypeProjectCreated events.
+type ProjectCreatedPayload struct {
+	Project string `json:"project"`
+}
+
+// ProjectDeletedPayload is the JSON payload for TypeProjectDeleted events.
+type ProjectDeletedPayload struct {
+	Project string `json:"project"`
+}
+
+// ProjectUpdatedPayload is the JSON payload for TypeProjectUpdated events (SPEC FR-090).
+type ProjectUpdatedPayload struct {
+	Project       string     `json:"project"`
+	MessageCount  int64      `json:"message_count"`
+	UnreadCount   int64      `json:"unread_count"`
+	SizeBytes     int64      `json:"size_bytes"`
+	LastMessageAt *time.Time `json:"last_message_at"`
+}
+
+// MarshalJSON encodes ProjectUpdatedPayload with RFC 3339 UTC millisecond timestamps.
+func (p ProjectUpdatedPayload) MarshalJSON() ([]byte, error) {
+	type alias struct {
+		Project       string  `json:"project"`
+		MessageCount  int64   `json:"message_count"`
+		UnreadCount   int64   `json:"unread_count"`
+		SizeBytes     int64   `json:"size_bytes"`
+		LastMessageAt *string `json:"last_message_at"`
+	}
+	var last *string
+	if p.LastMessageAt != nil {
+		s := p.LastMessageAt.UTC().Format(rfc3339Millis)
+		last = &s
+	}
+	return json.Marshal(alias{
+		Project:       p.Project,
+		MessageCount:  p.MessageCount,
+		UnreadCount:   p.UnreadCount,
+		SizeBytes:     p.SizeBytes,
+		LastMessageAt: last,
+	})
 }
 
 // Event is a single notification routed through the Bus.

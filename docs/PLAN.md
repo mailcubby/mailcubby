@@ -135,7 +135,7 @@ Acceptance:
 
 Tasks:
 - [ ] Endpoints: `PATCH` message (seen only, FR-075; tags in Phase 5), `DELETE` single, bulk (`delete`, `seen`, `unseen`), delete-all (FR-076; no query filter until Phase 5), `POST /send-test` (FR-077), `wait` (no query filter until Phase 5), `GET /events` (SSE, FR-090 events available so far, FR-092 limits, heartbeats, shutdown handling).
-- [ ] Counter maintenance on delete and seen changes (FR-034 property test).
+- [x] Counter maintenance on delete and seen changes (FR-034 property test).
 - [ ] `internal/render` basic version (FR-073): HTML rewrite (SPEC 12.1 rewrite rules, cid to data URIs, remote resource counting) and `GET /render/{project}/{id}` with the SPEC 12.1 headers; `remote_resource_count` in message detail. (Hostile-corpus review in Phase 11.)
 - [ ] OpenAPI and generated types updated.
 
