@@ -15,23 +15,37 @@ export interface ProjectCardProps {
   project: ProjectSummary;
   viewMode: "grid" | "list";
   now: Date;
+  hour24?: boolean;
+  highlighted?: boolean;
+  linkRef?: (el: HTMLAnchorElement | null) => void;
 }
 
-export function ProjectCard({ project, viewMode, now }: ProjectCardProps) {
+export function ProjectCard({
+  project,
+  viewMode,
+  now,
+  hour24 = true,
+  highlighted = false,
+  linkRef,
+}: ProjectCardProps) {
   const dotClass = PROJECT_COLOR_DOT_CLASS[project.color] ?? PROJECT_COLOR_DOT_CLASS.slate;
   const lastRelative = project.last_message_at
-    ? formatRelativeTime(project.last_message_at, now)
+    ? formatRelativeTime(project.last_message_at, now, hour24)
     : null;
   const lastExact = project.last_message_at
-    ? formatExactTimestamp(project.last_message_at).combined
+    ? formatExactTimestamp(project.last_message_at, hour24).combined
     : undefined;
 
   if (viewMode === "list") {
     return (
       <Link
+        ref={linkRef}
         to="/p/$project"
         params={{ project: project.slug }}
-        className="group flex items-center justify-between gap-4 rounded-md border border-border bg-surface px-3.5 py-2.5 transition-colors duration-150 hover:border-foreground/25 hover:bg-muted/40"
+        className={cn(
+          "group flex items-center justify-between gap-4 rounded-md border border-border bg-surface px-3.5 py-2.5 transition-colors duration-150 hover:border-foreground/25 hover:bg-muted/40",
+          highlighted && "arrival-highlight",
+        )}
       >
         <div className="flex min-w-0 items-center gap-2.5">
           <span className={cn("size-2.5 shrink-0 rounded-full", dotClass)} aria-hidden="true" />
@@ -65,9 +79,13 @@ export function ProjectCard({ project, viewMode, now }: ProjectCardProps) {
 
   return (
     <Link
+      ref={linkRef}
       to="/p/$project"
       params={{ project: project.slug }}
-      className="group flex flex-col justify-between gap-3 rounded-lg border border-border bg-surface p-4 transition-colors duration-150 hover:border-foreground/25 hover:bg-muted/30"
+      className={cn(
+        "group flex flex-col justify-between gap-3 rounded-lg border border-border bg-surface p-4 transition-colors duration-150 hover:border-foreground/25 hover:bg-muted/30",
+        highlighted && "arrival-highlight",
+      )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

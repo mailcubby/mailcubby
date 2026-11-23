@@ -150,6 +150,19 @@
   }
 }
 
+@keyframes mailcubby-arrival {
+  0% {
+    background-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.arrival-highlight {
+  animation: mailcubby-arrival 1500ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

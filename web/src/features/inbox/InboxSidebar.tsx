@@ -11,6 +11,7 @@ import {
   Search,
 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useRealtime } from "@/components/RealtimeProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ export function InboxSidebar({
   onCloseDrawer,
 }: InboxSidebarProps) {
   const navigate = useNavigate();
+  const { status: realtimeStatus } = useRealtime();
   const { data: meta } = useQuery(metaQueryOptions());
   const { data: projects } = useQuery(projectsQueryOptions());
 
@@ -273,45 +275,77 @@ export function InboxSidebar({
         </div>
       </div>
 
-      {meta?.mode === "local" ? (
-        <div className="border-t border-border p-3">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            SMTP Quick Copy
-          </p>
-          <dl className="mt-2 flex flex-col gap-1.5 text-xs">
-            <div className="flex items-center justify-between gap-2">
-              <dt className="text-muted-foreground">Server</dt>
-              <dd className="min-w-0">
-                <button
-                  type="button"
-                  onClick={() => void copyToClipboard(`${smtpHost}:${smtpPort}`, "SMTP server")}
-                  className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 font-mono text-[11px] text-foreground hover:bg-muted"
-                  title="Copy host and port"
-                >
-                  <span className="truncate">
-                    {smtpHost}:{smtpPort}
-                  </span>
-                  <Copy className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-                </button>
-              </dd>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <dt className="text-muted-foreground">User</dt>
-              <dd className="min-w-0">
-                <button
-                  type="button"
-                  onClick={() => void copyToClipboard(project.slug, "SMTP username")}
-                  className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 font-mono text-[11px] text-foreground hover:bg-muted"
-                  title="Copy SMTP username"
-                >
-                  <span className="truncate">{project.slug}</span>
-                  <Copy className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-                </button>
-              </dd>
-            </div>
-          </dl>
+      <div className="border-t border-border">
+        {meta?.mode === "local" ? (
+          <div className="p-3">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              SMTP Quick Copy
+            </p>
+            <dl className="mt-2 flex flex-col gap-1.5 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">Server</dt>
+                <dd className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => void copyToClipboard(`${smtpHost}:${smtpPort}`, "SMTP server")}
+                    className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 font-mono text-[11px] text-foreground hover:bg-muted"
+                    title="Copy host and port"
+                  >
+                    <span className="truncate">
+                      {smtpHost}:{smtpPort}
+                    </span>
+                    <Copy className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">User</dt>
+                <dd className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => void copyToClipboard(project.slug, "SMTP username")}
+                    className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 font-mono text-[11px] text-foreground hover:bg-muted"
+                    title="Copy SMTP username"
+                  >
+                    <span className="truncate">{project.slug}</span>
+                    <Copy className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                </dd>
+              </div>
+            </dl>
+          </div>
+        ) : null}
+
+        <div
+          className="flex items-center gap-2 border-t border-border px-3 py-2 text-[11px] text-muted-foreground"
+          title={
+            realtimeStatus === "connected"
+              ? "Live updates connected"
+              : realtimeStatus === "reconnecting"
+                ? "Reconnecting to live updates"
+                : "Connecting to live updates"
+          }
+        >
+          <span
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              realtimeStatus === "connected"
+                ? "bg-emerald-500"
+                : realtimeStatus === "reconnecting"
+                  ? "animate-pulse bg-amber-500"
+                  : "bg-muted-foreground/50",
+            )}
+            aria-hidden="true"
+          />
+          <span className="truncate">
+            {realtimeStatus === "connected"
+              ? "Live connected"
+              : realtimeStatus === "reconnecting"
+                ? "Reconnecting..."
+                : "Connecting..."}
+          </span>
         </div>
-      ) : null}
+      </div>
     </aside>
   );
 }
