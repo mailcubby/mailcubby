@@ -156,6 +156,22 @@ func (s *Store) Ping(ctx context.Context) error {
 	return nil
 }
 
+// MigrationsApplied verifies that all embedded database migrations have been applied.
+func (s *Store) MigrationsApplied(ctx context.Context) error {
+	provider, err := newGooseProvider(s.reader)
+	if err != nil {
+		return fmt.Errorf("store: init goose provider: %w", err)
+	}
+	pending, err := provider.HasPending(ctx)
+	if err != nil {
+		return fmt.Errorf("store: check pending migrations: %w", err)
+	}
+	if pending {
+		return errors.New("store: database has pending migrations")
+	}
+	return nil
+}
+
 // WithTx executes fn inside a write transaction on the writer handle.
 // If fn returns an error or panics, the transaction is rolled back.
 func (s *Store) WithTx(ctx context.Context, fn func(tx *Tx) error) (err error) {

@@ -115,6 +115,118 @@ func TestMessagesAndAttachmentsCRUDAndIsolation(t *testing.T) {
 	if len(crossAtts) != 0 {
 		t.Fatalf("expected 0 cross-tenant attachments, got %d", len(crossAtts))
 	}
+
+	gotAtt, err := st.GetAttachmentByID(ctx, p1.ID, inserted.PK, atts[0].ID)
+	if err != nil {
+		t.Fatalf("GetAttachmentByID: %v", err)
+	}
+	if gotAtt.ID != atts[0].ID || gotAtt.Filename != "logo.png" {
+		t.Fatalf("unexpected GetAttachmentByID result: %+v", gotAtt)
+	}
+	if _, err := st.GetAttachmentByID(ctx, p2.ID, inserted.PK, atts[0].ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("cross-tenant GetAttachmentByID: got %v, want ErrNotFound", err)
+	}
+	if _, err := st.GetAttachmentByID(ctx, p1.ID, inserted.PK+999, atts[0].ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("wrong-message GetAttachmentByID: got %v, want ErrNotFound", err)
+	}
+
+	if err := st.MigrationsApplied(ctx); err != nil {
+		t.Fatalf("MigrationsApplied: %v", err)
+	}
+}
+
+func TestListMessagesPageAndSparkline(t *testing.T) {
+	t.Parallel()
+
+	st := testutil.NewStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 11, 23, 14, 30, 0, 0, time.UTC)
+
+	p, err := st.CreateProject(ctx, store.CreateProjectParams{
+		Slug:     "spark",
+		Name:     "Spark",
+		Color:    "blue",
+		Settings: store.DefaultProjectSettings(),
+		Now:      now,
+	})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+
+	entries := []struct {
+		id         string
+		receivedAt time.Time
+		subject    string
+	}{
+		{"01JAAAAAAAAAAAAAAAAAAAAAA1", now.Add(-25 * time.Hour), "older than 24h"},
+		{"01JAAAAAAAAAAAAAAAAAAAAAA2", now.Add(-23 * time.Hour), "oldest bucket"},
+		{"01JAAAAAAAAAAAAAAAAAAAAAA3", now.Add(-2 * time.Hour), "two hours ago"},
+		{"01JAAAAAAAAAAAAAAAAAAAAAA4", now.Add(-15 * time.Minute), "current hour 1"},
+		{"01JAAAAAAAAAAAAAAAAAAAAAA5", now.Add(-5 * time.Minute), "current hour 2"},
+	}
+
+	for _, e := range entries {
+		_, err := st.InsertMessage(ctx, store.InsertMessageParams{
+			ID:           e.id,
+			ProjectID:    p.ID,
+			ReceivedAt:   e.receivedAt,
+			Subject:      e.subject,
+			EnvelopeFrom: "a@example.test",
+			EnvelopeTo:   []string{"b@example.test"},
+			SizeBytes:    100,
+			BlobPath:     "1/2026/11/" + e.id + ".eml.zst",
+		})
+		if err != nil {
+			t.Fatalf("InsertMessage %s: %v", e.id, err)
+		}
+	}
+
+	// Cursor pagination (newest first).
+	page1, err := st.ListMessagesPage(ctx, p.ID, "", 2)
+	if err != nil {
+		t.Fatalf("ListMessagesPage page1: %v", err)
+	}
+	if len(page1) != 2 || page1[0].ID != entries[4].id || page1[1].ID != entries[3].id {
+		t.Fatalf("unexpected page1: %+v", page1)
+	}
+
+	page2, err := st.ListMessagesPage(ctx, p.ID, page1[1].ID, 2)
+	if err != nil {
+		t.Fatalf("ListMessagesPage page2: %v", err)
+	}
+	if len(page2) != 2 || page2[0].ID != entries[2].id || page2[1].ID != entries[1].id {
+		t.Fatalf("unexpected page2: %+v", page2)
+	}
+
+	page3, err := st.ListMessagesPage(ctx, p.ID, page2[1].ID, 2)
+	if err != nil {
+		t.Fatalf("ListMessagesPage page3: %v", err)
+	}
+	if len(page3) != 1 || page3[0].ID != entries[0].id {
+		t.Fatalf("unexpected page3: %+v", page3)
+	}
+
+	// Sparkline (FR-035): 24 buckets, oldest first, ending at current hour.
+	spark, err := st.ProjectSparkline(ctx, p.ID, now)
+	if err != nil {
+		t.Fatalf("ProjectSparkline: %v", err)
+	}
+	if spark[0] != 1 {
+		t.Errorf("spark[0] (23h ago) = %d, want 1", spark[0])
+	}
+	if spark[21] != 1 {
+		t.Errorf("spark[21] (2h ago) = %d, want 1", spark[21])
+	}
+	if spark[23] != 2 {
+		t.Errorf("spark[23] (current hour) = %d, want 2", spark[23])
+	}
+	var sum int64
+	for _, v := range spark {
+		sum += v
+	}
+	if sum != 4 {
+		t.Errorf("sparkline sum = %d, want 4 (message 25h ago must be excluded)", sum)
+	}
 }
 
 func TestEnsureProjectConcurrent(t *testing.T) {

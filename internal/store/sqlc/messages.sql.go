@@ -10,6 +10,46 @@ import (
 	"database/sql"
 )
 
+const getAttachmentByID = `-- name: GetAttachmentByID :one
+SELECT
+    id,
+    message_pk,
+    project_id,
+    part_path,
+    filename,
+    content_type,
+    size_bytes,
+    content_id,
+    disposition,
+    sha256
+FROM attachments
+WHERE project_id = ? AND message_pk = ? AND id = ?
+`
+
+type GetAttachmentByIDParams struct {
+	ProjectID int64
+	MessagePk int64
+	ID        int64
+}
+
+func (q *Queries) GetAttachmentByID(ctx context.Context, arg GetAttachmentByIDParams) (Attachment, error) {
+	row := q.db.QueryRowContext(ctx, getAttachmentByID, arg.ProjectID, arg.MessagePk, arg.ID)
+	var i Attachment
+	err := row.Scan(
+		&i.ID,
+		&i.MessagePk,
+		&i.ProjectID,
+		&i.PartPath,
+		&i.Filename,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.ContentID,
+		&i.Disposition,
+		&i.Sha256,
+	)
+	return i, err
+}
+
 const getMessageByID = `-- name: GetMessageByID :one
 SELECT
     pk,
@@ -85,6 +125,49 @@ func (q *Queries) GetMessageByID(ctx context.Context, arg GetMessageByIDParams) 
 		&i.ParseWarningsJson,
 	)
 	return i, err
+}
+
+const getProjectSparkline = `-- name: GetProjectSparkline :many
+SELECT
+    CAST(received_at / 3600000 AS INTEGER) AS hour_bucket,
+    COUNT(*) AS message_count
+FROM messages
+WHERE project_id = ? AND received_at >= ?
+GROUP BY hour_bucket
+ORDER BY hour_bucket ASC
+`
+
+type GetProjectSparklineParams struct {
+	ProjectID  int64
+	ReceivedAt int64
+}
+
+type GetProjectSparklineRow struct {
+	HourBucket   int64
+	MessageCount int64
+}
+
+func (q *Queries) GetProjectSparkline(ctx context.Context, arg GetProjectSparklineParams) ([]GetProjectSparklineRow, error) {
+	rows, err := q.db.QueryContext(ctx, getProjectSparkline, arg.ProjectID, arg.ReceivedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetProjectSparklineRow{}
+	for rows.Next() {
+		var i GetProjectSparklineRow
+		if err := rows.Scan(&i.HourBucket, &i.MessageCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const insertAttachment = `-- name: InsertAttachment :one
@@ -416,6 +499,102 @@ type ListMessagesParams struct {
 
 func (q *Queries) ListMessages(ctx context.Context, arg ListMessagesParams) ([]Message, error) {
 	rows, err := q.db.QueryContext(ctx, listMessages, arg.ProjectID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.Pk,
+			&i.ID,
+			&i.ProjectID,
+			&i.SmtpCredentialID,
+			&i.ReceivedAt,
+			&i.Subject,
+			&i.FromName,
+			&i.FromAddr,
+			&i.ToJson,
+			&i.CcJson,
+			&i.BccJson,
+			&i.ReplyToJson,
+			&i.EnvelopeFrom,
+			&i.EnvelopeToJson,
+			&i.MessageIDHeader,
+			&i.DateHeader,
+			&i.Snippet,
+			&i.HasHtml,
+			&i.HasText,
+			&i.TextGenerated,
+			&i.AttachmentCount,
+			&i.SizeBytes,
+			&i.BlobPath,
+			&i.Seen,
+			&i.RemoteIp,
+			&i.Helo,
+			&i.AuthUser,
+			&i.Tls,
+			&i.ParseWarningsJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMessagesBeforeCursor = `-- name: ListMessagesBeforeCursor :many
+SELECT
+    pk,
+    id,
+    project_id,
+    smtp_credential_id,
+    received_at,
+    subject,
+    from_name,
+    from_addr,
+    to_json,
+    cc_json,
+    bcc_json,
+    reply_to_json,
+    envelope_from,
+    envelope_to_json,
+    message_id_header,
+    date_header,
+    snippet,
+    has_html,
+    has_text,
+    text_generated,
+    attachment_count,
+    size_bytes,
+    blob_path,
+    seen,
+    remote_ip,
+    helo,
+    auth_user,
+    tls,
+    parse_warnings_json
+FROM messages
+WHERE project_id = ? AND id < ?
+ORDER BY id DESC
+LIMIT ?
+`
+
+type ListMessagesBeforeCursorParams struct {
+	ProjectID int64
+	ID        string
+	Limit     int64
+}
+
+func (q *Queries) ListMessagesBeforeCursor(ctx context.Context, arg ListMessagesBeforeCursorParams) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, listMessagesBeforeCursor, arg.ProjectID, arg.ID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

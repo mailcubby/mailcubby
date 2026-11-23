@@ -207,10 +207,28 @@ func getMessageByID(ctx context.Context, q *sqlc.Queries, projectID int64, id st
 
 // ListMessages returns up to limit newest messages in projectID ordered by ID descending.
 func (s *Store) ListMessages(ctx context.Context, projectID int64, limit int64) ([]Message, error) {
-	rows, err := s.readQ.ListMessages(ctx, sqlc.ListMessagesParams{
-		ProjectID: projectID,
-		Limit:     limit,
-	})
+	return s.ListMessagesPage(ctx, projectID, "", limit)
+}
+
+// ListMessagesPage returns up to limit messages in projectID ordered by ID descending.
+// If beforeID is non-empty, only messages with ID strictly less than beforeID are returned.
+func (s *Store) ListMessagesPage(ctx context.Context, projectID int64, beforeID string, limit int64) ([]Message, error) {
+	var (
+		rows []sqlc.Message
+		err  error
+	)
+	if beforeID == "" {
+		rows, err = s.readQ.ListMessages(ctx, sqlc.ListMessagesParams{
+			ProjectID: projectID,
+			Limit:     limit,
+		})
+	} else {
+		rows, err = s.readQ.ListMessagesBeforeCursor(ctx, sqlc.ListMessagesBeforeCursorParams{
+			ProjectID: projectID,
+			ID:        beforeID,
+			Limit:     limit,
+		})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("store: list messages in project %d: %w", projectID, mapError(err))
 	}
@@ -223,6 +241,43 @@ func (s *Store) ListMessages(ctx context.Context, projectID int64, limit int64) 
 		out = append(out, msg)
 	}
 	return out, nil
+}
+
+// ProjectSparkline returns 24 hourly message counts for projectID ending at the
+// UTC hour containing now (index 0 is oldest, index 23 is the current hour; FR-035).
+func (s *Store) ProjectSparkline(ctx context.Context, projectID int64, now time.Time) ([24]int64, error) {
+	var out [24]int64
+	currentHour := now.UTC().UnixMilli() / 3600000
+	startHour := currentHour - 23
+	sinceMs := startHour * 3600000
+
+	rows, err := s.readQ.GetProjectSparkline(ctx, sqlc.GetProjectSparklineParams{
+		ProjectID:  projectID,
+		ReceivedAt: sinceMs,
+	})
+	if err != nil {
+		return out, fmt.Errorf("store: sparkline for project %d: %w", projectID, mapError(err))
+	}
+	for _, r := range rows {
+		idx := r.HourBucket - startHour
+		if idx >= 0 && idx < 24 {
+			out[idx] = r.MessageCount
+		}
+	}
+	return out, nil
+}
+
+// GetAttachmentByID fetches one attachment metadata row scoped strictly to projectID and messagePK.
+func (s *Store) GetAttachmentByID(ctx context.Context, projectID, messagePK, attachmentID int64) (Attachment, error) {
+	row, err := s.readQ.GetAttachmentByID(ctx, sqlc.GetAttachmentByIDParams{
+		ProjectID: projectID,
+		MessagePk: messagePK,
+		ID:        attachmentID,
+	})
+	if err != nil {
+		return Attachment{}, fmt.Errorf("store: get attachment %d for message %d in project %d: %w", attachmentID, messagePK, projectID, mapError(err))
+	}
+	return attachmentFromRow(row), nil
 }
 
 // InsertAttachment inserts an attachment metadata row inside tx.

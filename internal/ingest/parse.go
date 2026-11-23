@@ -251,7 +251,7 @@ func hasBodyPartOfType(root *enmime.Part, mediaType string) bool {
 	return found
 }
 
-func extractAttachments(env *enmime.Envelope) []ParsedAttachment {
+func collectAttachmentParts(env *enmime.Envelope) []*enmime.Part {
 	// Collect candidate parts from Attachments, Inlines, and OtherParts in a
 	// deterministic order while deduplicating by part pointer.
 	seen := make(map[*enmime.Part]struct{})
@@ -278,7 +278,19 @@ func extractAttachments(env *enmime.Envelope) []ParsedAttachment {
 	add(env.Attachments, false)
 	add(env.Inlines, true)
 	add(env.OtherParts, false)
+	return parts
+}
 
+func attachmentPartPath(p *enmime.Part, idx int) string {
+	partPath := strings.TrimSpace(p.PartID)
+	if partPath == "" {
+		return fmt.Sprintf("%d", idx+1)
+	}
+	return partPath
+}
+
+func extractAttachments(env *enmime.Envelope) []ParsedAttachment {
+	parts := collectAttachmentParts(env)
 	if len(parts) == 0 {
 		return []ParsedAttachment{}
 	}
@@ -294,13 +306,9 @@ func extractAttachments(env *enmime.Envelope) []ParsedAttachment {
 		if strings.EqualFold(p.Disposition, "inline") || (p.Disposition == "" && cid != "") {
 			disp = "inline"
 		}
-		partPath := strings.TrimSpace(p.PartID)
-		if partPath == "" {
-			partPath = fmt.Sprintf("%d", i+1)
-		}
 		sum := sha256.Sum256(p.Content)
 		out = append(out, ParsedAttachment{
-			PartPath:    partPath,
+			PartPath:    attachmentPartPath(p, i),
 			Filename:    strings.TrimSpace(p.FileName),
 			ContentType: ct,
 			SizeBytes:   int64(len(p.Content)),
