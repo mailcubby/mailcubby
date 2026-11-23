@@ -67,3 +67,43 @@ func TestServeHTTPShutdown(t *testing.T) {
 		t.Fatalf("serveHTTP returned unexpected error: %v", err)
 	}
 }
+
+func TestServeRejectsServerMode(t *testing.T) {
+	t.Parallel()
+
+	env := map[string]string{
+		"MAILCUBBY_MODE":     "server",
+		"MAILCUBBY_BASE_URL": "https://mail.example.com",
+		"MAILCUBBY_APP_KEY":  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"serve"}, &stdout, &stderr, func(k string) (string, bool) {
+		v, ok := env[k]
+		return v, ok
+	})
+	if code != 1 {
+		t.Fatalf("expected exit code 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "server mode is not implemented yet") {
+		t.Fatalf("expected server mode error, got %q", stderr.String())
+	}
+}
+
+func TestServeInvalidConfig(t *testing.T) {
+	t.Parallel()
+
+	env := map[string]string{
+		"MAILCUBBY_SMTP_MAX_MESSAGE_BYTES": "abc",
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"serve"}, &stdout, &stderr, func(k string) (string, bool) {
+		v, ok := env[k]
+		return v, ok
+	})
+	if code != 1 {
+		t.Fatalf("expected exit code 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "MAILCUBBY_SMTP_MAX_MESSAGE_BYTES") {
+		t.Fatalf("expected error naming variable, got %q", stderr.String())
+	}
+}

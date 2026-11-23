@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/web"
 )
 
@@ -25,10 +26,7 @@ var (
 	date    = "unknown"
 )
 
-const (
-	defaultHTTPAddr = ":8025"
-	shutdownTimeout = 30 * time.Second
-)
+const shutdownTimeout = 30 * time.Second
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, os.LookupEnv))
@@ -94,21 +92,36 @@ func runServe(args []string, stdout, stderr io.Writer, lookupEnv func(string) (s
 		return 2
 	}
 
-	addr := defaultHTTPAddr
-	if v, ok := lookupEnv("MAILCUBBY_HTTP_ADDR"); ok && v != "" {
-		addr = v
+	cfg, err := config.Load(lookupEnv)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "invalid configuration:\n%v\n", err)
+		return 1
 	}
 
-	logger := slog.New(slog.NewTextHandler(stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	if cfg.Mode == config.ModeServer {
+		_, _ = fmt.Fprintln(stderr, "server mode is not implemented yet")
+		return 1
+	}
+
+	logger := newLogger(stdout, cfg.LogLevel, cfg.LogFormat)
+	logger.Warn("running in local mode without authentication; do not expose to the internet")
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := serveHTTP(ctx, addr, web.Handler(), logger); err != nil {
+	if err := serveHTTP(ctx, cfg.HTTPAddr, web.Handler(), logger); err != nil {
 		logger.Error("server exited with error", "error", err)
 		return 1
 	}
 	return 0
+}
+
+func newLogger(w io.Writer, level slog.Level, format config.LogFormat) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: level}
+	if format == config.LogFormatJSON {
+		return slog.New(slog.NewJSONHandler(w, opts))
+	}
+	return slog.New(slog.NewTextHandler(w, opts))
 }
 
 func serveHTTP(ctx context.Context, addr string, handler http.Handler, logger *slog.Logger) error {
