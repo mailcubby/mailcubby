@@ -12,11 +12,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/mailcubby/mailcubby/internal/cli"
 	"github.com/mailcubby/mailcubby/internal/config"
+	"github.com/mailcubby/mailcubby/internal/secrets"
+	"github.com/mailcubby/mailcubby/internal/store"
 	"github.com/mailcubby/mailcubby/internal/web"
 )
 
@@ -46,6 +49,8 @@ func run(args []string, stdout, stderr io.Writer, lookupEnv func(string) (string
 		return runServe(subargs, stdout, stderr, lookupEnv)
 	case "keygen":
 		return cli.RunKeygen(subargs, stdout, stderr)
+	case "migrate":
+		return cli.RunMigrate(context.Background(), subargs, stdout, stderr, lookupEnv)
 	case "version", "-version", "--version":
 		return runVersion(subargs, stdout, stderr)
 	case "help", "-h", "--help":
@@ -64,6 +69,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Commands:")
 	_, _ = fmt.Fprintln(w, "  serve     Run the Mailcubby server (default)")
 	_, _ = fmt.Fprintln(w, "  keygen    Generate a base64 MAILCUBBY_APP_KEY")
+	_, _ = fmt.Fprintln(w, "  migrate   Inspect database migration status")
 	_, _ = fmt.Fprintln(w, "  version   Print version, commit, and build date")
 }
 
@@ -110,8 +116,26 @@ func runServe(args []string, stdout, stderr io.Writer, lookupEnv func(string) (s
 	logger := newLogger(stdout, cfg.LogLevel, cfg.LogFormat)
 	logger.Warn("running in local mode without authentication; do not expose to the internet")
 
+	if len(cfg.AppKey) == 0 {
+		if _, err := secrets.LoadOrCreateLocalKey(cfg.DataDir); err != nil {
+			logger.Error("failed to initialize local app key", "error", err)
+			return 1
+		}
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	st, err := store.Open(ctx, filepath.Join(cfg.DataDir, store.DBFilename))
+	if err != nil {
+		logger.Error("failed to open store", "error", err)
+		return 1
+	}
+	defer func() {
+		if closeErr := st.Close(); closeErr != nil {
+			logger.Error("failed to close store", "error", closeErr)
+		}
+	}()
 
 	if err := serveHTTP(ctx, cfg.HTTPAddr, web.Handler(), logger); err != nil {
 		logger.Error("server exited with error", "error", err)

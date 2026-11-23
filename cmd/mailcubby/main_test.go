@@ -121,3 +121,22 @@ func TestKeygenSubcommand(t *testing.T) {
 		t.Fatalf("keygen output %q is not a valid app key: %v", stdout.String(), err)
 	}
 }
+
+func TestMigrateStatusSubcommand(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"migrate", "status"}, &stdout, &stderr, func(k string) (string, bool) {
+		if k == "MAILCUBBY_DATA_DIR" {
+			return dir, true
+		}
+		return "", false
+	})
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d (stderr: %q)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "00001_init.sql") {
+		t.Fatalf("expected migration listing, got %q", stdout.String())
+	}
+}

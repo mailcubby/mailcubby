@@ -64,7 +64,7 @@ Tasks:
 - [x] `sqlc.yaml` (schema: `00001_init.sql` only) and first queries: projects CRUD and counters, settings get/set. `make generate` wired.
 - [x] `internal/store/isolation_test.go` query lint (ARCHITECTURE section 7, item 3), passing on the initial queries.
 - [x] `internal/testutil`: `NewStore(t)` (migrated store in `t.TempDir()`).
-- [ ] `mailcubby migrate status`.
+- [x] `mailcubby migrate status`.
 
 Files: `internal/config/`, `internal/secrets/`, `internal/store/`, `migrations/`, `sqlc.yaml`, `internal/testutil/`, `cmd/mailcubby/`, `internal/cli/`.
 
@@ -423,3 +423,4 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
 - 2026-11-23, Phase 0 (owner decision): PROXY protocol support and the direct HTTPS listener are NOT needed in v1; moved to the roadmap in `docs/SPEC.md` and removed from Phase 12.
 - 2026-11-23, Phase 0 (owner decision): certmagic ACME stretch goal dropped from v1 (roadmap only).
 - 2026-11-23, Phase 0 (owner decision): commits are enabled during autonomous runs — make one local Conventional Commit per completed task, never push.
+- 2026-11-23, Phase 1: Setting both `<VAR>` and `<VAR>_FILE` for a secret fails config validation rather than silently preferring one; paired env vars (`MAILCUBBY_ADMIN_EMAIL`/`MAILCUBBY_ADMIN_PASSWORD`, `MAILCUBBY_SMTP_TLS_CERT`/`MAILCUBBY_SMTP_TLS_KEY`) must be set together; `MAILCUBBY_SESSION_IDLE_TIMEOUT` must not exceed `MAILCUBBY_SESSION_TTL`; `mailcubby migrate status` reports all embedded migrations as `pending` without creating `app.db` when the database file does not exist yet.
