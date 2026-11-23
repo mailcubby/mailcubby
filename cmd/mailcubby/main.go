@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mailcubby/mailcubby/internal/cli"
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/web"
 )
@@ -43,6 +44,8 @@ func run(args []string, stdout, stderr io.Writer, lookupEnv func(string) (string
 	switch subcmd {
 	case "serve":
 		return runServe(subargs, stdout, stderr, lookupEnv)
+	case "keygen":
+		return cli.RunKeygen(subargs, stdout, stderr)
 	case "version", "-version", "--version":
 		return runVersion(subargs, stdout, stderr)
 	case "help", "-h", "--help":
@@ -60,6 +63,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Commands:")
 	_, _ = fmt.Fprintln(w, "  serve     Run the Mailcubby server (default)")
+	_, _ = fmt.Fprintln(w, "  keygen    Generate a base64 MAILCUBBY_APP_KEY")
 	_, _ = fmt.Fprintln(w, "  version   Print version, commit, and build date")
 }
 

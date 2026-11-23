@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mailcubby/mailcubby/internal/secrets"
 	"github.com/mailcubby/mailcubby/internal/web"
 )
 
@@ -105,5 +106,18 @@ func TestServeInvalidConfig(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "MAILCUBBY_SMTP_MAX_MESSAGE_BYTES") {
 		t.Fatalf("expected error naming variable, got %q", stderr.String())
+	}
+}
+
+func TestKeygenSubcommand(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"keygen"}, &stdout, &stderr, func(string) (string, bool) { return "", false })
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d (stderr: %q)", code, stderr.String())
+	}
+	if _, err := secrets.ParseAppKey(stdout.String()); err != nil {
+		t.Fatalf("keygen output %q is not a valid app key: %v", stdout.String(), err)
 	}
 }
