@@ -159,7 +159,7 @@ Tasks:
 - [x] Projects home (UI 3.3) with counts, sparkline, local-mode SMTP banner (from `/meta`).
 - [x] Project inbox with three resizable panes (UI 3.4), virtualised message list with infinite scroll, unread state, multi-select and bulk bar (delete, mark read/unread).
 - [x] Message view header and tabs 1 to 7 (FR-072, UI 3.5): sandboxed preview iframe with device sizes, rotation, zoom, dark-mode toggle, remote images toggle; text; HTML source and headers with lazy Shiki (JavaScript regex engine); raw (virtualised); attachments; tech.
-- [ ] Empty inbox setup guide with local-mode snippets and "Send test email".
+- [x] Empty inbox setup guide with local-mode snippets and "Send test email".
 - [ ] Vitest tests for persistent state and relative time formatting.
 
 Files: `web/src/**`, `web/e2e/**`, `web/playwright.config.ts`, `Makefile`.
