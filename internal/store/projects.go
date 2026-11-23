@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -81,6 +82,33 @@ func (s *Store) CreateProject(ctx context.Context, p CreateProjectParams) (Proje
 // CreateProject inserts a new project inside tx and returns the stored record.
 func (t *Tx) CreateProject(ctx context.Context, p CreateProjectParams) (Project, error) {
 	return createProject(ctx, t.q, p)
+}
+
+// EnsureProject returns the project with slug p.Slug, creating it if it does not exist.
+// Concurrent calls racing to create the same slug succeed without conflict errors.
+// The second return value is true only when this call created the project.
+func (s *Store) EnsureProject(ctx context.Context, p CreateProjectParams) (Project, bool, error) {
+	proj, err := s.GetProjectBySlug(ctx, p.Slug)
+	if err == nil {
+		return proj, false, nil
+	}
+	if !errors.Is(err, ErrNotFound) {
+		return Project{}, false, err
+	}
+
+	proj, err = s.CreateProject(ctx, p)
+	if err == nil {
+		return proj, true, nil
+	}
+	if !errors.Is(err, ErrConflict) {
+		return Project{}, false, err
+	}
+
+	proj, err = s.GetProjectBySlug(ctx, p.Slug)
+	if err != nil {
+		return Project{}, false, err
+	}
+	return proj, false, nil
 }
 
 func createProject(ctx context.Context, q *sqlc.Queries, p CreateProjectParams) (Project, error) {
