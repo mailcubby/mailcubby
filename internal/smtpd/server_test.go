@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/textproto"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -21,8 +22,17 @@ import (
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/ingest"
 	"github.com/mailcubby/mailcubby/internal/store"
-	"github.com/mailcubby/mailcubby/internal/testutil"
 )
+
+func openTestStore(t *testing.T) *store.Store {
+	t.Helper()
+	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), store.DBFilename))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st
+}
 
 type stubIngestor struct {
 	err error
@@ -187,7 +197,7 @@ func TestSMTPProtocol_EHLO_AuthCramMD5_Limits_And_DBFailure(t *testing.T) {
 
 	// FR-001, FR-003, FR-005: EHLO capabilities, AUTH CRAM-MD5 -> 504,
 	// 101st RCPT -> 452 4.5.3, 26 MiB -> 552 5.3.4.
-	st := testutil.NewStore(t)
+	st := openTestStore(t)
 	cfg := defaultLocalConfig(t)
 	blobs, err := blob.NewStore(cfg.DataDir, cfg.ZstdLevel)
 	if err != nil {
@@ -345,7 +355,7 @@ func TestSMTP_DBFailureAtomicRollback(t *testing.T) {
 	t.Parallel()
 
 	// FR-010: injected DB failure returns 451 4.3.0 and leaves no row and no blob.
-	st := testutil.NewStore(t)
+	st := openTestStore(t)
 	cfg := defaultLocalConfig(t)
 	blobs, err := blob.NewStore(cfg.DataDir, cfg.ZstdLevel)
 	if err != nil {

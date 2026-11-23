@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
@@ -39,6 +40,10 @@ type Server struct {
 	smtp   *smtp.Server
 	log    *slog.Logger
 	lookup ProjectLookup
+
+	mu        sync.Mutex
+	closed    bool
+	listeners []*LimitListener
 }
 
 // New constructs an SMTP Server configured from cfg.
@@ -87,7 +92,16 @@ func NewWithLookup(cfg config.Config, lookup ProjectLookup, ing Ingestor, log *s
 // Serve wraps ln in a LimitListener enforcing total and per-IP connection limits
 // and serves SMTP until Shutdown or Close is called.
 func (s *Server) Serve(ln net.Listener) error {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		_ = ln.Close()
+		return nil
+	}
 	limited := NewLimitListener(ln, s.cfg.SMTPMaxConnections, s.cfg.SMTPMaxConnectionsPerIP)
+	s.listeners = append(s.listeners, limited)
+	s.mu.Unlock()
+
 	err := s.smtp.Serve(limited)
 	if err != nil && !errors.Is(err, smtp.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
 		return fmt.Errorf("smtpd: serve: %w", err)
@@ -98,6 +112,7 @@ func (s *Server) Serve(ln net.Listener) error {
 // Shutdown gracefully stops accepting new connections and waits for active SMTP
 // transactions until ctx expires.
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.closeListeners()
 	if err := s.smtp.Shutdown(ctx); err != nil {
 		return fmt.Errorf("smtpd: shutdown: %w", err)
 	}
@@ -106,10 +121,23 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 // Close immediately closes listeners and active connections.
 func (s *Server) Close() error {
+	s.closeListeners()
 	if err := s.smtp.Close(); err != nil {
 		return fmt.Errorf("smtpd: close: %w", err)
 	}
 	return nil
+}
+
+func (s *Server) closeListeners() {
+	s.mu.Lock()
+	s.closed = true
+	listeners := append([]*LimitListener(nil), s.listeners...)
+	s.listeners = nil
+	s.mu.Unlock()
+
+	for _, l := range listeners {
+		_ = l.Close()
+	}
 }
 
 type backend struct {
