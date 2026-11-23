@@ -163,3 +163,13 @@ func TestMigrateStatusSubcommand(t *testing.T) {
 		t.Fatalf("expected migration listing, got %q", stdout.String())
 	}
 }
+
+func TestHealthcheckSubcommandInvalidArgs(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"healthcheck", "extra"}, strings.NewReader(""), &stdout, &stderr, func(string) (string, bool) { return "", false })
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d", code)
+	}
+}

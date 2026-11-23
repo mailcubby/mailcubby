@@ -40,6 +40,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, lookupEnv fun
 		return runServe(subargs, stdout, stderr, lookupEnv)
 	case "keygen":
 		return cli.RunKeygen(subargs, stdout, stderr)
+	case "healthcheck":
+		return cli.RunHealthcheck(context.Background(), subargs, stdout, stderr, lookupEnv)
 	case "migrate":
 		return cli.RunMigrate(context.Background(), subargs, stdout, stderr, lookupEnv)
 	case "sendmail":
@@ -60,11 +62,12 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage: mailcubby <command> [args]")
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Commands:")
-	_, _ = fmt.Fprintln(w, "  serve     Run the Mailcubby server (default)")
-	_, _ = fmt.Fprintln(w, "  keygen    Generate a base64 MAILCUBBY_APP_KEY")
-	_, _ = fmt.Fprintln(w, "  migrate   Inspect database migration status")
-	_, _ = fmt.Fprintln(w, "  sendmail  Submit a message from stdin over SMTP")
-	_, _ = fmt.Fprintln(w, "  version   Print version, commit, and build date")
+	_, _ = fmt.Fprintln(w, "  serve        Run the Mailcubby server (default)")
+	_, _ = fmt.Fprintln(w, "  keygen       Generate a base64 MAILCUBBY_APP_KEY")
+	_, _ = fmt.Fprintln(w, "  healthcheck  Check HTTP /readyz endpoint (exit 0 if healthy)")
+	_, _ = fmt.Fprintln(w, "  migrate      Inspect database migration status")
+	_, _ = fmt.Fprintln(w, "  sendmail     Submit a message from stdin over SMTP")
+	_, _ = fmt.Fprintln(w, "  version      Print version, commit, and build date")
 }
 
 func formatVersion(ver, rev, buildDate string) string {

@@ -112,11 +112,11 @@ Acceptance:
 **Goal**: the API skeleton and the read surface needed by the inbox UI, in local mode.
 
 Tasks:
-- [ ] `internal/api`: server with timeouts (ARCHITECTURE 3.10), route table, middleware chain (recover, request ID, real IP with `MAILCUBBY_TRUSTED_PROXIES`, app security headers from SPEC 12.3, access log with redaction, body limit, local principal), JSON helpers, error format (SPEC 8.1).
-- [ ] `internal/api/openapi.yaml` (OpenAPI 3.1, absolute paths) for the routes of this phase; test: registered routes equal spec paths and methods.
-- [ ] Endpoints: `GET /meta` (including `smtp` connection info), `GET /auth/me` (local operator), `GET /projects` (counters and sparkline, FR-035), `POST /projects`, `GET/PATCH/DELETE /projects/{project}` (FR-030, FR-031, FR-032, FR-033; project delete removes blobs via a synchronous best-effort walk until the GC worker exists in Phase 10), messages list (FR-070; cursor pagination, `tag`/`credential` params accepted but ignored until Phases 5 and 8), detail (FR-071), raw, eml, html source, headers, attachments (FR-074, SPEC 12.2 headers).
-- [ ] `GET /healthz`, `GET /readyz` (FR-110); `mailcubby healthcheck`.
-- [ ] `make generate` produces `web/src/api/schema.d.ts`.
+- [x] `internal/api`: server with timeouts (ARCHITECTURE 3.10), route table, middleware chain (recover, request ID, real IP with `MAILCUBBY_TRUSTED_PROXIES`, app security headers from SPEC 12.3, access log with redaction, body limit, local principal), JSON helpers, error format (SPEC 8.1).
+- [x] `internal/api/openapi.yaml` (OpenAPI 3.1, absolute paths) for the routes of this phase; test: registered routes equal spec paths and methods.
+- [x] Endpoints: `GET /meta` (including `smtp` connection info), `GET /auth/me` (local operator), `GET /projects` (counters and sparkline, FR-035), `POST /projects`, `GET/PATCH/DELETE /projects/{project}` (FR-030, FR-031, FR-032, FR-033; project delete removes blobs via a synchronous best-effort walk until the GC worker exists in Phase 10), messages list (FR-070; cursor pagination, `tag`/`credential` params accepted but ignored until Phases 5 and 8), detail (FR-071), raw, eml, html source, headers, attachments (FR-074, SPEC 12.2 headers).
+- [x] `GET /healthz`, `GET /readyz` (FR-110); `mailcubby healthcheck`.
+- [x] `make generate` produces `web/src/api/schema.d.ts`.
 
 Files: `internal/api/`, `internal/store/queries/`, `internal/cli/`, `cmd/mailcubby/`, `web/src/api/`.
 
@@ -425,3 +425,4 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
 - 2026-11-23, Phase 0 (owner decision): commits are enabled during autonomous runs — make one local Conventional Commit per completed task, never push.
 - 2026-11-23, Phase 1: Setting both `<VAR>` and `<VAR>_FILE` for a secret fails config validation rather than silently preferring one; paired env vars (`MAILCUBBY_ADMIN_EMAIL`/`MAILCUBBY_ADMIN_PASSWORD`, `MAILCUBBY_SMTP_TLS_CERT`/`MAILCUBBY_SMTP_TLS_KEY`) must be set together; `MAILCUBBY_SESSION_IDLE_TIMEOUT` must not exceed `MAILCUBBY_SESSION_TTL`; `mailcubby migrate status` reports all embedded migrations as `pending` without creating `app.db` when the database file does not exist yet.
 - 2026-11-23, Phase 2: In recipient routing (`MAILCUBBY_INBOX_DOMAIN`), candidate slugs are validated against SPEC 7.3 `ValidateSlug` (reserved or invalid slugs are treated as non-routed rather than creating invalid project slugs); `parse_warnings_json` stores a JSON array of human-readable warning strings (`NULL` when empty) and excludes `enmime.ErrorPlainTextFromHTML` because HTML-only text derivation is tracked explicitly via `text_generated`; `mailcubby sendmail` falls back to an empty SMTP reverse-path (`MAIL FROM:<>`) when neither `-f` nor a valid `From` header is present.
+- 2026-11-23, Phase 3a: In project settings JSON (`GET`/`PATCH /api/v1/projects/{project}`), `retention_max_age` is represented as `integer | null` in seconds (`0` disables limit, `null` inherits global default, matching `retention_max_age_s`); message list cursors encode the last returned message ULID as unpadded base64url and return `400 bad_request` when invalid; `MessageDetail.remote_resource_count` returns `0` until Phase 3b adds `internal/render`; `GET /readyz` returns `{"status":"ok"}` on `200` and `{"status":"unavailable","reason":"..."}` on `503`.
