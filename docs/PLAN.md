@@ -39,7 +39,7 @@ Tasks:
 - [ ] `internal/web` with `//go:embed all:dist`, `dist/.gitkeep`, SPA fallback, cache headers, `/assets/` 404 for missing files, "UI not built" fallback page (ARCHITECTURE 3.13); `make web` syncs `web/dist` into `internal/web/dist`.
 - [ ] `deploy/Dockerfile` (multi-stage as in ARCHITECTURE 9.1), `deploy/compose.local.yml`, `.dockerignore`.
 - [ ] `.github/workflows/ci.yml`: job `check` (setup-go from `go.mod`, setup-node 26 + pnpm 12.21.0, `make tools`, `make deps`, `make check`), job `race` (`make test-race`), job `docker` (build image; assert the gzip-compressed size of `docker save` is under 25 MB). Runs on push and PR.
-- [ ] `internal/clock` (Clock interface with `Now`, `NewTicker`, `NewTimer`/`After`; real and fake implementations; the fake advances only when the test calls `Advance`) since every later phase uses it.
+- [x] `internal/clock` (Clock interface with `Now`, `NewTicker`, `NewTimer`/`After`; real and fake implementations; the fake advances only when the test calls `Advance`) since every later phase uses it.
 
 Files: `go.mod`, `cmd/mailcubby/`, `internal/web/`, `internal/clock/`, `Makefile`, `.golangci.yml`, `web/**`, `deploy/Dockerfile`, `deploy/compose.local.yml`, `.dockerignore`, `.github/workflows/ci.yml`.
 
