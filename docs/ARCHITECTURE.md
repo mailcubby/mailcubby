@@ -18,7 +18,7 @@ This document describes how Mailcubby is built. Requirements live in `docs/SPEC.
                                   |
                        :1025 (STARTTLS) / :1465 (TLS)
                                   |
-                    [PROXY protocol, conn limits]
+                             [conn limits]
                                   v
 +--------------------------------------------------------------------------+
 | mailcubby (single process)                                                |
@@ -65,14 +65,13 @@ This document describes how Mailcubby is built. Requirements live in `docs/SPEC.
 
 ### 3.3 `internal/smtpd`
 
-- Wraps `github.com/emersion/go-smtp`. `Backend.NewSession(c *smtp.Conn)` returns a `session` struct holding: remote IP (after PROXY protocol), TLS state, resolved auth (credential or local username), accepted recipients with resolved project IDs and plus tags.
+- Wraps `github.com/emersion/go-smtp`. `Backend.NewSession(c *smtp.Conn)` returns a `session` struct holding: remote IP, TLS state, resolved auth (credential or local username), accepted recipients with resolved project IDs and plus tags.
 - Implements `smtp.AuthSession`: `AuthMechanisms()` returns `PLAIN` and `LOGIN`; `Auth(mech)` returns `smtp.ErrAuthUnknownMechanism` (504) for anything else. go-smtp itself hides AUTH and replies `523 5.7.10` when the connection is not TLS and `Server.AllowInsecureAuth` is false, so no extra check is needed. PLAIN uses `go-sasl`'s `NewPlainServer`. `go-sasl` (pinned pseudo-version) has no LOGIN server, so `internal/smtpd/saslogin.go` implements `sasl.Server` (about 50 lines: optional initial response as username, challenges `Username:` / `Password:`, which go-smtp base64-encodes). Authenticator callbacks return `smtp.ErrAuthFailed` (`535 5.7.8`) or a `454 4.7.0` `*smtp.SMTPError` for lockout; go-smtp writes a bare `*smtp.SMTPError` as is and anything else as `454`.
 - **Error contract**: go-smtp maps session errors with a type assertion (`err.(*smtp.SMTPError)`), not `errors.As`. Every `Session` method (`Mail`, `Rcpt`, `Data`) and SASL callback therefore returns a bare `*smtp.SMTPError` value: internal errors are logged at the boundary and mapped with `errors.Is/As` to the SPEC 7.4 replies (`smtp.ErrDataTooLarge` from the DATA reader is returned unchanged). A unit test asserts each SPEC 7.4 reply code end to end.
 - Routing (SPEC section 7) is implemented in `internal/smtpd/routing.go` as a pure function `Resolve(mode, authResult, rcpt, inboxDomain, lookup) (Target, *smtp.SMTPError)` where `lookup` is a small interface backed by the store. Table-driven tests cover SPEC 7.2.
 - Brute-force limiter (`internal/ratelimit`) consulted before credential lookup.
-- Limits: `smtp.Server` fields `MaxMessageBytes`, `MaxRecipients`, `MaxLineLength` (2000), `ReadTimeout`, `WriteTimeout`, `AllowInsecureAuth`, `Domain`, `EnableSMTPUTF8: true`. `Backend.NewSession` is called at HELO/EHLO (not at connect). Connection limits are enforced by a `net.Listener` wrapper (`limitListener`) that tracks total and per-IP counts and writes `421 4.7.0 Too many connections\r\n` before closing excess connections. `limitListener` runs its own accept goroutine: each raw connection is admitted in a short per-connection goroutine (PROXY header read with a 5 s deadline when enabled, then the per-IP check on the real client IP) and only admitted connections are handed to go-smtp's `Accept` through a channel, so one slow client can never stall the accept loop. The decrement happens in the wrapped `Conn.Close` (idempotent).
-- PROXY protocol (Phase 12): `github.com/pires/go-proxyproto` with a connection policy that only accepts headers from `MAILCUBBY_SMTP_PROXY_PROTOCOL_TRUSTED` and rejects connections from those peers that omit the header. The header is read inside `limitListener`'s per-connection admission goroutine (see above), never in the accept loop.
-- TLS: `tls.Config{GetCertificate: reloader.Get, MinVersion: tls.VersionTLS12}` where `internal/tlsutil.Reloader` re-reads cert/key when their mtime changes (polled every 30 s). Shared with the optional HTTPS listener. Until Phase 12 the certificate is loaded once at startup (`tls.LoadX509KeyPair`) behind the same `GetCertificate` function, so Phase 12 only swaps the implementation.
+- Limits: `smtp.Server` fields `MaxMessageBytes`, `MaxRecipients`, `MaxLineLength` (2000), `ReadTimeout`, `WriteTimeout`, `AllowInsecureAuth`, `Domain`, `EnableSMTPUTF8: true`. `Backend.NewSession` is called at HELO/EHLO (not at connect). Connection limits are enforced by a `net.Listener` wrapper (`limitListener`) that tracks total and per-IP counts and writes `421 4.7.0 Too many connections\r\n` before closing excess connections. `limitListener` runs its own accept goroutine: each raw connection is admitted in a short per-connection goroutine (checking total and per-IP limits) and only admitted connections are handed to go-smtp's `Accept` through a channel, so one slow client can never stall the accept loop. The decrement happens in the wrapped `Conn.Close` (idempotent).
+- TLS: `tls.Config{GetCertificate: reloader.Get, MinVersion: tls.VersionTLS12}` where `internal/tlsutil.Reloader` re-reads cert/key when their mtime changes (polled every 30 s). Until Phase 12 the certificate is loaded once at startup (`tls.LoadX509KeyPair`) behind the same `GetCertificate` function, so Phase 12 only swaps the implementation.
 - AUTH failure delay and lockout windows use the injected `clock.Clock`; tests use the fake clock.
 - `Data(r io.Reader)` hands the reader to `ingest.Ingest` with the session's envelope and targets, maps errors to SMTP replies (SPEC 7.4).
 
@@ -170,7 +169,7 @@ Memory: the raw message is never fully buffered by Mailcubby itself; enmime hold
 ### 4.1 SMTP ingest (server mode, authenticated)
 
 ```
-App            limitListener/PROXY   smtpd.session         ratelimit   store        ingest/blob          events    SSE clients
+App            limitListener         smtpd.session         ratelimit   store        ingest/blob          events    SSE clients
  |-- TCP connect --->|                    |                    |          |              |                  |           |
  |                   |-- accept, count -->|                    |          |              |                  |           |
  |<----------------------- 220 greeting --|                    |          |              |                  |           |
@@ -384,8 +383,6 @@ Internet --587--> mailcubby:1025 (STARTTLS, cert files from Caddy's volume, read
 - SMTP is exposed directly (not through Caddy). The certificate obtained by Caddy for the UI host is reused by mounting Caddy's data volume read-only and pointing `MAILCUBBY_SMTP_TLS_CERT/KEY` at the files; the reloader picks up renewals. Pitfall to solve and verify in Phase 12: Caddy writes key files `0600` owned by its own user (root in the official image), and Mailcubby runs as UID 65532, so the key is unreadable by default. The final `compose.server.yml` must make the files readable by 65532 (for example by running Caddy as `65532:65532` with a volume prepared for that user) and the README must document it; the ACME issuer directory in the path (`acme-v02.api.letsencrypt.org-directory`) can also differ if Caddy falls back to ZeroSSL.
 - If the configured certificate files cannot be read at startup, Mailcubby exits with an error naming the variable and the file (never starts silently without STARTTLS).
 - `MAILCUBBY_TRUSTED_PROXIES` must include the Docker network so client IPs are correct for rate limiting and audit.
-- If SMTP is behind a TCP load balancer (HAProxy, Traefik TCP), enable `MAILCUBBY_SMTP_PROXY_PROTOCOL` with the balancer's CIDR in `MAILCUBBY_SMTP_PROXY_PROTOCOL_TRUSTED`.
-- Built-in ACME (certmagic) is a stretch goal (PLAN Phase 12) and not required for v1.
 
 ### 9.4 Operations
 

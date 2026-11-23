@@ -30,7 +30,7 @@ Typical use case: an agency runs one Mailcubby instance for the staging environm
 
 ### v1 (in development)
 
-- SMTP server (PLAIN and LOGIN auth, STARTTLS and implicit TLS, PROXY protocol), messages up to 25 MiB by default.
+- SMTP server (PLAIN and LOGIN auth, STARTTLS and implicit TLS), messages up to 25 MiB by default.
 - Local mode: any SMTP credentials accepted; the SMTP username auto-creates and selects a project.
 - Server mode: projects, per-project SMTP credentials (copy, reveal, rotate), users, invites, roles (owner, member, viewer), instance admin.
 - Recipient routing: `anything@<project>.<inbox-domain>` and `<project>+tag@<inbox-domain>`.

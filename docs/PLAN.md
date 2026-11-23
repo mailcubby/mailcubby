@@ -375,23 +375,20 @@ Acceptance:
 
 ---
 
-## Phase 12: TLS, PROXY protocol, packaging, docs polish
+## Phase 12: TLS, packaging, docs polish
 
 **Goal**: production deployment story.
 
 Tasks:
-- [ ] `internal/tlsutil.Reloader` (mtime polling) for SMTP STARTTLS, implicit TLS listener (FR-002), optional HTTPS listener.
-- [ ] PROXY protocol in `limitListener` with trusted CIDRs (ARCHITECTURE 3.3).
+- [ ] `internal/tlsutil.Reloader` (mtime polling) for SMTP STARTTLS and implicit TLS listener (FR-002).
 - [ ] `.goreleaser.yaml`, `deploy/Dockerfile.goreleaser`, `.github/workflows/release.yml`: binaries for linux/darwin/windows x amd64/arm64, multi-arch images on `ghcr.io/mailcubby/mailcubby`, checksums; image size check (NFR-006).
 - [ ] `deploy/compose.server.yml` with Caddy and a shared certificate volume whose key files are readable by UID 65532 (ARCHITECTURE 9.3 pitfall), `deploy/Caddyfile` alternative, `deploy/compose.local.yml` final.
 - [ ] README polish: install, local and server quick starts, reverse proxy notes (Caddy, Traefik, nginx with `proxy_buffering off` for SSE), backups, upgrades, Mailpit migration notes (ports, `X-Tags`, sendmail).
-- [ ] Stretch (optional, skip if time is short): built-in ACME with certmagic v0.25.6 behind `MAILCUBBY_ACME_DOMAINS` / `MAILCUBBY_ACME_EMAIL`; requires an ADR and the dependency table update (stop condition: ask the owner first).
 
-Files: `internal/tlsutil/`, `internal/smtpd/`, `internal/api/`, `internal/app/`, `.goreleaser.yaml`, `deploy/**`, `.github/workflows/release.yml`, `README.md`.
+Files: `internal/tlsutil/`, `internal/smtpd/`, `internal/app/`, `.goreleaser.yaml`, `deploy/**`, `.github/workflows/release.yml`, `README.md`.
 
 Acceptance:
 - Replacing cert files on disk switches the served certificate after the next poll without restart (test with two generated certs and the fake clock).
-- PROXY header from an untrusted IP is rejected; from a trusted IP the logged remote IP is the original client; a client that never sends the header does not block other connections.
 - `goreleaser release --snapshot --clean` succeeds; images for amd64 and arm64 are each under 25 MB compressed (requires Docker; otherwise blocked).
 - Following the README server quick start on a fresh VM yields a working instance with STARTTLS on 587 (owner).
 
@@ -423,6 +420,6 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
 - 2026-11-23, doc review: inline PDF preview removed from v1 (browser PDF viewers do not render under the attachment CSP sandbox); PDFs are downloaded.
 - 2026-11-23, doc review: `messages.pk` uses `AUTOINCREMENT` and FTS rows are deleted by a trigger, so cascades and retention can never leave stale FTS rows matching reused rowids.
 - 2026-11-23, doc review: Playwright e2e starts in Phase 4a (not Phase 13) so autonomous UI phases have automated acceptance; `mailcubby sendmail` and `make seed` moved to Phase 2.
-- **Owner** (default: keep, implement in Phase 12): are PROXY protocol support and the direct HTTPS listener needed in v1? Both add surface; NOOP's own deployment (Caddy + direct SMTP port) needs neither.
-- **Owner** (default: skip): should the certmagic ACME stretch goal be dropped from v1 entirely?
-- **Owner** (default: no commits): should the agent commit after each task or phase during autonomous runs (AGENTS.md section 7, item 10)?
+- 2026-11-23, Phase 0 (owner decision): PROXY protocol support and the direct HTTPS listener are NOT needed in v1; moved to the roadmap in `docs/SPEC.md` and removed from Phase 12.
+- 2026-11-23, Phase 0 (owner decision): certmagic ACME stretch goal dropped from v1 (roadmap only).
+- 2026-11-23, Phase 0 (owner decision): commits are enabled during autonomous runs — make one local Conventional Commit per completed task, never push.
