@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+
+      - name: Install pnpm
+        run: npm install -g pnpm@12.21.0
+
+      - name: Install dev tools
+        run: make tools
+
+      - name: Download dependencies
+        run: make deps
+
+      - name: Run checks
+        run: make check
+
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Run Go race tests
+        run: make test-race
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: make docker
+
+      - name: Check compressed image size (< 25 MB)
+        run: |
+          size=$(docker save mailcubby:dev | gzip -c | wc -c)
+          echo "Compressed image size: ${size} bytes"
+          if [ "$size" -ge 25000000 ]; then
+            echo "Image size ${size} bytes exceeds 25 MB limit" >&2
+            exit 1
+          fi
