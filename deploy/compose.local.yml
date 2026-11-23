@@ -1,0 +1,17 @@
+services:
+  mailcubby:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: mailcubby:dev
+    environment:
+      MAILCUBBY_MODE: local
+      MAILCUBBY_DATA_DIR: /data
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    volumes:
+      - mailcubby-data:/data
+
+volumes:
+  mailcubby-data:
