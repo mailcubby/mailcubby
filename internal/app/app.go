@@ -62,6 +62,7 @@ type App struct {
 	bus      *events.Bus
 	ingestor *ingest.Ingestor
 	sweeper  *retention.Sweeper
+	orphanGC *retention.OrphanGC
 	apiSrv   *api.Server
 	smtpSrv  *smtpd.Server
 	httpSrv  *http.Server
@@ -160,6 +161,7 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 	ing := ingest.New(st, blobs, clk, bus, log)
 	sweeper := retention.NewSweeper(st, blobs, bus, clk, log, cfg)
 	ing.SetRetentionNudge(sweeper.MaybeNudge)
+	orphanGC := retention.NewOrphanGC(st, blobs, clk, log)
 
 	smtpRateLimiter := ratelimit.NewSlidingWindow(cfg.SMTPRateLimit.Count, cfg.SMTPRateLimit.Window, clk)
 	ing.SetQuotaCheck(buildIngestQuotaCheck(cfg, st, smtpRateLimiter))
@@ -196,6 +198,7 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		bus:      bus,
 		ingestor: ing,
 		sweeper:  sweeper,
+		orphanGC: orphanGC,
 		smtpSrv:  smtpSrv,
 		smtpLn:   smtpLn,
 		httpLn:   httpLn,
@@ -241,6 +244,13 @@ func (a *App) Serve(ctx context.Context) error {
 		go func() {
 			defer workersWG.Done()
 			a.sweeper.Run(workersCtx)
+		}()
+	}
+	if a.orphanGC != nil {
+		workersWG.Add(1)
+		go func() {
+			defer workersWG.Done()
+			a.orphanGC.Run(workersCtx)
 		}()
 	}
 
@@ -366,6 +376,11 @@ func (a *App) Ingestor() *ingest.Ingestor {
 // Sweeper returns the retention sweeper worker.
 func (a *App) Sweeper() *retention.Sweeper {
 	return a.sweeper
+}
+
+// OrphanGC returns the orphan blob GC and incremental vacuum worker.
+func (a *App) OrphanGC() *retention.OrphanGC {
+	return a.orphanGC
 }
 
 // Config returns the resolved application configuration.

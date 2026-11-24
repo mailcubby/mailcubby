@@ -161,6 +161,80 @@ func TestCleanTmp(t *testing.T) {
 	}
 }
 
+func TestListProjectDirsCleanTmpOlderThanAndTotalDiskBytes(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	st, err := NewStore(dir, 3)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	ts := time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC)
+	sp, err := st.Create(t.Context())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer func() { _ = sp.Cleanup() }()
+	if err := sp.CopyFrom(t.Context(), bytes.NewReader([]byte("Subject: Test\r\n\r\nhello world\r\n"))); err != nil {
+		t.Fatalf("CopyFrom: %v", err)
+	}
+	if err := sp.CloseWrite(); err != nil {
+		t.Fatalf("CloseWrite: %v", err)
+	}
+	if _, err := st.Place(sp, 7, makeTestULID(t, ts)); err != nil {
+		t.Fatalf("Place: %v", err)
+	}
+	if _, err := st.Place(sp, 12, makeTestULID(t, ts)); err != nil {
+		t.Fatalf("Place: %v", err)
+	}
+
+	dirs, err := st.ListProjectDirs()
+	if err != nil {
+		t.Fatalf("ListProjectDirs: %v", err)
+	}
+	if len(dirs) != 2 {
+		t.Fatalf("ListProjectDirs = %v, want 2 dirs", dirs)
+	}
+
+	totalBytes, err := st.TotalDiskBytes(t.Context())
+	if err != nil {
+		t.Fatalf("TotalDiskBytes: %v", err)
+	}
+	if totalBytes <= 0 {
+		t.Fatalf("TotalDiskBytes = %d, want > 0", totalBytes)
+	}
+
+	oldFile := filepath.Join(st.TmpDir(), "old.tmp")
+	newFile := filepath.Join(st.TmpDir(), "new.tmp")
+	if err := os.WriteFile(oldFile, []byte("a"), 0o600); err != nil {
+		t.Fatalf("WriteFile(old): %v", err)
+	}
+	if err := os.WriteFile(newFile, []byte("b"), 0o600); err != nil {
+		t.Fatalf("WriteFile(new): %v", err)
+	}
+	if err := os.Chtimes(oldFile, ts.Add(-2*time.Hour), ts.Add(-2*time.Hour)); err != nil {
+		t.Fatalf("Chtimes(old): %v", err)
+	}
+	if err := os.Chtimes(newFile, ts.Add(-10*time.Minute), ts.Add(-10*time.Minute)); err != nil {
+		t.Fatalf("Chtimes(new): %v", err)
+	}
+
+	removed, err := st.CleanTmpOlderThan(ts.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("CleanTmpOlderThan: %v", err)
+	}
+	if removed != 1 {
+		t.Fatalf("removed = %d, want 1", removed)
+	}
+	if _, err := os.Stat(oldFile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected old tmp removed, err = %v", err)
+	}
+	if _, err := os.Stat(newFile); err != nil {
+		t.Fatalf("expected new tmp kept, err = %v", err)
+	}
+}
+
 func TestValidateRelPath(t *testing.T) {
 	t.Parallel()
 

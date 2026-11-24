@@ -546,17 +546,8 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// TODO(phase-10): delegate project blob directory removal to OrphanGC worker.
-	if s.blobs != nil {
-		if err := s.blobs.RemoveProject(pctx.Project.ID); err != nil {
-			s.log.Warn("best-effort project blob cleanup failed",
-				"request_id", RequestIDFromContext(ctx),
-				"project_id", pctx.Project.ID,
-				"error", err,
-			)
-		}
-	}
-
+	// Project blob directory removal (blobs/<project_id>/) is handled
+	// asynchronously by the OrphanGC worker (FR-033, FR-098).
 	w.WriteHeader(http.StatusNoContent)
 }
 
