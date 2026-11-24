@@ -1,6 +1,8 @@
 package ratelimit
 
 import (
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -107,6 +109,59 @@ func TestSMTPAuthLimiter(t *testing.T) {
 		}
 		if lim.IsLocked("10.0.0.1", "u") {
 			t.Fatalf("disabled limiter should never lock")
+		}
+	})
+
+	t.Run("concurrent Reserve bounds attempts to maxFailures and emits lockout once", func(t *testing.T) {
+		t.Parallel()
+		clk := clock.NewFake(time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC))
+		lim := NewSMTPAuthLimiter(5, 15*time.Minute, clk)
+
+		const workers = 20
+		start := make(chan struct{})
+		var (
+			wg           sync.WaitGroup
+			allowedCount atomic.Int32
+			lockedCount  atomic.Int32
+			auditCount   atomic.Int32
+		)
+		for range workers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				res, locked := lim.Reserve("10.0.0.9", "shop-concurrent")
+				if locked {
+					lockedCount.Add(1)
+					return
+				}
+				allowedCount.Add(1)
+				if newly, _ := lim.CommitFailure(res); newly {
+					auditCount.Add(1)
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		if allowedCount.Load() != 5 {
+			t.Fatalf("allowed attempts = %d, want 5", allowedCount.Load())
+		}
+		if lockedCount.Load() != workers-5 {
+			t.Fatalf("locked attempts = %d, want %d", lockedCount.Load(), workers-5)
+		}
+		if auditCount.Load() != 1 {
+			t.Fatalf("newlyLocked audit count = %d, want 1", auditCount.Load())
+		}
+
+		// Verify Cancel releases a reserved slot so successful auth never counts as failure.
+		lim2 := NewSMTPAuthLimiter(2, 15*time.Minute, clk)
+		for range 5 {
+			res, locked := lim2.Reserve("10.0.0.10", "shop-ok")
+			if locked {
+				t.Fatalf("unexpected lockout when all attempts succeed")
+			}
+			lim2.Cancel(res)
 		}
 	})
 }

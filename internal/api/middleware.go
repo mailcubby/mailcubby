@@ -12,10 +12,12 @@ import (
 	"net/netip"
 	"path"
 	"runtime/debug"
+	"strconv"
 	"strings"
 
 	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/config"
+	"github.com/mailcubby/mailcubby/internal/ratelimit"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
@@ -166,6 +168,7 @@ func isSensitiveHeader(name string) bool {
 func (s *Server) withMiddleware(next http.Handler) http.Handler {
 	h := next
 	h = s.csrfMiddleware(h)
+	h = s.apiRateLimitMiddleware(h)
 	h = s.authenticateMiddleware(h)
 	h = s.bodyLimitMiddleware(h)
 	h = s.accessLogMiddleware(h)
@@ -402,6 +405,43 @@ func extractBearerToken(header string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSpace(trimmed[len("Bearer "):]), true
+}
+
+// apiRateLimitMiddleware enforces MAILCUBBY_API_RATE_LIMIT (SPEC 9.2, 12.4):
+// per session or per API token in server mode on API/render endpoints. Local
+// mode and unauthenticated endpoints (which have dedicated IP limiters) are exempt.
+func (s *Server) apiRateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.Mode != config.ModeServer || s.apiLimiter == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !isAPIPath(r.URL.Path) && !isRenderPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		principal := PrincipalFromContext(r.Context())
+		var key string
+		switch principal.Kind {
+		case auth.PrincipalUser:
+			key = "session:" + principal.SessionID
+		case auth.PrincipalToken:
+			key = "token:" + strconv.FormatInt(principal.TokenID, 10)
+		default:
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if allowed, retryAfter := s.apiLimiter.Allow(key); !allowed {
+			sec := ratelimit.RetryAfterSeconds(retryAfter)
+			w.Header().Set("Retry-After", strconv.Itoa(sec))
+			writeError(w, http.StatusTooManyRequests, ErrCodeRateLimited, "rate limit exceeded, try again later", map[string]string{
+				"retry_after": strconv.Itoa(sec),
+			})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func isPublicUnsafePath(p string) bool {

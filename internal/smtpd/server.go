@@ -369,20 +369,29 @@ func (s *session) authenticate(username, password string) error {
 		return nil
 	}
 
-	// SPEC 12.4: check brute-force lockout before any credential lookup.
-	if s.be.authLimiter != nil && s.be.authLimiter.IsLocked(s.remoteIP, username) {
-		return errAuthLocked
+	// SPEC 12.4: atomically reserve an auth slot before credential lookup so
+	// concurrent bad attempts cannot exceed SMTPAuthMaxFailures.
+	var res ratelimit.SMTPAuthReservation
+	if s.be.authLimiter != nil {
+		var locked bool
+		res, locked = s.be.authLimiter.Reserve(s.remoteIP, username)
+		if locked {
+			return errAuthLocked
+		}
 	}
 
 	if s.be.creds == nil || s.be.cipher == nil {
-		return s.failAuth(username, nil)
+		return s.failAuth(username, nil, res)
 	}
 
 	ctx := context.Background()
 	lookup, err := s.be.creds.LookupSMTPCredentialByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return s.failAuth(username, nil)
+			return s.failAuth(username, nil, res)
+		}
+		if s.be.authLimiter != nil {
+			s.be.authLimiter.Cancel(res)
 		}
 		if s.be.log != nil {
 			s.be.log.Error("smtp credential lookup failed",
@@ -396,7 +405,7 @@ func (s *session) authenticate(username, password string) error {
 
 	projID := lookup.Credential.ProjectID
 	if lookup.Credential.DisabledAt != nil {
-		return s.failAuth(username, &projID)
+		return s.failAuth(username, &projID, res)
 	}
 
 	plain, err := s.be.cipher.Open(lookup.Credential.PasswordEnc, []byte(lookup.Credential.Username))
@@ -409,11 +418,15 @@ func (s *session) authenticate(username, password string) error {
 				"error", err,
 			)
 		}
-		return s.failAuth(username, &projID)
+		return s.failAuth(username, &projID, res)
 	}
 
 	if subtle.ConstantTimeCompare(plain, []byte(password)) != 1 {
-		return s.failAuth(username, &projID)
+		return s.failAuth(username, &projID, res)
+	}
+
+	if s.be.authLimiter != nil {
+		s.be.authLimiter.Cancel(res)
 	}
 
 	credID := lookup.Credential.ID
@@ -444,12 +457,12 @@ func (s *session) authenticate(username, password string) error {
 	return nil
 }
 
-// failAuth records a failed AUTH attempt, emits a one-time smtp.auth_lockout
+// failAuth commits a reserved failed AUTH attempt, emits a one-time smtp.auth_lockout
 // audit entry if the lockout threshold is crossed, waits 1 s through the
 // injected clock, and returns bare errAuthFailed (535 5.7.8) (SPEC 7.4, 12.4).
-func (s *session) failAuth(username string, projectID *int64) *smtp.SMTPError {
+func (s *session) failAuth(username string, projectID *int64, res ratelimit.SMTPAuthReservation) *smtp.SMTPError {
 	if s.be.authLimiter != nil {
-		if newlyLocked, reason := s.be.authLimiter.RecordFailure(s.remoteIP, username); newlyLocked {
+		if newlyLocked, reason := s.be.authLimiter.CommitFailure(res); newlyLocked {
 			s.auditAuthLockout(username, projectID, reason)
 		}
 	}

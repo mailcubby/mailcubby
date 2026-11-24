@@ -19,8 +19,9 @@ type SlidingWindow struct {
 	window time.Duration
 	clk    clock.Clock
 
-	mu      sync.Mutex
-	entries map[string][]time.Time
+	mu        sync.Mutex
+	entries   map[string][]time.Time
+	lastPrune time.Time
 }
 
 // NewSlidingWindow returns a SlidingWindow limiter backed by clk.
@@ -67,9 +68,7 @@ func (sw *SlidingWindow) Record(key string) {
 
 	ts := sw.pruneKeyLocked(key, now)
 	sw.entries[key] = append(ts, now)
-	if len(sw.entries) > pruneThreshold {
-		sw.pruneAllLocked(now)
-	}
+	sw.maybePruneAllLocked(now)
 }
 
 // Allow atomically checks whether key is below its limit and, if so, records
@@ -100,9 +99,7 @@ func (sw *SlidingWindow) Reserve(key string) (at time.Time, allowed bool, retryA
 		return time.Time{}, false, computeRetryAfter(ts[0], sw.window, now)
 	}
 	sw.entries[key] = append(ts, now)
-	if len(sw.entries) > pruneThreshold {
-		sw.pruneAllLocked(now)
-	}
+	sw.maybePruneAllLocked(now)
 	return now, true, 0
 }
 
@@ -171,6 +168,18 @@ func (sw *SlidingWindow) pruneKeyLocked(key string, now time.Time) []time.Time {
 		sw.entries[key] = ts
 	}
 	return ts
+}
+
+func (sw *SlidingWindow) maybePruneAllLocked(now time.Time) {
+	if len(sw.entries) <= pruneThreshold {
+		return
+	}
+	minInterval := max(time.Second, sw.window/4)
+	if !sw.lastPrune.IsZero() && now.Sub(sw.lastPrune) < minInterval {
+		return
+	}
+	sw.lastPrune = now
+	sw.pruneAllLocked(now)
 }
 
 func (sw *SlidingWindow) pruneAllLocked(now time.Time) {

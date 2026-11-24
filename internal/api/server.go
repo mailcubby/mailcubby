@@ -78,6 +78,7 @@ type Server struct {
 	loginIPLimiter  *ratelimit.SlidingWindow
 	resetIPLimiter  *ratelimit.SlidingWindow
 	inviteIPLimiter *ratelimit.SlidingWindow
+	apiLimiter      *ratelimit.TokenBucket
 
 	routes  []Route
 	handler http.Handler
@@ -168,6 +169,7 @@ func New(cfg config.Config, st *store.Store, blobs *blob.Store, bus *events.Bus,
 		loginIPLimiter:  ratelimit.NewSlidingWindow(loginLimit*loginIPRateMultiplier, loginWindow, clk),
 		resetIPLimiter:  ratelimit.NewSlidingWindow(resetRateLimitCount, resetRateLimitWindow, clk),
 		inviteIPLimiter: ratelimit.NewSlidingWindow(inviteRateLimitCount, inviteRateLimitWindow, clk),
+		apiLimiter:      ratelimit.NewTokenBucket(cfg.APIRateLimit.Count, cfg.APIRateLimit.Window, clk),
 		sse:             newSSETracker(cfg.SSEMaxConnectionsPerUser),
 		adminAccessSeen: make(map[adminAccessKey]struct{}),
 		sparkCache:      make(map[int64]sparklineEntry),
