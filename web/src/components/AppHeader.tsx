@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ChevronDown,
+  Eye,
   Inbox,
   Keyboard,
   LogOut,
@@ -9,6 +10,7 @@ import {
   Moon,
   Search,
   Shield,
+  ShieldCheck,
   SlidersHorizontal,
   Sun,
   User,
@@ -170,6 +172,17 @@ function AccountMenu() {
               <SlidersHorizontal className="size-3.5 text-muted-foreground" aria-hidden="true" />
               <span>Preferences</span>
             </Link>
+            {me?.user.is_admin ? (
+              <Link
+                to="/admin/users"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs text-foreground hover:bg-muted"
+              >
+                <ShieldCheck className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                <span>Admin</span>
+              </Link>
+            ) : null}
           </div>
 
           <div className="border-t border-border pt-1">
@@ -192,9 +205,12 @@ function AccountMenu() {
 
 export function AppHeader() {
   const { data: meta } = useQuery(metaQueryOptions());
-  const { openPalette, openShortcuts } = useAppCommands();
+  const { data: me } = useQuery(authMeQueryOptions());
+  const { openPalette, openShortcuts, activeInbox, previewAsViewer, togglePreviewAsViewer } =
+    useAppCommands();
   const instanceName = meta?.instance_name || "Mailcubby";
   const isServer = meta?.mode === "server";
+  const canPreviewAsViewer = activeInbox?.actualRole === "owner";
 
   return (
     <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4">
@@ -213,9 +229,35 @@ export function AppHeader() {
             Local mode
           </Badge>
         ) : null}
+        {isServer && me?.user.is_admin ? (
+          <Link
+            to="/admin/users"
+            className="hidden h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:inline-flex"
+          >
+            <ShieldCheck className="size-3.5" aria-hidden="true" />
+            <span>Admin</span>
+          </Link>
+        ) : null}
       </div>
 
       <nav aria-label="Application utilities" className="flex items-center gap-1.5 sm:gap-2">
+        {canPreviewAsViewer ? (
+          <Button
+            variant={previewAsViewer ? "default" : "ghost"}
+            size="xs"
+            aria-pressed={previewAsViewer}
+            aria-label={previewAsViewer ? "Exit viewer preview" : "Preview as viewer"}
+            title={previewAsViewer ? "Exit viewer preview" : "Preview as viewer"}
+            onClick={togglePreviewAsViewer}
+            className="h-7"
+          >
+            <Eye className="size-3.5" aria-hidden="true" />
+            <span className="hidden md:inline">
+              {previewAsViewer ? "Viewer preview" : "Preview as viewer"}
+            </span>
+          </Button>
+        ) : null}
+
         <button
           type="button"
           aria-label="Open command palette"

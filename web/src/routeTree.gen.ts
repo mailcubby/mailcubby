@@ -15,6 +15,9 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AccountPreferencesRouteImport } from './routes/account.preferences'
 import { Route as AccountProfileRouteImport } from './routes/account.profile'
 import { Route as AccountSecurityRouteImport } from './routes/account.security'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminProjectsRouteImport } from './routes/admin.projects'
+import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as PProjectRouteImport } from './routes/p.$project'
 import { Route as ResetTokenRouteImport } from './routes/reset.$token'
@@ -52,6 +55,21 @@ const AccountProfileRoute = AccountProfileRouteImport.update({
 const AccountSecurityRoute = AccountSecurityRouteImport.update({
   id: '/account/security',
   path: '/account/security',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminProjectsRoute = AdminProjectsRouteImport.update({
+  id: '/admin/projects',
+  path: '/admin/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/admin/users',
+  path: '/admin/users',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
@@ -102,9 +120,12 @@ export interface FileRoutesByFullPath {
   '/account/preferences': typeof AccountPreferencesRoute
   '/account/profile': typeof AccountProfileRoute
   '/account/security': typeof AccountSecurityRoute
+  '/admin/projects': typeof AdminProjectsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/invite/$token': typeof InviteTokenRoute
   '/p/$project': typeof PProjectRouteWithChildren
   '/reset/$token': typeof ResetTokenRoute
+  '/admin/': typeof AdminIndexRoute
   '/p/$project/': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
   '/p/$project/settings/general': typeof PProjectSettingsGeneralRoute
@@ -118,8 +139,11 @@ export interface FileRoutesByTo {
   '/account/preferences': typeof AccountPreferencesRoute
   '/account/profile': typeof AccountProfileRoute
   '/account/security': typeof AccountSecurityRoute
+  '/admin/projects': typeof AdminProjectsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset/$token': typeof ResetTokenRoute
+  '/admin': typeof AdminIndexRoute
   '/p/$project': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
   '/p/$project/settings/general': typeof PProjectSettingsGeneralRoute
@@ -134,9 +158,12 @@ export interface FileRoutesById {
   '/account/preferences': typeof AccountPreferencesRoute
   '/account/profile': typeof AccountProfileRoute
   '/account/security': typeof AccountSecurityRoute
+  '/admin/projects': typeof AdminProjectsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/invite/$token': typeof InviteTokenRoute
   '/p/$project': typeof PProjectRouteWithChildren
   '/reset/$token': typeof ResetTokenRoute
+  '/admin/': typeof AdminIndexRoute
   '/p/$project/': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
   '/p/$project_/settings/general': typeof PProjectSettingsGeneralRoute
@@ -152,9 +179,12 @@ export interface FileRouteTypes {
     | '/account/preferences'
     | '/account/profile'
     | '/account/security'
+    | '/admin/projects'
+    | '/admin/users'
     | '/invite/$token'
     | '/p/$project'
     | '/reset/$token'
+    | '/admin/'
     | '/p/$project/'
     | '/p/$project/m/$messageId'
     | '/p/$project/settings/general'
@@ -168,8 +198,11 @@ export interface FileRouteTypes {
     | '/account/preferences'
     | '/account/profile'
     | '/account/security'
+    | '/admin/projects'
+    | '/admin/users'
     | '/invite/$token'
     | '/reset/$token'
+    | '/admin'
     | '/p/$project'
     | '/p/$project/m/$messageId'
     | '/p/$project/settings/general'
@@ -183,9 +216,12 @@ export interface FileRouteTypes {
     | '/account/preferences'
     | '/account/profile'
     | '/account/security'
+    | '/admin/projects'
+    | '/admin/users'
     | '/invite/$token'
     | '/p/$project'
     | '/reset/$token'
+    | '/admin/'
     | '/p/$project/'
     | '/p/$project/m/$messageId'
     | '/p/$project_/settings/general'
@@ -200,9 +236,12 @@ export interface RootRouteChildren {
   AccountPreferencesRoute: typeof AccountPreferencesRoute
   AccountProfileRoute: typeof AccountProfileRoute
   AccountSecurityRoute: typeof AccountSecurityRoute
+  AdminProjectsRoute: typeof AdminProjectsRoute
+  AdminUsersRoute: typeof AdminUsersRoute
   InviteTokenRoute: typeof InviteTokenRoute
   PProjectRoute: typeof PProjectRouteWithChildren
   ResetTokenRoute: typeof ResetTokenRoute
+  AdminIndexRoute: typeof AdminIndexRoute
   PProjectSettingsGeneralRoute: typeof PProjectSettingsGeneralRoute
   PProjectSettingsMembersRoute: typeof PProjectSettingsMembersRoute
   PProjectSettingsIndexRoute: typeof PProjectSettingsIndexRoute
@@ -250,6 +289,27 @@ declare module '@tanstack/react-router' {
       path: '/account/security'
       fullPath: '/account/security'
       preLoaderRoute: typeof AccountSecurityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/projects': {
+      id: '/admin/projects'
+      path: '/admin/projects'
+      fullPath: '/admin/projects'
+      preLoaderRoute: typeof AdminProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/invite/$token': {
@@ -332,9 +392,12 @@ const rootRouteChildren: RootRouteChildren = {
   AccountPreferencesRoute: AccountPreferencesRoute,
   AccountProfileRoute: AccountProfileRoute,
   AccountSecurityRoute: AccountSecurityRoute,
+  AdminProjectsRoute: AdminProjectsRoute,
+  AdminUsersRoute: AdminUsersRoute,
   InviteTokenRoute: InviteTokenRoute,
   PProjectRoute: PProjectRouteWithChildren,
   ResetTokenRoute: ResetTokenRoute,
+  AdminIndexRoute: AdminIndexRoute,
   PProjectSettingsGeneralRoute: PProjectSettingsGeneralRoute,
   PProjectSettingsMembersRoute: PProjectSettingsMembersRoute,
   PProjectSettingsIndexRoute: PProjectSettingsIndexRoute,

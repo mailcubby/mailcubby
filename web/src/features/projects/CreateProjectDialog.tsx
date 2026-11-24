@@ -42,6 +42,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
     },
     onSuccess: (created) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.adminProjects() });
       toast.success(`Created project "${created.name}"`);
       setName("");
       setSlug("");
