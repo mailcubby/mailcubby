@@ -196,7 +196,7 @@ Roles are per project: `owner`, `member`, `viewer`. Instance admins (`users.is_a
 
 **FR-056 Accept.** `GET /api/v1/invites/{token}` previews project name (absent for instance invites), inviter name, role and email (public, rate limited). `POST /api/v1/invites/{token}/accept`:
 - If the caller is logged in, the membership is added to the current user (the invite email is informative; owners see who accepted). For an instance invite, a logged-in caller gets `409 conflict` (nothing to accept).
-- If not logged in and a user exists with the invite email and `password_hash` is NULL (admin-created user): body `{name?, password}` sets the password (and name if given), and logs them in.
+- If not logged in, the invite is an instance invite, and a user exists with the invite email and `password_hash` is NULL (admin-created user): body `{name?, password}` sets the password (and name if given), and logs them in. A project invite never sets a password: for any existing user (with or without a password) it returns `409 login_required`.
 - If not logged in and no user exists with the invite email: body `{name, password}` creates the user with that email and logs them in.
 - If not logged in and a user with a password exists with that email: `409 login_required`; the UI asks the user to log in and then accepts.
 - If the user is already a member, the role is upgraded if the invite role is higher, never downgraded.

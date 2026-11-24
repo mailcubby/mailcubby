@@ -407,8 +407,11 @@ func (s *Server) handleAcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if userExists && existingUser.PasswordHash != nil && *existingUser.PasswordHash != "" {
-		// FR-056: existing account with password must sign in first.
+	// FR-056: an existing account must sign in first, except that an instance
+	// invite may set the password of an admin-created passwordless user. A
+	// project invite must never set a password: any project owner can create
+	// one for an arbitrary email and would otherwise take over the account.
+	if userExists && (inv.ProjectID != nil || (existingUser.PasswordHash != nil && *existingUser.PasswordHash != "")) {
 		writeError(w, http.StatusConflict, ErrCodeLoginRequired, "an account with this email already exists; sign in to accept the invite", nil)
 		return
 	}
@@ -471,7 +474,7 @@ func (s *Server) handleAcceptInvite(w http.ResponseWriter, r *http.Request) {
 		u, uErr := tx.GetUserByEmail(ctx, inv.Email)
 		switch {
 		case uErr == nil:
-			if u.PasswordHash != nil && *u.PasswordHash != "" {
+			if inv.ProjectID != nil || (u.PasswordHash != nil && *u.PasswordHash != "") {
 				return errInviteLoginRequired
 			}
 			if u.DisabledAt != nil {
