@@ -46,9 +46,16 @@ type Tx struct {
 }
 
 // SQLTx returns the underlying *sql.Tx for packages that execute custom
-// parameterized statements (such as internal/search FTS indexing).
+// parameterized statements (such as internal/search FTS indexing and filtered deletes).
 func (t *Tx) SQLTx() *sql.Tx {
 	return t.tx
+}
+
+// ReaderDB returns the read-only *sql.DB pool for packages that execute custom
+// parameterized read queries (such as internal/search). Callers must filter every
+// tenant table by project_id and pass all user values as bind parameters.
+func (s *Store) ReaderDB() *sql.DB {
+	return s.reader
 }
 
 // MigrationInfo describes the status of one embedded database migration.

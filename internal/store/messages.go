@@ -649,6 +649,95 @@ func (s *Store) ListAttachmentsByMessagePK(ctx context.Context, projectID, messa
 	return out, nil
 }
 
+// ScanMessageRow scans a row with all 29 messages table columns (in schema order)
+// into a Message. Used by internal/search for dynamic FTS5 queries.
+func ScanMessageRow(rows *sql.Rows) (Message, error) {
+	var r sqlc.Message
+	if err := rows.Scan(
+		&r.Pk,
+		&r.ID,
+		&r.ProjectID,
+		&r.SmtpCredentialID,
+		&r.ReceivedAt,
+		&r.Subject,
+		&r.FromName,
+		&r.FromAddr,
+		&r.ToJson,
+		&r.CcJson,
+		&r.BccJson,
+		&r.ReplyToJson,
+		&r.EnvelopeFrom,
+		&r.EnvelopeToJson,
+		&r.MessageIDHeader,
+		&r.DateHeader,
+		&r.Snippet,
+		&r.HasHtml,
+		&r.HasText,
+		&r.TextGenerated,
+		&r.AttachmentCount,
+		&r.SizeBytes,
+		&r.BlobPath,
+		&r.Seen,
+		&r.RemoteIp,
+		&r.Helo,
+		&r.AuthUser,
+		&r.Tls,
+		&r.ParseWarningsJson,
+	); err != nil {
+		return Message{}, fmt.Errorf("store: scan message row: %w", err)
+	}
+	return messageFromRow(r)
+}
+
+// DeleteMessagesAndUpdateCountersTx deletes the given messages by ID inside tx
+// and updates project counters and last_message_at atomically (FR-034, FR-076).
+func (t *Tx) DeleteMessagesAndUpdateCountersTx(ctx context.Context, projectID int64, targets []DeletedMessage, now time.Time) ([]DeletedMessage, Project, error) {
+	var (
+		deleted     []DeletedMessage
+		unreadDelta int64
+		sizeDelta   int64
+	)
+	for _, msg := range targets {
+		affected, err := t.q.DeleteMessageByID(ctx, sqlc.DeleteMessageByIDParams{
+			ProjectID: projectID,
+			ID:        msg.ID,
+		})
+		if err != nil {
+			return nil, Project{}, fmt.Errorf("store: delete message %s: %w", msg.ID, mapError(err))
+		}
+		if affected == 0 {
+			continue
+		}
+		if msg.WasUnread {
+			unreadDelta--
+		}
+		sizeDelta -= msg.SizeBytes
+		deleted = append(deleted, msg)
+	}
+
+	if len(deleted) == 0 {
+		proj, err := t.GetProjectByID(ctx, projectID)
+		return nil, proj, err
+	}
+
+	lastMsg, err := latestMessageReceivedAtNull(ctx, t.q, projectID)
+	if err != nil {
+		return nil, Project{}, err
+	}
+	projRow, err := t.q.UpdateProjectCountersAndLastMessageAt(ctx, sqlc.UpdateProjectCountersAndLastMessageAtParams{
+		MessageDelta:  -int64(len(deleted)),
+		UnreadDelta:   unreadDelta,
+		SizeDelta:     sizeDelta,
+		LastMessageAt: lastMsg,
+		UpdatedAt:     now.UTC().UnixMilli(),
+		ID:            projectID,
+	})
+	if err != nil {
+		return nil, Project{}, fmt.Errorf("store: update counters after query delete: %w", mapError(err))
+	}
+	return deleted, projectFromRow(projRow), nil
+}
+
 func messageFromRow(r sqlc.Message) (Message, error) {
 	to, err := unmarshalAddresses(r.ToJson)
 	if err != nil {

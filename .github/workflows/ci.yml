@@ -49,6 +49,21 @@ jobs:
       - name: Run Go race tests
         run: make test-race
 
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Fuzz search parser and SQL builder (60s)
+        run: go test -fuzz=FuzzParseAndBuild -fuzztime=60s ./internal/search
+
   docker:
     runs-on: ubuntu-latest
     steps:

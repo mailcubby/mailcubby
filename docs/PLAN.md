@@ -199,7 +199,7 @@ Acceptance:
 **Goal**: full-text search with operators, and tags.
 
 Tasks:
-- [ ] `internal/search`: query parser (SPEC FR-081), fuzz test, SQL builder over the FTS index (FR-080; except `credential:`, added in Phase 8).
+- [x] `internal/search`: query parser (SPEC FR-081), fuzz test, SQL builder over the FTS index (FR-080; except `credential:`, added in Phase 8).
 - [ ] `query` parameter on list, delete-all and wait (FR-082).
 - [ ] Tags (FR-085): store queries, auto tags at ingest from `X-Tags` and plus-addressing (FR-086), tag endpoints (SPEC 8.5), `PATCH` message tags, bulk add/remove tags, `tag` list filter, `message.updated` events for tag changes.
 - [ ] UI: search bar with operator autocomplete and chips; tags in sidebar with counts; tag editing in message header and bulk bar; `t` shortcut; palette search operators.
