@@ -15,6 +15,7 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AccountPreferencesRouteImport } from './routes/account.preferences'
 import { Route as AccountProfileRouteImport } from './routes/account.profile'
 import { Route as AccountSecurityRouteImport } from './routes/account.security'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as PProjectRouteImport } from './routes/p.$project'
 import { Route as ResetTokenRouteImport } from './routes/reset.$token'
 import { Route as PProjectIndexRouteImport } from './routes/p.$project.index'
@@ -51,6 +52,11 @@ const AccountProfileRoute = AccountProfileRouteImport.update({
 const AccountSecurityRoute = AccountSecurityRouteImport.update({
   id: '/account/security',
   path: '/account/security',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PProjectRoute = PProjectRouteImport.update({
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/account/preferences': typeof AccountPreferencesRoute
   '/account/profile': typeof AccountProfileRoute
   '/account/security': typeof AccountSecurityRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/p/$project': typeof PProjectRouteWithChildren
   '/reset/$token': typeof ResetTokenRoute
   '/p/$project/': typeof PProjectIndexRoute
@@ -111,6 +118,7 @@ export interface FileRoutesByTo {
   '/account/preferences': typeof AccountPreferencesRoute
   '/account/profile': typeof AccountProfileRoute
   '/account/security': typeof AccountSecurityRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/reset/$token': typeof ResetTokenRoute
   '/p/$project': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
@@ -126,6 +134,7 @@ export interface FileRoutesById {
   '/account/preferences': typeof AccountPreferencesRoute
   '/account/profile': typeof AccountProfileRoute
   '/account/security': typeof AccountSecurityRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/p/$project': typeof PProjectRouteWithChildren
   '/reset/$token': typeof ResetTokenRoute
   '/p/$project/': typeof PProjectIndexRoute
@@ -143,6 +152,7 @@ export interface FileRouteTypes {
     | '/account/preferences'
     | '/account/profile'
     | '/account/security'
+    | '/invite/$token'
     | '/p/$project'
     | '/reset/$token'
     | '/p/$project/'
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/account/preferences'
     | '/account/profile'
     | '/account/security'
+    | '/invite/$token'
     | '/reset/$token'
     | '/p/$project'
     | '/p/$project/m/$messageId'
@@ -172,6 +183,7 @@ export interface FileRouteTypes {
     | '/account/preferences'
     | '/account/profile'
     | '/account/security'
+    | '/invite/$token'
     | '/p/$project'
     | '/reset/$token'
     | '/p/$project/'
@@ -188,6 +200,7 @@ export interface RootRouteChildren {
   AccountPreferencesRoute: typeof AccountPreferencesRoute
   AccountProfileRoute: typeof AccountProfileRoute
   AccountSecurityRoute: typeof AccountSecurityRoute
+  InviteTokenRoute: typeof InviteTokenRoute
   PProjectRoute: typeof PProjectRouteWithChildren
   ResetTokenRoute: typeof ResetTokenRoute
   PProjectSettingsGeneralRoute: typeof PProjectSettingsGeneralRoute
@@ -237,6 +250,13 @@ declare module '@tanstack/react-router' {
       path: '/account/security'
       fullPath: '/account/security'
       preLoaderRoute: typeof AccountSecurityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/p/$project': {
@@ -312,6 +332,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountPreferencesRoute: AccountPreferencesRoute,
   AccountProfileRoute: AccountProfileRoute,
   AccountSecurityRoute: AccountSecurityRoute,
+  InviteTokenRoute: InviteTokenRoute,
   PProjectRoute: PProjectRouteWithChildren,
   ResetTokenRoute: ResetTokenRoute,
   PProjectSettingsGeneralRoute: PProjectSettingsGeneralRoute,

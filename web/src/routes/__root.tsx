@@ -19,7 +19,12 @@ export const Route = createRootRoute({
 });
 
 function isPublicAuthPath(pathname: string): boolean {
-  return pathname === "/login" || pathname === "/setup" || pathname.startsWith("/reset/");
+  return (
+    pathname === "/login" ||
+    pathname === "/setup" ||
+    pathname.startsWith("/invite/") ||
+    pathname.startsWith("/reset/")
+  );
 }
 
 function RootShell() {
@@ -194,7 +199,7 @@ function RootLayout() {
     return <ServerProtectedGate pathname={pathname} searchStr={searchStr} />;
   }
 
-  if (isPublicRoute && pathname.startsWith("/reset/")) {
+  if (isPublicRoute && (pathname.startsWith("/reset/") || pathname.startsWith("/invite/"))) {
     return <AuthPublicShell />;
   }
 
