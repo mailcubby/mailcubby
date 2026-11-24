@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -154,6 +155,12 @@ func (s *Server) SetTLSConfig(tlsCfg *tls.Config) {
 	s.smtp.TLSConfig = tlsCfg
 }
 
+// SetRateLimiter configures the per-project SMTP ingest rate limiter checked at
+// MAIL FROM for authenticated sessions (FR-097). Must be called before Serve.
+func (s *Server) SetRateLimiter(rl *ratelimit.SlidingWindow) {
+	s.be.rateLimiter = rl
+}
+
 // Serve wraps ln in a LimitListener enforcing total and per-IP connection limits
 // and serves SMTP until Shutdown or Close is called.
 func (s *Server) Serve(ln net.Listener) error {
@@ -239,6 +246,7 @@ type backend struct {
 	clk              clock.Clock
 	log              *slog.Logger
 	authLimiter      *ratelimit.SMTPAuthLimiter
+	rateLimiter      *ratelimit.SlidingWindow
 	authFailureDelay time.Duration
 	shutdownCh       <-chan struct{}
 
@@ -520,6 +528,21 @@ func (s *session) Mail(from string, opts *smtp.MailOptions) error {
 	if s.be.cfg.Mode == config.ModeServer && !s.auth.Authenticated && strings.TrimSpace(s.be.cfg.InboxDomain) == "" {
 		return errAuthRequired
 	}
+	// FR-097: reject AUTH sessions at MAIL FROM with 450 4.7.1 when the project is already at its rate limit.
+	if s.be.rateLimiter != nil && s.auth.Authenticated {
+		projID := s.auth.ProjectID
+		if projID == 0 && s.be.cfg.Mode == config.ModeLocal && s.be.lookup != nil {
+			slug := config.Slugify(s.auth.Username, s.be.cfg.DefaultProject)
+			if proj, err := s.be.lookup.GetProjectBySlug(context.Background(), slug); err == nil {
+				projID = proj.ID
+			}
+		}
+		if projID > 0 {
+			if allowed, _ := s.be.rateLimiter.Check(strconv.FormatInt(projID, 10)); !allowed {
+				return errRateLimited
+			}
+		}
+	}
 	s.mailFrom = from
 	s.rcpts = nil
 	s.targets = nil
@@ -646,10 +669,10 @@ func mapDataError(err error) *smtp.SMTPError {
 	if errors.Is(err, smtp.ErrDataTooLarge) {
 		return smtp.ErrDataTooLarge
 	}
-	if errors.Is(err, ErrQuotaExceeded) {
+	if errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ingest.ErrQuotaExceeded) {
 		return errQuotaExceeded
 	}
-	if errors.Is(err, ErrRateLimited) {
+	if errors.Is(err, ErrRateLimited) || errors.Is(err, ingest.ErrRateLimited) {
 		return errRateLimited
 	}
 	var smtpErr *smtp.SMTPError

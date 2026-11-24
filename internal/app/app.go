@@ -26,6 +26,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
 	"github.com/mailcubby/mailcubby/internal/ingest"
+	"github.com/mailcubby/mailcubby/internal/ratelimit"
 	"github.com/mailcubby/mailcubby/internal/render"
 	"github.com/mailcubby/mailcubby/internal/retention"
 	"github.com/mailcubby/mailcubby/internal/secrets"
@@ -159,7 +160,12 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 	ing := ingest.New(st, blobs, clk, bus, log)
 	sweeper := retention.NewSweeper(st, blobs, bus, clk, log, cfg)
 	ing.SetRetentionNudge(sweeper.MaybeNudge)
+
+	smtpRateLimiter := ratelimit.NewSlidingWindow(cfg.SMTPRateLimit.Count, cfg.SMTPRateLimit.Window, clk)
+	ing.SetQuotaCheck(buildIngestQuotaCheck(cfg, st, smtpRateLimiter))
+
 	smtpSrv := smtpd.New(cfg, st, ing, clk, log)
+	smtpSrv.SetRateLimiter(smtpRateLimiter)
 	if smtpTLSConfig != nil {
 		smtpSrv.SetTLSConfig(smtpTLSConfig)
 	}
@@ -466,4 +472,45 @@ func initServerSetup(
 
 	log.Warn("setup token: "+token, "setup_url", cfg.BaseURL+"/setup")
 	return nil
+}
+
+// buildIngestQuotaCheck constructs the step 2 ingest hook enforcing
+// MAILCUBBY_INSTANCE_MAX_BYTES (FR-096) and MAILCUBBY_SMTP_RATE_LIMIT (FR-097).
+func buildIngestQuotaCheck(
+	cfg config.Config,
+	st *store.Store,
+	rateLimiter *ratelimit.SlidingWindow,
+) func(ctx context.Context, sizeBytes int64, targets []ingest.Target) error {
+	return func(ctx context.Context, sizeBytes int64, targets []ingest.Target) error {
+		if cfg.InstanceMaxBytes > 0 {
+			totals, err := st.GetInstanceProjectTotals(ctx)
+			if err != nil {
+				return fmt.Errorf("app: check instance quota: %w", err)
+			}
+			added := sizeBytes * int64(len(targets))
+			if totals.TotalBytes >= cfg.InstanceMaxBytes || totals.TotalBytes+added > cfg.InstanceMaxBytes {
+				return ingest.ErrQuotaExceeded
+			}
+		}
+
+		if rateLimiter != nil && cfg.SMTPRateLimit.Count > 0 {
+			type reservedSlot struct {
+				key string
+				at  time.Time
+			}
+			reserved := make([]reservedSlot, 0, len(targets))
+			for _, t := range targets {
+				key := strconv.FormatInt(t.ProjectID, 10)
+				at, allowed, _ := rateLimiter.Reserve(key)
+				if !allowed {
+					for _, r := range reserved {
+						rateLimiter.Cancel(r.key, r.at)
+					}
+					return ingest.ErrRateLimited
+				}
+				reserved = append(reserved, reservedSlot{key: key, at: at})
+			}
+		}
+		return nil
+	}
 }

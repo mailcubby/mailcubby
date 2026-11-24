@@ -9,6 +9,7 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"github.com/mailcubby/mailcubby/internal/events"
+	"github.com/mailcubby/mailcubby/internal/ingest"
 	"github.com/mailcubby/mailcubby/internal/search"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
@@ -375,6 +376,14 @@ func (s *Server) handleSendTest(w http.ResponseWriter, r *http.Request) {
 
 	ref, err := s.ingestor.SendTest(r.Context(), pctx.Project.ID, pctx.Project.Slug)
 	if err != nil {
+		if errors.Is(err, ingest.ErrQuotaExceeded) {
+			writeError(w, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, "instance storage quota exceeded", nil)
+			return
+		}
+		if errors.Is(err, ingest.ErrRateLimited) {
+			writeError(w, http.StatusTooManyRequests, ErrCodeRateLimited, "project rate limit exceeded", nil)
+			return
+		}
 		s.log.Error("send test email failed",
 			"request_id", RequestIDFromContext(r.Context()),
 			"project_id", pctx.Project.ID,
