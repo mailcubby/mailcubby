@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -140,13 +141,21 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 
 	rawQuery := strings.TrimSpace(q.Get("query"))
 	rawTag := strings.TrimSpace(q.Get("tag"))
-	// TODO(phase-8): wire credential filter.
+	var credentialID *int64
+	if rawCred := strings.TrimSpace(q.Get("credential")); rawCred != "" {
+		parsedCred, credErr := parsePositiveInt64Param(rawCred)
+		if credErr != nil {
+			writeError(w, http.StatusBadRequest, ErrCodeBadRequest, "credential must be a positive integer", nil)
+			return
+		}
+		credentialID = &parsedCred
+	}
 
 	var (
 		msgs []store.Message
 		err  error
 	)
-	if rawQuery == "" && rawTag == "" {
+	if rawQuery == "" && rawTag == "" && credentialID == nil {
 		msgs, err = s.store.ListMessagesPage(r.Context(), pctx.Project.ID, beforeID, limit+1)
 	} else {
 		parsedQuery, parseErr := search.Parse(rawQuery)
@@ -155,9 +164,10 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		msgs, err = search.Messages(r.Context(), s.store, pctx.Project.ID, parsedQuery, search.BuildOptions{
-			Tag:      rawTag,
-			BeforeID: beforeID,
-			Limit:    limit + 1,
+			Tag:          rawTag,
+			CredentialID: credentialID,
+			BeforeID:     beforeID,
+			Limit:        limit + 1,
 		})
 	}
 	if err != nil {
@@ -192,9 +202,24 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	credLabels, err := s.credentialLabelsForMessages(r.Context(), pctx.Project.ID, msgs)
+	if err != nil {
+		s.log.Error("list credential labels failed",
+			"request_id", RequestIDFromContext(r.Context()),
+			"project_id", pctx.Project.ID,
+			"error", err,
+		)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+
 	items := make([]messageSummaryResponse, 0, len(msgs))
 	for _, m := range msgs {
-		items = append(items, toMessageSummary(m, tagsByPK[m.PK]))
+		var label string
+		if m.SMTPCredentialID != nil {
+			label = credLabels[*m.SMTPCredentialID]
+		}
+		items = append(items, toMessageSummary(m, tagsByPK[m.PK], label))
 	}
 
 	writeJSON(w, http.StatusOK, messageListResponse{
@@ -291,8 +316,20 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	credLabel, err := s.credentialLabelForMessage(r.Context(), pctx.Project.ID, msg.SMTPCredentialID)
+	if err != nil {
+		s.log.Error("lookup credential label for message detail failed",
+			"request_id", RequestIDFromContext(r.Context()),
+			"project_id", pctx.Project.ID,
+			"message_id", msg.ID,
+			"error", err,
+		)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+
 	resp := messageDetailResponse{
-		messageSummaryResponse: toMessageSummary(msg, tags),
+		messageSummaryResponse: toMessageSummary(msg, tags, credLabel),
 		ReplyTo:                toAddressResponses(msg.ReplyTo),
 		Bcc:                    toAddressResponses(msg.Bcc),
 		MessageIDHeader:        msg.MessageIDHeader,
@@ -578,7 +615,43 @@ func (s *Server) loadProjectMessage(w http.ResponseWriter, r *http.Request) (Pro
 	return pctx, msg, true
 }
 
-func toMessageSummary(m store.Message, tags []string) messageSummaryResponse {
+func (s *Server) credentialLabelsForMessages(ctx context.Context, projectID int64, msgs []store.Message) (map[int64]string, error) {
+	hasAny := false
+	for _, m := range msgs {
+		if m.SMTPCredentialID != nil {
+			hasAny = true
+			break
+		}
+	}
+	if !hasAny {
+		return nil, nil
+	}
+	creds, err := s.store.ListSMTPCredentialsByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]string, len(creds))
+	for _, c := range creds {
+		out[c.ID] = c.Label
+	}
+	return out, nil
+}
+
+func (s *Server) credentialLabelForMessage(ctx context.Context, projectID int64, credID *int64) (string, error) {
+	if credID == nil {
+		return "", nil
+	}
+	c, err := s.store.GetSMTPCredentialByID(ctx, projectID, *credID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	return c.Label, nil
+}
+
+func toMessageSummary(m store.Message, tags []string, credentialLabel string) messageSummaryResponse {
 	if tags == nil {
 		tags = []string{}
 	}
@@ -599,6 +672,7 @@ func toMessageSummary(m store.Message, tags []string) messageSummaryResponse {
 		HasHTML:         m.HasHTML,
 		HasText:         m.HasText,
 		Tags:            tags,
+		CredentialLabel: credentialLabel,
 	}
 }
 

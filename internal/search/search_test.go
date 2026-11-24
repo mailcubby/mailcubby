@@ -475,6 +475,8 @@ func TestBuilderNeverInterpolatesUserInput(t *testing.T) {
 		`subject:"` + sentinel + `"`,
 		`tag:` + sentinel,
 		`-tag:` + sentinel,
+		`credential:` + sentinel,
+		`-credential:"` + sentinel + `"`,
 		`-` + sentinel,
 		`unknown:` + sentinel,
 		`'; DROP TABLE messages; -- ` + sentinel,
@@ -495,5 +497,111 @@ func TestBuilderNeverInterpolatesUserInput(t *testing.T) {
 		if len(args) == 0 {
 			t.Fatalf("expected bind args for %q", raw)
 		}
+	}
+}
+
+// FR-021, FR-081: credential:<label> search operator and CredentialID filter.
+func TestSearchCredentialOperatorAndFilter(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	st := testutil.NewStore(t)
+	now := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+
+	projA, err := st.CreateProject(ctx, store.CreateProjectParams{
+		Slug: "shop", Name: "Shop", Color: "blue", Settings: store.DefaultProjectSettings(), Now: now,
+	})
+	if err != nil {
+		t.Fatalf("CreateProject(A): %v", err)
+	}
+	projB, err := st.CreateProject(ctx, store.CreateProjectParams{
+		Slug: "other", Name: "Other", Color: "red", Settings: store.DefaultProjectSettings(), Now: now,
+	})
+	if err != nil {
+		t.Fatalf("CreateProject(B): %v", err)
+	}
+
+	credStaging, err := st.CreateSMTPCredential(ctx, store.CreateSMTPCredentialParams{
+		ProjectID: projA.ID, Label: "staging", Username: "shop-stage001", PasswordEnc: []byte{1}, Now: now,
+	})
+	if err != nil {
+		t.Fatalf("CreateSMTPCredential(staging): %v", err)
+	}
+	credProd, err := st.CreateSMTPCredential(ctx, store.CreateSMTPCredentialParams{
+		ProjectID: projA.ID, Label: "prod like", Username: "shop-prod0001", PasswordEnc: []byte{1}, Now: now,
+	})
+	if err != nil {
+		t.Fatalf("CreateSMTPCredential(prod): %v", err)
+	}
+	credOther, err := st.CreateSMTPCredential(ctx, store.CreateSMTPCredentialParams{
+		ProjectID: projB.ID, Label: "staging", Username: "other-stage01", PasswordEnc: []byte{1}, Now: now,
+	})
+	if err != nil {
+		t.Fatalf("CreateSMTPCredential(other): %v", err)
+	}
+
+	insertMsg := func(projectID int64, id, subject string, credID *int64) {
+		t.Helper()
+		_, err := st.InsertMessage(ctx, store.InsertMessageParams{
+			ID:               id,
+			ProjectID:        projectID,
+			SMTPCredentialID: credID,
+			ReceivedAt:       now,
+			Subject:          subject,
+			EnvelopeFrom:     "app@test",
+			EnvelopeTo:       []string{"user@test"},
+			HasText:          true,
+			SizeBytes:        100,
+			BlobPath:         "1/2026/11/" + id + ".eml.zst",
+		})
+		if err != nil {
+			t.Fatalf("InsertMessage(%s): %v", id, err)
+		}
+	}
+
+	const (
+		idStaging = "01JCREDS000000000000000001"
+		idProd    = "01JCREDS000000000000000002"
+		idNone    = "01JCREDS000000000000000003"
+		idOther   = "01JCREDS000000000000000004"
+	)
+	insertMsg(projA.ID, idStaging, "Staging msg", &credStaging.ID)
+	insertMsg(projA.ID, idProd, "Prod msg", &credProd.ID)
+	insertMsg(projA.ID, idNone, "No cred msg", nil)
+	insertMsg(projB.ID, idOther, "Other project staging msg", &credOther.ID)
+
+	cases := []struct {
+		name    string
+		query   string
+		opts    search.BuildOptions
+		wantIDs []string
+	}{
+		{name: "credential:staging case-insensitive", query: "credential:STAGING", wantIDs: []string{idStaging}},
+		{name: "credential quoted with space", query: `credential:"prod like"`, wantIDs: []string{idProd}},
+		{name: "negated credential includes nil and other creds", query: "-credential:staging", wantIDs: []string{idNone, idProd}},
+		{name: "CredentialID filter matches only that cred", opts: search.BuildOptions{CredentialID: &credStaging.ID}, wantIDs: []string{idStaging}},
+		{name: "other project CredentialID returns nothing in projA", opts: search.BuildOptions{CredentialID: &credOther.ID}, wantIDs: []string{}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			parsed, err := search.Parse(tc.query)
+			if err != nil {
+				t.Fatalf("Parse(%q): %v", tc.query, err)
+			}
+			got, err := search.Messages(ctx, st, projA.ID, parsed, tc.opts)
+			if err != nil {
+				t.Fatalf("Messages(%q): %v", tc.query, err)
+			}
+			if len(got) != len(tc.wantIDs) {
+				t.Fatalf("got %d messages, want %d", len(got), len(tc.wantIDs))
+			}
+			for i, want := range tc.wantIDs {
+				if got[i].ID != want {
+					t.Errorf("got[%d]=%s, want %s", i, got[i].ID, want)
+				}
+			}
+		})
 	}
 }

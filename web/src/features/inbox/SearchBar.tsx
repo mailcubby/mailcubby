@@ -15,7 +15,7 @@ import {
   getAutocompleteSuggestions,
   removeChipFromQuery,
 } from "@/features/inbox/searchQuery";
-import type { TagSummary } from "@/lib/api";
+import type { SMTPCredential, TagSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const SEARCH_DEBOUNCE_MS = 180;
@@ -24,10 +24,13 @@ export interface SearchBarProps {
   inputRef: RefObject<HTMLInputElement | null>;
   value: string;
   activeTag?: string;
+  activeCredentialLabel?: string;
   tags: ReadonlyArray<TagSummary>;
+  credentials?: ReadonlyArray<SMTPCredential>;
   recentSenders: ReadonlyArray<string>;
   onChangeQuery: (next: string) => void;
   onClearTag: () => void;
+  onClearCredential?: () => void;
   onClearAll: () => void;
 }
 
@@ -35,10 +38,13 @@ export function SearchBar({
   inputRef,
   value,
   activeTag,
+  activeCredentialLabel,
   tags,
+  credentials,
   recentSenders,
   onChangeQuery,
   onClearTag,
+  onClearCredential,
   onClearAll,
 }: SearchBarProps) {
   const [draft, setDraft] = useState(value);
@@ -89,8 +95,9 @@ export function SearchBar({
       getAutocompleteSuggestions(draft, cursorPos, {
         tags,
         senders: recentSenders,
+        ...(credentials ? { credentials } : {}),
       }),
-    [draft, cursorPos, tags, recentSenders],
+    [draft, cursorPos, tags, recentSenders, credentials],
   );
 
   const dropdownOpen = focused && !dismissed && autocomplete.suggestions.length > 0;
@@ -176,7 +183,7 @@ export function SearchBar({
       ? `${listboxId}-opt-${activeIndex}`
       : undefined;
 
-  const hasFilters = Boolean(draft.trim() || activeTag);
+  const hasFilters = Boolean(draft.trim() || activeTag || activeCredentialLabel);
 
   return (
     <div ref={containerRef} className="relative border-b border-border bg-surface px-2.5 py-2">
@@ -254,7 +261,7 @@ export function SearchBar({
         </div>
       </div>
 
-      {chips.length > 0 || activeTag ? (
+      {chips.length > 0 || activeTag || activeCredentialLabel ? (
         <ul
           aria-label="Active search filters"
           className="mt-1.5 flex list-none flex-wrap items-center gap-1 p-0"
@@ -269,6 +276,22 @@ export function SearchBar({
                 type="button"
                 aria-label={`Remove tag filter ${activeTag}`}
                 onClick={onClearTag}
+                className="cursor-pointer rounded-xs text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3" aria-hidden="true" />
+              </button>
+            </li>
+          ) : null}
+          {activeCredentialLabel ? (
+            <li
+              data-testid="search-chip"
+              className="inline-flex items-center gap-1 rounded-sm border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[11px] font-medium text-foreground"
+            >
+              <span>credential:{activeCredentialLabel}</span>
+              <button
+                type="button"
+                aria-label={`Remove credential filter ${activeCredentialLabel}`}
+                onClick={onClearCredential}
                 className="cursor-pointer rounded-xs text-muted-foreground hover:text-foreground"
               >
                 <X className="size-3" aria-hidden="true" />

@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Copy,
   Inbox,
+  KeyRound,
   MailOpen,
   PanelLeftClose,
   Plus,
@@ -27,6 +28,8 @@ import {
   type ProjectColor,
   type ProjectDetail,
   type ProjectRole,
+  type SMTPConnectionInfo,
+  type SMTPCredential,
   type TagSummary,
   unwrap,
   unwrapVoid,
@@ -42,10 +45,14 @@ export interface InboxSidebarProps {
   project: ProjectDetail;
   effectiveRole: ProjectRole;
   tags: ReadonlyArray<TagSummary>;
+  credentials: ReadonlyArray<SMTPCredential>;
+  smtpConnection?: SMTPConnectionInfo;
   filter: InboxFilter;
   activeTag?: string;
+  activeCredentialId?: number;
   onSelectFilter: (next: InboxFilter) => void;
   onSelectTag: (tagName: string | undefined) => void;
+  onSelectCredential: (credentialId: number | undefined) => void;
   onCollapse?: () => void;
   onCloseDrawer?: () => void;
 }
@@ -54,10 +61,14 @@ export function InboxSidebar({
   project,
   effectiveRole,
   tags,
+  credentials,
+  smtpConnection,
   filter,
   activeTag,
+  activeCredentialId,
   onSelectFilter,
   onSelectTag,
+  onSelectCredential,
   onCollapse,
   onCloseDrawer,
 }: InboxSidebarProps) {
@@ -170,8 +181,11 @@ export function InboxSidebar({
   }, [projects, switcherFilter]);
 
   const dotClass = PROJECT_COLOR_DOT_CLASS[project.color] ?? PROJECT_COLOR_DOT_CLASS.slate;
-  const smtpHost = meta?.smtp.host ?? "localhost";
-  const smtpPort = meta?.smtp.port ?? 1025;
+  const smtpHost = smtpConnection?.host ?? meta?.smtp.host ?? "localhost";
+  const smtpPort = smtpConnection?.port ?? meta?.smtp.port ?? 1025;
+  const showServerCredentials = meta?.mode === "server" && effectiveRole !== "viewer";
+  const quickCopyCredential = credentials.find((c) => !c.disabled) ?? credentials[0];
+  const quickCopyUser = meta?.mode === "local" ? project.slug : quickCopyCredential?.username;
 
   return (
     <aside
@@ -303,14 +317,18 @@ export function InboxSidebar({
         <nav aria-label="Mailbox filters" className="mt-4 flex flex-col gap-0.5">
           <button
             type="button"
-            aria-current={filter === "all" && !activeTag ? "page" : undefined}
+            aria-current={
+              filter === "all" && !activeTag && activeCredentialId === undefined
+                ? "page"
+                : undefined
+            }
             onClick={() => {
               onSelectFilter("all");
               onCloseDrawer?.();
             }}
             className={cn(
               "flex h-8 w-full cursor-pointer items-center justify-between rounded-md px-2.5 text-[13px] transition-colors",
-              filter === "all" && !activeTag
+              filter === "all" && !activeTag && activeCredentialId === undefined
                 ? "bg-muted font-medium text-foreground"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
@@ -326,14 +344,18 @@ export function InboxSidebar({
 
           <button
             type="button"
-            aria-current={filter === "unread" && !activeTag ? "page" : undefined}
+            aria-current={
+              filter === "unread" && !activeTag && activeCredentialId === undefined
+                ? "page"
+                : undefined
+            }
             onClick={() => {
               onSelectFilter("unread");
               onCloseDrawer?.();
             }}
             className={cn(
               "flex h-8 w-full cursor-pointer items-center justify-between rounded-md px-2.5 text-[13px] transition-colors",
-              filter === "unread" && !activeTag
+              filter === "unread" && !activeTag && activeCredentialId === undefined
                 ? "bg-muted font-medium text-foreground"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
@@ -431,6 +453,55 @@ export function InboxSidebar({
           )}
         </section>
 
+        {showServerCredentials ? (
+          <section aria-label="Credentials" className="mt-5">
+            <div className="mb-1 flex items-center justify-between px-2.5">
+              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Credentials
+              </h2>
+            </div>
+
+            {credentials.length === 0 ? (
+              <p className="px-2.5 py-1 text-xs text-muted-foreground">No credentials yet</p>
+            ) : (
+              <ul className="flex flex-col gap-0.5">
+                {credentials.map((cred) => {
+                  const isSelected = activeCredentialId === cred.id;
+                  return (
+                    <li key={cred.id}>
+                      <button
+                        type="button"
+                        data-testid={`sidebar-credential-${cred.id}`}
+                        aria-current={isSelected ? "page" : undefined}
+                        onClick={() => {
+                          onSelectCredential(isSelected ? undefined : cred.id);
+                          onCloseDrawer?.();
+                        }}
+                        className={cn(
+                          "flex h-7 w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 text-xs transition-colors",
+                          isSelected
+                            ? "bg-muted font-medium text-foreground"
+                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                        )}
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <KeyRound className="size-3 shrink-0" aria-hidden="true" />
+                          <span className="truncate">{cred.label}</span>
+                        </span>
+                        {cred.disabled ? (
+                          <span className="shrink-0 text-[10px] text-muted-foreground">
+                            Disabled
+                          </span>
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        ) : null}
+
         <div className="mt-6 flex flex-col gap-0.5 border-t border-border pt-3">
           {effectiveRole !== "viewer" ? (
             <Link
@@ -459,7 +530,7 @@ export function InboxSidebar({
       </div>
 
       <div className="border-t border-border">
-        {meta?.mode === "local" && effectiveRole !== "viewer" ? (
+        {effectiveRole !== "viewer" && (meta?.mode === "local" || meta?.mode === "server") ? (
           <div className="p-3">
             <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               SMTP Quick Copy
@@ -481,20 +552,22 @@ export function InboxSidebar({
                   </button>
                 </dd>
               </div>
-              <div className="flex items-center justify-between gap-2">
-                <dt className="text-muted-foreground">User</dt>
-                <dd className="min-w-0">
-                  <button
-                    type="button"
-                    onClick={() => void copyToClipboard(project.slug, "SMTP username")}
-                    className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 font-mono text-[11px] text-foreground hover:bg-muted"
-                    title="Copy SMTP username"
-                  >
-                    <span className="truncate">{project.slug}</span>
-                    <Copy className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  </button>
-                </dd>
-              </div>
+              {quickCopyUser ? (
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-muted-foreground">User</dt>
+                  <dd className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => void copyToClipboard(quickCopyUser, "SMTP username")}
+                      className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 font-mono text-[11px] text-foreground hover:bg-muted"
+                      title="Copy SMTP username"
+                    >
+                      <span className="truncate">{quickCopyUser}</span>
+                      <Copy className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    </button>
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           </div>
         ) : null}

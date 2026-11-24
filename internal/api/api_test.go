@@ -109,8 +109,8 @@ func TestIntegrationMessagesListPaginationDetailAndViews(t *testing.T) {
 		testutil.SendSMTP(t, srv.SMTPAddr, "alice@example.test", []string{"bob@example.test", "bcc@example.test"}, raw)
 	}
 
-	// Page 1 with limit=2 (plus ignored credential param until Phase 8).
-	res := doJSON(t, client, http.MethodGet, base+"/api/v1/projects/default/messages?limit=2&credential=1", nil)
+	// Page 1 with limit=2.
+	res := doJSON(t, client, http.MethodGet, base+"/api/v1/projects/default/messages?limit=2", nil)
 	if res.status != http.StatusOK {
 		t.Fatalf("list page 1 status = %d, body = %s", res.status, string(res.body))
 	}

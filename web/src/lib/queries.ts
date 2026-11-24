@@ -106,6 +106,19 @@ export function projectTagsQueryOptions(project: string) {
   });
 }
 
+export function projectSMTPCredentialsQueryOptions(project: string) {
+  return queryOptions({
+    queryKey: queryKeys.smtpCredentials(project),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/projects/{project}/smtp-credentials", {
+          params: { path: { project } },
+        }),
+      ),
+    staleTime: 10_000,
+  });
+}
+
 export function messageDetailQueryOptions(project: string, messageId: string) {
   return queryOptions({
     queryKey: queryKeys.message(project, messageId),

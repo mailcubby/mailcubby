@@ -48,6 +48,8 @@ const (
 	TermBefore
 	// TermAfter filters messages.received_at >= Time.
 	TermAfter
+	// TermCredential filters messages received via an SMTP credential with the given label (FR-021, FR-081).
+	TermCredential
 )
 
 // Term represents one parsed search token or operator from a query string.
@@ -221,8 +223,7 @@ func scanOperatorPrefix(s string, start int) (string, int, bool) {
 
 func isKnownOperator(op string) bool {
 	switch op {
-	case "from", "to", "subject", "has", "is", "tag", "before", "after":
-		// TODO(phase-8): add "credential" operator here.
+	case "from", "to", "subject", "has", "is", "tag", "before", "after", "credential":
 		return true
 	default:
 		return false
@@ -243,6 +244,8 @@ func buildOperatorTerm(op, val string, negated, quoted bool) (Term, bool, error)
 		return Term{Kind: TermSubject, Value: val, Negated: negated, Quoted: quoted}, true, nil
 	case "tag":
 		return Term{Kind: TermTag, Value: val, Negated: negated, Quoted: quoted}, true, nil
+	case "credential":
+		return Term{Kind: TermCredential, Value: val, Negated: negated, Quoted: quoted}, true, nil
 	case "has":
 		switch strings.ToLower(val) {
 		case "attachment":

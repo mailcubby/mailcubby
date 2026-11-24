@@ -35,6 +35,7 @@ import {
   type MessageSummary,
   type ProjectDetail,
   type ProjectRole,
+  type SMTPCredential,
   type TagSummary,
   unwrap,
 } from "@/lib/api";
@@ -62,14 +63,17 @@ export interface MessageListPaneProps {
   project: ProjectDetail;
   effectiveRole: ProjectRole;
   tags: ReadonlyArray<TagSummary>;
+  credentials: ReadonlyArray<SMTPCredential>;
   messages: ReadonlyArray<MessageSummary>;
   recentSenders: ReadonlyArray<string>;
   filter: InboxFilter;
   searchQuery: string;
   activeTag?: string;
+  activeCredentialLabel?: string;
   searchInputRef: RefObject<HTMLInputElement | null>;
   onChangeQuery: (next: string) => void;
   onClearTag: () => void;
+  onClearCredential: () => void;
   onClearSearchAll: () => void;
   activeMessageId: string | undefined;
   isLoading: boolean;
@@ -91,14 +95,17 @@ export function MessageListPane({
   project,
   effectiveRole,
   tags,
+  credentials,
   messages,
   recentSenders,
   filter,
   searchQuery,
   activeTag,
+  activeCredentialLabel,
   searchInputRef,
   onChangeQuery,
   onClearTag,
+  onClearCredential,
   onClearSearchAll,
   activeMessageId,
   isLoading,
@@ -202,7 +209,7 @@ export function MessageListPane({
     });
   }, [messages]);
 
-  const activeFilterQuery = combineQueryAndTag(searchQuery, activeTag);
+  const activeFilterQuery = combineQueryAndTag(searchQuery, activeTag, activeCredentialLabel);
   const hasActiveFilter = activeFilterQuery.length > 0;
 
   const bulkMutation = useMutation({
@@ -531,7 +538,13 @@ export function MessageListPane({
   }, []);
 
   const allLoadedSelected = messages.length > 0 && selectedIds.size === messages.length;
-  const headingLabel = activeTag ? `#${activeTag}` : filter === "unread" ? "Unread" : "Inbox";
+  const headingLabel = activeTag
+    ? `#${activeTag}`
+    : activeCredentialLabel
+      ? activeCredentialLabel
+      : filter === "unread"
+        ? "Unread"
+        : "Inbox";
   const countDisplay = hasActiveFilter
     ? `${formatCount(messages.length)}${hasNextPage ? "+" : ""}`
     : formatCount(filter === "unread" ? project.unread_count : project.message_count);
@@ -690,10 +703,13 @@ export function MessageListPane({
         inputRef={searchInputRef}
         value={searchQuery}
         {...(activeTag ? { activeTag } : {})}
+        {...(activeCredentialLabel ? { activeCredentialLabel } : {})}
         tags={tags}
+        credentials={credentials}
         recentSenders={recentSenders}
         onChangeQuery={onChangeQuery}
         onClearTag={onClearTag}
+        onClearCredential={onClearCredential}
         onClearAll={onClearSearchAll}
       />
 

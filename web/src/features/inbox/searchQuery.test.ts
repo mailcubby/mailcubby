@@ -10,17 +10,20 @@ import {
 
 describe("extractOperatorChips", () => {
   it("extracts recognized operators including quoted phrases and negations", () => {
-    const q = 'from:alice subject:"order 12" has:attachment -tag:spam after:2026-11-01 joao';
+    const q =
+      'from:alice subject:"order 12" has:attachment -tag:spam credential:"prod like" after:2026-11-01 joao';
     const chips = extractOperatorChips(q);
     expect(chips.map((c) => c.raw)).toEqual([
       "from:alice",
       'subject:"order 12"',
       "has:attachment",
       "-tag:spam",
+      'credential:"prod like"',
       "after:2026-11-01",
     ]);
     expect(chips[1]).toMatchObject({ key: "subject", value: "order 12", negated: false });
     expect(chips[3]).toMatchObject({ key: "tag", value: "spam", negated: true });
+    expect(chips[4]).toMatchObject({ key: "credential", value: "prod like", negated: false });
   });
 
   it("ignores unknown operators and invalid enum values", () => {
@@ -48,8 +51,36 @@ describe("getAutocompleteSuggestions", () => {
       { id: 2, name: "urgent", color: "red" as const, message_count: 1 },
     ],
     senders: ["alice@shop.test", "bob@shop.test"],
+    credentials: [
+      {
+        id: 10,
+        label: "staging",
+        username: "shop-abcd1234",
+        created_at: "2026-11-24T10:00:00.000Z",
+        last_used_at: null,
+        disabled: false,
+      },
+      {
+        id: 11,
+        label: "prod like",
+        username: "shop-efgh5678",
+        created_at: "2026-11-24T10:00:00.000Z",
+        last_used_at: null,
+        disabled: true,
+      },
+    ],
     todayISO: "2026-11-24",
   };
+
+  it("suggests project credentials after credential: and quotes labels with spaces", () => {
+    const res = getAutocompleteSuggestions("credential:", 11, ctx);
+    expect(res.suggestions.map((s) => s.insertText)).toEqual([
+      "credential:staging ",
+      'credential:"prod like" ',
+    ]);
+    const filtered = getAutocompleteSuggestions("-credential:st", 14, ctx);
+    expect(filtered.suggestions.map((s) => s.insertText)).toEqual(["-credential:staging "]);
+  });
 
   it("suggests recent senders after from:", () => {
     const res = getAutocompleteSuggestions("from:ali", 8, ctx);
@@ -88,9 +119,13 @@ describe("tag validation and query combining", () => {
     expect(isValidTagName("bad!tag")).toBe(false);
   });
 
-  it("combines query and sidebar tag", () => {
+  it("combines query, sidebar tag, and sidebar credential", () => {
     expect(combineQueryAndTag("from:alice", "invoice")).toBe("from:alice tag:invoice");
     expect(combineQueryAndTag("", "invoice")).toBe("tag:invoice");
     expect(combineQueryAndTag("is:unread", undefined)).toBe("is:unread");
+    expect(combineQueryAndTag("", undefined, "staging")).toBe("credential:staging");
+    expect(combineQueryAndTag("from:alice", "invoice", "prod like")).toBe(
+      'from:alice tag:invoice credential:"prod like"',
+    );
   });
 });

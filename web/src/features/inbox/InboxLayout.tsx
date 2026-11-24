@@ -22,7 +22,12 @@ import {
 } from "@/lib/api";
 import { scheduleOptimisticDelete } from "@/lib/pendingDeletes";
 import { useSingleKeyShortcutsPreference } from "@/lib/preferences";
-import { metaQueryOptions, projectQueryOptions, projectTagsQueryOptions } from "@/lib/queries";
+import {
+  metaQueryOptions,
+  projectQueryOptions,
+  projectSMTPCredentialsQueryOptions,
+  projectTagsQueryOptions,
+} from "@/lib/queries";
 import { type MessageListQueryParams, queryKeys } from "@/lib/queryKeys";
 import { type KeyShortcutBinding, useKeyShortcuts } from "@/lib/shortcuts";
 import {
@@ -86,8 +91,13 @@ export function InboxLayout() {
   const activeMessageId = params.messageId;
   const searchQuery = search.q ?? (search.filter === "unread" ? "is:unread" : "");
   const activeTag = search.tag;
+  const activeCredentialId = search.credential;
   const filter: InboxFilter =
-    searchQuery.trim().toLowerCase() === "is:unread" && !activeTag ? "unread" : "all";
+    searchQuery.trim().toLowerCase() === "is:unread" &&
+    !activeTag &&
+    activeCredentialId === undefined
+      ? "unread"
+      : "all";
 
   const { setActiveInbox, previewAsViewer, setPreviewAsViewer } = useAppCommands();
   const [singleKeyEnabled] = useSingleKeyShortcutsPreference();
@@ -125,13 +135,34 @@ export function InboxLayout() {
     enabled: Boolean(project),
   });
 
+  const effectiveRole = project ? getEffectiveRole(project.role, previewAsViewer) : "viewer";
+  const isPreviewingAsViewer = Boolean(project && project.role === "owner" && previewAsViewer);
+
+  const { data: credentialsData } = useQuery({
+    ...projectSMTPCredentialsQueryOptions(projectSlug),
+    enabled: Boolean(project) && meta?.mode === "server" && effectiveRole !== "viewer",
+  });
+  const projectCredentials = useMemo(
+    () => (effectiveRole !== "viewer" ? (credentialsData?.items ?? []) : []),
+    [credentialsData, effectiveRole],
+  );
+  const activeCredentialLabel = useMemo(() => {
+    if (activeCredentialId === undefined) {
+      return undefined;
+    }
+    return (
+      projectCredentials.find((c) => c.id === activeCredentialId)?.label ?? `#${activeCredentialId}`
+    );
+  }, [activeCredentialId, projectCredentials]);
+
   const trimmedQuery = searchQuery.trim();
   const listParams = useMemo<MessageListQueryParams>(
     () => ({
       ...(trimmedQuery ? { query: trimmedQuery } : {}),
       ...(activeTag ? { tag: activeTag } : {}),
+      ...(activeCredentialId !== undefined ? { credential: activeCredentialId } : {}),
     }),
-    [trimmedQuery, activeTag],
+    [trimmedQuery, activeTag, activeCredentialId],
   );
 
   const messagesQuery = useInfiniteQuery({
@@ -148,6 +179,7 @@ export function InboxLayout() {
               ...(pageParam ? { cursor: pageParam } : {}),
               ...(listParams.query ? { query: listParams.query } : {}),
               ...(listParams.tag ? { tag: listParams.tag } : {}),
+              ...(listParams.credential !== undefined ? { credential: listParams.credential } : {}),
             },
           },
         }),
@@ -214,12 +246,18 @@ export function InboxLayout() {
   }, [project, meta?.instance_name]);
 
   const updateSearchState = useCallback(
-    (nextQ: string | undefined, nextTag: string | undefined, replace = true) => {
+    (
+      nextQ: string | undefined,
+      nextTag: string | undefined,
+      nextCredential: number | undefined,
+      replace = true,
+    ) => {
       const cleanedQ = nextQ?.trim() || undefined;
       const cleanedTag = nextTag?.trim() || undefined;
       const nextSearch = {
         ...(cleanedQ ? { q: cleanedQ } : {}),
         ...(cleanedTag ? { tag: cleanedTag } : {}),
+        ...(nextCredential !== undefined ? { credential: nextCredential } : {}),
       };
       if (activeMessageId) {
         void navigate({
@@ -245,31 +283,42 @@ export function InboxLayout() {
 
   const handleSelectFilter = useCallback(
     (next: InboxFilter) => {
-      updateSearchState(next === "unread" ? "is:unread" : undefined, undefined, false);
+      updateSearchState(next === "unread" ? "is:unread" : undefined, undefined, undefined, false);
     },
     [updateSearchState],
   );
 
   const handleSelectTag = useCallback(
     (tagName: string | undefined) => {
-      updateSearchState(searchQuery || undefined, tagName, false);
+      updateSearchState(searchQuery || undefined, tagName, activeCredentialId, false);
     },
-    [updateSearchState, searchQuery],
+    [updateSearchState, searchQuery, activeCredentialId],
+  );
+
+  const handleSelectCredential = useCallback(
+    (credentialId: number | undefined) => {
+      updateSearchState(searchQuery || undefined, activeTag, credentialId, false);
+    },
+    [updateSearchState, searchQuery, activeTag],
   );
 
   const handleChangeQuery = useCallback(
     (nextQ: string) => {
-      updateSearchState(nextQ, activeTag, true);
+      updateSearchState(nextQ, activeTag, activeCredentialId, true);
     },
-    [updateSearchState, activeTag],
+    [updateSearchState, activeTag, activeCredentialId],
   );
 
   const handleClearTag = useCallback(() => {
-    updateSearchState(searchQuery || undefined, undefined, false);
-  }, [updateSearchState, searchQuery]);
+    updateSearchState(searchQuery || undefined, undefined, activeCredentialId, false);
+  }, [updateSearchState, searchQuery, activeCredentialId]);
+
+  const handleClearCredential = useCallback(() => {
+    updateSearchState(searchQuery || undefined, activeTag, undefined, false);
+  }, [updateSearchState, searchQuery, activeTag]);
 
   const handleClearSearchAll = useCallback(() => {
-    updateSearchState(undefined, undefined, false);
+    updateSearchState(undefined, undefined, undefined, false);
   }, [updateSearchState]);
 
   const invalidateInbox = useCallback(async () => {
@@ -338,9 +387,6 @@ export function InboxLayout() {
       }
     },
   });
-
-  const effectiveRole = project ? getEffectiveRole(project.role, previewAsViewer) : "viewer";
-  const isPreviewingAsViewer = Boolean(project && project.role === "owner" && previewAsViewer);
 
   const toggleMessageSeen = useCallback(
     (message: MessageSummary, nextSeen?: boolean) => {
@@ -470,9 +516,9 @@ export function InboxLayout() {
       const base = searchQuery.trim();
       const next = base ? `${base} ${operator}` : operator;
       if (complete) {
-        updateSearchState(next, activeTag, false);
+        updateSearchState(next, activeTag, activeCredentialId, false);
       } else {
-        updateSearchState(next, activeTag, true);
+        updateSearchState(next, activeTag, activeCredentialId, true);
         requestAnimationFrame(() => {
           const el = searchInputRef.current;
           if (el) {
@@ -483,7 +529,7 @@ export function InboxLayout() {
         });
       }
     },
-    [searchQuery, activeTag, updateSearchState],
+    [searchQuery, activeTag, activeCredentialId, updateSearchState],
   );
 
   const sendTestMutate = sendTestMutation.mutate;
@@ -598,14 +644,17 @@ export function InboxLayout() {
       project={project}
       effectiveRole={effectiveRole}
       tags={projectTags}
+      credentials={projectCredentials}
       messages={visibleMessages}
       recentSenders={recentSenders}
       filter={filter}
       searchQuery={searchQuery}
       {...(activeTag ? { activeTag } : {})}
+      {...(activeCredentialLabel ? { activeCredentialLabel } : {})}
       searchInputRef={searchInputRef}
       onChangeQuery={handleChangeQuery}
       onClearTag={handleClearTag}
+      onClearCredential={handleClearCredential}
       onClearSearchAll={handleClearSearchAll}
       activeMessageId={activeMessageId}
       isLoading={messagesQuery.isPending}
@@ -640,6 +689,7 @@ export function InboxLayout() {
     filter,
     searchQuery,
     activeTag,
+    activeCredentialId,
     activeMessageId,
     isLoadingMessages: messagesQuery.isPending,
     readingPaneRef,
@@ -711,10 +761,16 @@ export function InboxLayout() {
                       project={project}
                       effectiveRole={effectiveRole}
                       tags={projectTags}
+                      credentials={projectCredentials}
+                      {...(credentialsData?.connection
+                        ? { smtpConnection: credentialsData.connection }
+                        : {})}
                       filter={filter}
                       {...(activeTag ? { activeTag } : {})}
+                      {...(activeCredentialId !== undefined ? { activeCredentialId } : {})}
                       onSelectFilter={handleSelectFilter}
                       onSelectTag={handleSelectTag}
+                      onSelectCredential={handleSelectCredential}
                       onCollapse={() => setSidebarCollapsed(true)}
                     />
                   </ResizablePanel>
@@ -805,10 +861,16 @@ export function InboxLayout() {
                     project={project}
                     effectiveRole={effectiveRole}
                     tags={projectTags}
+                    credentials={projectCredentials}
+                    {...(credentialsData?.connection
+                      ? { smtpConnection: credentialsData.connection }
+                      : {})}
                     filter={filter}
                     {...(activeTag ? { activeTag } : {})}
+                    {...(activeCredentialId !== undefined ? { activeCredentialId } : {})}
                     onSelectFilter={handleSelectFilter}
                     onSelectTag={handleSelectTag}
+                    onSelectCredential={handleSelectCredential}
                     onCloseDrawer={() => setDrawerOpen(false)}
                   />
                 </div>

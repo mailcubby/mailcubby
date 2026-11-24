@@ -269,3 +269,114 @@ func TestSMTPCredentialsLifecycleAndSecurity(t *testing.T) {
 		}
 	}
 }
+
+// FR-021, FR-081, FR-082: ?credential=<id> list filter, credential:<label> search
+// operator on list and delete-all, and credential_label populated on summaries & details.
+func TestMessagesCredentialFilterAndSearch(t *testing.T) {
+	t.Parallel()
+
+	env := newServerModeEnv(t)
+	h := env.srv.Handler()
+	const pass = "correct-horse-battery-staple"
+
+	owner := env.createUser(t, "owner@creds.test", "Owner", pass, false, true, false)
+	proj, err := env.store.CreateProject(t.Context(), store.CreateProjectParams{
+		Slug: "creds-proj", Name: "Creds Proj", Color: "blue", Settings: store.DefaultProjectSettings(), Now: env.clk.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if _, err := env.store.AddProjectMember(t.Context(), proj.ID, owner.ID, "owner", env.clk.Now().UTC()); err != nil {
+		t.Fatalf("AddProjectMember: %v", err)
+	}
+
+	cookie, csrf := loginAndGetCSRF(t, h, owner.Email, pass)
+
+	createCred := func(label string) int64 {
+		t.Helper()
+		rec := doReq(t, h, http.MethodPost, "/api/v1/projects/creds-proj/smtp-credentials", map[string]any{"label": label}, cookie, csrfHeaders(csrf))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create cred(%s) status = %d", label, rec.Code)
+		}
+		var out struct {
+			Credential struct {
+				ID int64 `json:"id"`
+			} `json:"credential"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return out.Credential.ID
+	}
+
+	credStagingID := createCred("staging")
+	credWorkerID := createCred("worker")
+
+	// Seed two messages attributed to the two credentials + one without credential.
+	now := env.clk.Now().UTC()
+	insertAttributed := func(id, subject string, credID *int64) {
+		t.Helper()
+		_, err := env.store.InsertMessage(t.Context(), store.InsertMessageParams{
+			ID:               id,
+			ProjectID:        proj.ID,
+			SMTPCredentialID: credID,
+			ReceivedAt:       now,
+			Subject:          subject,
+			FromAddr:         "app@creds.test",
+			EnvelopeFrom:     "app@creds.test",
+			EnvelopeTo:       []string{"u@creds.test"},
+			HasText:          true,
+			SizeBytes:        64,
+			BlobPath:         "1/2026/11/" + id + ".eml.zst",
+		})
+		if err != nil {
+			t.Fatalf("InsertMessage(%s): %v", id, err)
+		}
+	}
+
+	const (
+		idStaging = "01JAPICRED0000000000000001"
+		idWorker  = "01JAPICRED0000000000000002"
+		idNoCred  = "01JAPICRED0000000000000003"
+	)
+	insertAttributed(idStaging, "Staging mail", &credStagingID)
+	insertAttributed(idWorker, "Worker mail", &credWorkerID)
+	insertAttributed(idNoCred, "Direct mail", nil)
+
+	// Invalid ?credential= returns 400.
+	badRec := doReq(t, h, http.MethodGet, "/api/v1/projects/creds-proj/messages?credential=abc", nil, cookie, nil)
+	if badRec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid ?credential= status = %d, want 400", badRec.Code)
+	}
+
+	// ?credential=<id> filters and includes credential_label.
+	byIDRec := doReq(t, h, http.MethodGet, "/api/v1/projects/creds-proj/messages?credential="+strconv.FormatInt(credStagingID, 10), nil, cookie, nil)
+	if byIDRec.Code != http.StatusOK {
+		t.Fatalf("list by credential id status = %d, want 200; body=%s", byIDRec.Code, byIDRec.Body.String())
+	}
+	var listResp struct {
+		Items []struct {
+			ID              string `json:"id"`
+			CredentialLabel string `json:"credential_label"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(byIDRec.Body.Bytes(), &listResp)
+	if len(listResp.Items) != 1 || listResp.Items[0].ID != idStaging || listResp.Items[0].CredentialLabel != "staging" {
+		t.Fatalf("list by credential id = %+v, want [{%s staging}]", listResp.Items, idStaging)
+	}
+
+	// ?query=credential:worker filters by label.
+	byLabelRec := doReq(t, h, http.MethodGet, "/api/v1/projects/creds-proj/messages?query=credential:worker", nil, cookie, nil)
+	if byLabelRec.Code != http.StatusOK {
+		t.Fatalf("list by query credential:worker status = %d", byLabelRec.Code)
+	}
+	listResp.Items = nil
+	_ = json.Unmarshal(byLabelRec.Body.Bytes(), &listResp)
+	if len(listResp.Items) != 1 || listResp.Items[0].ID != idWorker || listResp.Items[0].CredentialLabel != "worker" {
+		t.Fatalf("list by credential:worker = %+v, want [{%s worker}]", listResp.Items, idWorker)
+	}
+
+	// Filtered DELETE /messages?query=credential:worker deletes only worker message.
+	delRec := doReq(t, h, http.MethodDelete, "/api/v1/projects/creds-proj/messages?query=credential:worker", nil, cookie, csrfHeaders(csrf))
+	if delRec.Code != http.StatusOK || !strings.Contains(delRec.Body.String(), `"affected":1`) {
+		t.Fatalf("filtered delete by credential = (%d, %s), want (200, affected=1)", delRec.Code, delRec.Body.String())
+	}
+}

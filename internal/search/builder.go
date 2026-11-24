@@ -39,12 +39,13 @@ const messageSelectColumns = `m.pk,
 // BuildOptions specifies non-query filters and pagination bounds combined into
 // the generated message search SQL.
 type BuildOptions struct {
-	Tag       string
-	BeforeID  string
-	AfterID   string
-	SinceTime *time.Time
-	MessageID string
-	Limit     int64
+	Tag          string
+	CredentialID *int64
+	BeforeID     string
+	AfterID      string
+	SinceTime    *time.Time
+	MessageID    string
+	Limit        int64
 }
 
 // Build constructs a parameterized SELECT statement over messages (and messages_fts
@@ -149,12 +150,24 @@ func buildQuery(selectClause string, projectID int64, q Query, opts BuildOptions
 				where = append(where, "m.received_at >= ?")
 			}
 			args = append(args, term.Time.UTC().UnixMilli())
+
+		case TermCredential:
+			if term.Negated {
+				where = append(where, "NOT EXISTS (SELECT 1 FROM smtp_credentials sc WHERE sc.project_id = ? AND sc.id = m.smtp_credential_id AND sc.label = ? COLLATE NOCASE)")
+			} else {
+				where = append(where, "EXISTS (SELECT 1 FROM smtp_credentials sc WHERE sc.project_id = ? AND sc.id = m.smtp_credential_id AND sc.label = ? COLLATE NOCASE)")
+			}
+			args = append(args, projectID, term.Value)
 		}
 	}
 
 	if opts.Tag != "" {
 		where = append(where, "EXISTS (SELECT 1 FROM message_tags mt JOIN tags t ON t.id = mt.tag_id AND t.project_id = mt.project_id WHERE mt.project_id = ? AND mt.message_pk = m.pk AND t.name = ? COLLATE NOCASE)")
 		args = append(args, projectID, opts.Tag)
+	}
+	if opts.CredentialID != nil {
+		where = append(where, "m.smtp_credential_id = ?")
+		args = append(args, *opts.CredentialID)
 	}
 	if opts.BeforeID != "" {
 		where = append(where, "m.id < ?")

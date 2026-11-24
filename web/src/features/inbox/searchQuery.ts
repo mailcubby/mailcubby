@@ -1,12 +1,22 @@
-import type { TagSummary } from "@/lib/api";
+import type { SMTPCredential, TagSummary } from "@/lib/api";
 
-export type KnownOperator = "from" | "to" | "subject" | "tag" | "has" | "is" | "before" | "after";
+export type KnownOperator =
+  | "from"
+  | "to"
+  | "subject"
+  | "tag"
+  | "credential"
+  | "has"
+  | "is"
+  | "before"
+  | "after";
 
 const KNOWN_OPERATORS = new Set<string>([
   "from",
   "to",
   "subject",
   "tag",
+  "credential",
   "has",
   "is",
   "before",
@@ -36,6 +46,7 @@ export interface AutocompleteSuggestion {
 export interface AutocompleteContext {
   tags: ReadonlyArray<TagSummary>;
   senders: ReadonlyArray<string>;
+  credentials?: ReadonlyArray<SMTPCredential>;
   todayISO?: string;
 }
 
@@ -56,6 +67,12 @@ const OPERATOR_TEMPLATES: ReadonlyArray<{
   { op: "subject:", label: "subject:", description: "Subject text or phrase", complete: false },
   { op: "tag:", label: "tag:", description: "Has tag", complete: false },
   { op: "-tag:", label: "-tag:", description: "Exclude tag", complete: false },
+  {
+    op: "credential:",
+    label: "credential:",
+    description: "SMTP credential label",
+    complete: false,
+  },
   { op: "is:unread", label: "is:unread", description: "Unread messages", complete: true },
   { op: "is:read", label: "is:read", description: "Read messages", complete: true },
   {
@@ -267,6 +284,30 @@ export function getAutocompleteSuggestions(
       return { replaceStart: start, replaceEnd: end, suggestions: matches };
     }
 
+    if (op === "credential") {
+      const seen = new Set<string>();
+      const matches: AutocompleteSuggestion[] = [];
+      for (const cred of ctx.credentials ?? []) {
+        const lowerLabel = cred.label.toLowerCase();
+        if (seen.has(lowerLabel) || !lowerLabel.includes(typedVal)) {
+          continue;
+        }
+        seen.add(lowerLabel);
+        const formatted = formatOperatorValue(cred.label);
+        matches.push({
+          id: `${prefix}credential:${cred.id}`,
+          label: `${prefix}credential:${cred.label}`,
+          description: cred.disabled ? "Disabled credential" : cred.username,
+          insertText: `${prefix}credential:${formatted} `,
+          complete: true,
+        });
+        if (matches.length >= 8) {
+          break;
+        }
+      }
+      return { replaceStart: start, replaceEnd: end, suggestions: matches };
+    }
+
     if (op === "is") {
       const options = [
         { val: "unread", desc: "Unread messages" },
@@ -322,9 +363,13 @@ export function getAutocompleteSuggestions(
   }
 
   const lower = token.toLowerCase();
-  const matchedTemplates = OPERATOR_TEMPLATES.filter((t) =>
-    lower === "" ? true : t.op.startsWith(lower),
-  )
+  const hasCreds = (ctx.credentials?.length ?? 0) > 0;
+  const matchedTemplates = OPERATOR_TEMPLATES.filter((t) => {
+    if (t.op === "credential:" && !hasCreds) {
+      return false;
+    }
+    return lower === "" ? true : t.op.startsWith(lower);
+  })
     .slice(0, 8)
     .map((t) => ({
       id: `op:${t.op}`,
@@ -335,6 +380,14 @@ export function getAutocompleteSuggestions(
     }));
 
   return { replaceStart: start, replaceEnd: end, suggestions: matchedTemplates };
+}
+
+function formatOperatorValue(val: string): string {
+  if (/[\s"\\]/.test(val)) {
+    const escaped = val.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `"${escaped}"`;
+  }
+  return val;
 }
 
 export function applyAutocompleteSuggestion(
@@ -352,10 +405,10 @@ export function applyAutocompleteSuggestion(
 }
 
 /**
- * Combines the search query bar value and an optional sidebar tag selection into
- * a single FR-081 query string (e.g. for filtered DELETE /messages?query=...).
+ * Combines the search query bar value with optional sidebar tag and credential
+ * filters into a single FR-081 query string (e.g. for filtered DELETE /messages?query=...).
  */
-export function combineQueryAndTag(q: string, tag?: string): string {
+export function combineQueryAndTag(q: string, tag?: string, credentialLabel?: string): string {
   const parts: string[] = [];
   const trimmedQ = q.trim();
   if (trimmedQ) {
@@ -364,6 +417,10 @@ export function combineQueryAndTag(q: string, tag?: string): string {
   const trimmedTag = tag?.trim();
   if (trimmedTag) {
     parts.push(`tag:${trimmedTag}`);
+  }
+  const trimmedCred = credentialLabel?.trim();
+  if (trimmedCred) {
+    parts.push(`credential:${formatOperatorValue(trimmedCred)}`);
   }
   return parts.join(" ");
 }

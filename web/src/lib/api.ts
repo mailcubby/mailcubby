@@ -31,6 +31,13 @@ api.use({
 
 export type ProjectColor = components["schemas"]["ProjectColor"];
 export type ProjectRole = components["schemas"]["ProjectRole"];
+export type SMTPConnectionInfo = components["schemas"]["SMTPConnectionInfo"];
+export type SMTPCredential = components["schemas"]["SMTPCredential"];
+export type SMTPCredentialListResponse = components["schemas"]["SMTPCredentialListResponse"];
+export type CreateSMTPCredentialRequest = components["schemas"]["CreateSMTPCredentialRequest"];
+export type CreateSMTPCredentialResponse = components["schemas"]["CreateSMTPCredentialResponse"];
+export type RevealSMTPCredentialResponse = components["schemas"]["RevealSMTPCredentialResponse"];
+export type UpdateSMTPCredentialRequest = components["schemas"]["UpdateSMTPCredentialRequest"];
 export type MetaResponse = components["schemas"]["MetaResponse"];
 export type AuthUser = components["schemas"]["AuthUser"];
 export type AuthMeResponse = components["schemas"]["AuthMeResponse"];

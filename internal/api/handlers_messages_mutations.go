@@ -115,7 +115,19 @@ func (s *Server) handlePatchMessage(w http.ResponseWriter, r *http.Request) {
 		s.publishProjectUpdated(res.Project)
 	}
 
-	writeJSON(w, http.StatusOK, toMessageSummary(res.Message, res.Tags))
+	credLabel, err := s.credentialLabelForMessage(r.Context(), pctx.Project.ID, res.Message.SMTPCredentialID)
+	if err != nil {
+		s.log.Error("lookup credential label for patched message failed",
+			"request_id", RequestIDFromContext(r.Context()),
+			"project_id", pctx.Project.ID,
+			"message_id", res.Message.ID,
+			"error", err,
+		)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toMessageSummary(res.Message, res.Tags, credLabel))
 }
 
 func (s *Server) handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
@@ -371,7 +383,7 @@ func (s *Server) handleSendTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, toMessageSummary(msg, ref.Tags))
+	writeJSON(w, http.StatusCreated, toMessageSummary(msg, ref.Tags, ""))
 }
 
 type waitSinceMode int
@@ -617,7 +629,18 @@ func (s *Server) writeMessageSummaryWithTags(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, toMessageSummary(msg, tags))
+	credLabel, err := s.credentialLabelForMessage(r.Context(), projectID, msg.SMTPCredentialID)
+	if err != nil {
+		s.log.Error("lookup credential label for message summary failed",
+			"request_id", RequestIDFromContext(r.Context()),
+			"project_id", projectID,
+			"message_id", msg.ID,
+			"error", err,
+		)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, toMessageSummary(msg, tags, credLabel))
 }
 
 func (s *Server) publishMessageUpdated(proj store.Project, ids []string, seen *bool, tags *[]string) {

@@ -16,6 +16,7 @@ export const queryKeys = {
   project: (slug: string) => ["projects", slug] as const,
   projectMembers: (slug: string) => ["projects", slug, "members"] as const,
   projectInvites: (slug: string) => ["projects", slug, "invites"] as const,
+  smtpCredentials: (slug: string) => ["projects", slug, "smtp-credentials"] as const,
   invitePreview: (token: string) => ["invites", token] as const,
   tags: (slug: string) => ["projects", slug, "tags"] as const,
   messages: (slug: string, params?: MessageListQueryParams) =>

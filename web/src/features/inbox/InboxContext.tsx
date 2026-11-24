@@ -12,6 +12,7 @@ export interface InboxContextValue {
   filter: InboxFilter;
   searchQuery: string;
   activeTag: string | undefined;
+  activeCredentialId: number | undefined;
   activeMessageId: string | undefined;
   isLoadingMessages: boolean;
   readingPaneRef: RefObject<HTMLDivElement | null>;
