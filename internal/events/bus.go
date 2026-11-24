@@ -217,6 +217,7 @@ func ProjectFilter(projectID int64) Filter {
 // set, updated atomically on membership changes (ARCHITECTURE 3.8, SPEC FR-091).
 type ProjectSetFilter struct {
 	userID   int64
+	allowAll atomic.Bool
 	projects atomic.Pointer[map[int64]struct{}]
 }
 
@@ -225,6 +226,12 @@ func NewProjectSetFilter(userID int64, projectIDs []int64) *ProjectSetFilter {
 	f := &ProjectSetFilter{userID: userID}
 	f.Set(projectIDs)
 	return f
+}
+
+// SetAllowAll atomically controls whether the subscriber receives events for
+// every project (used for unfiltered instance admin streams).
+func (f *ProjectSetFilter) SetAllowAll(allow bool) {
+	f.allowAll.Store(allow)
 }
 
 // Set atomically replaces the set of accessible project IDs.
@@ -236,18 +243,26 @@ func (f *ProjectSetFilter) Set(projectIDs []int64) {
 	f.projects.Store(&m)
 }
 
-// Match returns true if e belongs to an accessible project or is a membership
-// change targeting this filter's user.
-func (f *ProjectSetFilter) Match(e Event) bool {
-	if e.Type == TypeMembershipChanged && f.userID != 0 && e.UserID == f.userID {
+// AllowsProject reports whether projectID is currently permitted by the filter.
+func (f *ProjectSetFilter) AllowsProject(projectID int64) bool {
+	if f.allowAll.Load() {
 		return true
 	}
 	setPtr := f.projects.Load()
 	if setPtr == nil {
 		return false
 	}
-	_, ok := (*setPtr)[e.ProjectID]
+	_, ok := (*setPtr)[projectID]
 	return ok
+}
+
+// Match returns true if e belongs to an accessible project or is a membership
+// change targeting this filter's user.
+func (f *ProjectSetFilter) Match(e Event) bool {
+	if e.Type == TypeMembershipChanged {
+		return f.userID != 0 && e.UserID == f.userID
+	}
+	return f.AllowsProject(e.ProjectID)
 }
 
 // Subscription delivers matching events over C until unsubscribed, disconnected

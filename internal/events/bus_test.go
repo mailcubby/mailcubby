@@ -140,3 +140,36 @@ func TestBusCloseAndConcurrentAccess(t *testing.T) {
 		t.Fatalf("CloseReason after Close = %q, want %q", got, CloseReasonShutdown)
 	}
 }
+
+// FR-091: ProjectSetFilter respects allowAll and scopes membership.changed strictly to target user.
+func TestProjectSetFilterAllowAllAndMembershipIsolation(t *testing.T) {
+	t.Parallel()
+
+	f := NewProjectSetFilter(42, []int64{10})
+	if !f.Match(Event{Type: TypeMessageCreated, ProjectID: 10}) {
+		t.Fatal("expected match for project 10")
+	}
+	if f.Match(Event{Type: TypeMessageCreated, ProjectID: 20}) {
+		t.Fatal("expected no match for project 20")
+	}
+	if !f.Match(Event{Type: TypeMembershipChanged, UserID: 42}) {
+		t.Fatal("expected match for own membership.changed")
+	}
+	if f.Match(Event{Type: TypeMembershipChanged, UserID: 99}) {
+		t.Fatal("expected no match for other user's membership.changed")
+	}
+
+	f.SetAllowAll(true)
+	if !f.Match(Event{Type: TypeMessageCreated, ProjectID: 999}) {
+		t.Fatal("expected allowAll to match any project event")
+	}
+	if f.Match(Event{Type: TypeMembershipChanged, UserID: 99}) {
+		t.Fatal("allowAll must not leak another user's membership.changed")
+	}
+
+	f.SetAllowAll(false)
+	f.Set(nil)
+	if f.Match(Event{Type: TypeMessageCreated, ProjectID: 10}) {
+		t.Fatal("expected no match after clearing projects and allowAll")
+	}
+}

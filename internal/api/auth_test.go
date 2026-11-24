@@ -56,6 +56,7 @@ func (h *instrumentedHasher) resetCounts() {
 type serverTestEnv struct {
 	srv    *api.Server
 	store  *store.Store
+	bus    *events.Bus
 	clk    *clock.Fake
 	hasher *instrumentedHasher
 }
@@ -100,6 +101,7 @@ func newServerModeEnv(t *testing.T) *serverTestEnv {
 	return &serverTestEnv{
 		srv:    srv,
 		store:  st,
+		bus:    bus,
 		clk:    clk,
 		hasher: hasher,
 	}
