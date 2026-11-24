@@ -121,7 +121,7 @@ Memory: the raw message is never fully buffered by Mailcubby itself; enmime hold
 ### 3.8 `internal/events`
 
 - `Bus` with `Publish(Event)` and `Subscribe(filter Filter) (*Subscription, func())`. Each subscription has a buffered channel (256). Publish never blocks: if a buffer is full the subscription is closed with reason `slow_consumer`.
-- `Filter` is a function `func(projectID int64) bool` backed by an `atomic.Pointer` to the subscriber's current project set; `membership.changed` events trigger a refresh from the store.
+- `Filter` is a function `func(projectID int64) bool` backed by an `atomic.Pointer` to the subscriber's current project set; `membership.changed` events trigger a refresh from the store. The SSE handler subscribes before loading the initial set, always queues `project.deleted`, and on it removes that project ID from the set (closing streams scoped to it), so a later project reusing the ID is never matched.
 - Used by: SSE handler, `wait` endpoint, retention nudges, counters cache invalidation.
 
 ### 3.9 `internal/auth`

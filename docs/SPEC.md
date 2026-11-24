@@ -287,7 +287,7 @@ Unknown operators are treated as plain text. The parser MUST produce parameteris
 
 **FR-090 SSE stream.** `GET /api/v1/events` (optionally `?project=slug`) returns `text/event-stream`. Event types: `message.created`, `message.updated` (seen, tags), `message.deleted` (IDs, or `all` with project), `project.updated` (counters), `project.created`, `project.deleted`, `membership.changed`. Payload is JSON. A comment heartbeat `: ping` is sent every 25 s. There is no replay; on reconnect the client refetches.
 
-**FR-091 Filtering.** Each subscriber receives only events for projects it can access at the time of the event. Membership changes take effect for open streams within 1 s (the subscriber's project set is refreshed on `membership.changed`). Token-authenticated subscribers are limited by token project restriction.
+**FR-091 Filtering.** Each subscriber receives only events for projects it can access at the time of the event. Membership changes take effect for open streams within 1 s (the subscriber's project set is refreshed on `membership.changed`). Token-authenticated subscribers are limited by token project restriction. On `project.deleted` every open stream that could access the project receives the event and then stops matching that project ID; a stream scoped to the deleted project (`?project=` or a project-restricted token) ends after delivering it (a reconnect then gets `404`).
 - AC: a viewer of project A connected to `/api/v1/events` receives no event when mail arrives in project B; after being removed from A, receives no further A events.
 
 **FR-092 Limits.** Max `MAILCUBBY_SSE_MAX_CONNECTIONS_PER_USER` (default 10) concurrent streams per user or token; the oldest is closed when exceeded. Slow consumers (buffer of 256 events full) are disconnected.
@@ -598,7 +598,7 @@ Environment variables only (no config file in v1). Variables marked (secret) als
 
 ## 10. Data model
 
-SQLite, one file `app.db`. Times are `INTEGER` Unix milliseconds UTC unless noted. Booleans are `INTEGER` 0/1. Foreign keys ON. Every table that holds tenant data has a `project_id` column (denormalised where needed) so that every query can filter by it directly. Migrations are SQL files in `migrations/` (goose). `00001_init.sql` creates all v1 tables and indexes; `00002_fts.sql` creates `messages_fts` and its delete trigger (kept separate because sqlc's SQLite parser does not handle FTS5 virtual tables; it is excluded from `sqlc.yaml`).
+SQLite, one file `app.db`. Times are `INTEGER` Unix milliseconds UTC unless noted. Booleans are `INTEGER` 0/1. Foreign keys ON. Every table that holds tenant data has a `project_id` column (denormalised where needed) so that every query can filter by it directly. Migrations are SQL files in `migrations/` (goose). `00001_init.sql` creates all v1 tables and indexes; `00002_fts.sql` creates `messages_fts` and its delete trigger (kept separate because sqlc's SQLite parser does not handle FTS5 virtual tables; it is excluded from `sqlc.yaml`). `00003_projects_autoincrement.sql` rebuilds `projects` with `id INTEGER PRIMARY KEY AUTOINCREMENT` (foreign keys off around the rebuild so no child row cascades) and starts the sequence above every project ID recorded in the audit log, so a deleted project's ID is never reused by a new project.
 
 ### users
 | Column | Type | Notes |
@@ -635,7 +635,7 @@ SQLite, one file `app.db`. Times are `INTEGER` Unix milliseconds UTC unless note
 ### projects
 | Column | Type | Notes |
 |---|---|---|
-| id | INTEGER PK | |
+| id | INTEGER PK AUTOINCREMENT | never reused after a project is deleted (`00003_projects_autoincrement.sql`) |
 | slug | TEXT NOT NULL UNIQUE | |
 | name | TEXT NOT NULL | |
 | color | TEXT NOT NULL | token, e.g. `blue` |

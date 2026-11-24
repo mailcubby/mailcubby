@@ -4,6 +4,7 @@ sql:
     queries: "internal/store/queries"
     schema:
       - "migrations/00001_init.sql"
+      - "migrations/00003_projects_autoincrement.sql"
     gen:
       go:
         package: "sqlc"

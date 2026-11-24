@@ -164,22 +164,16 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		}
 
 		projectSet = events.NewProjectSetFilter(principal.UserID, nil)
-		if err := s.refreshSSEProjectSet(ctx, principal, pinnedProjectID, projectSet); err != nil {
-			s.log.Error("initialize sse project set failed",
-				"request_id", RequestIDFromContext(ctx),
-				"user_id", principal.UserID,
-				"error", err,
-			)
-			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
-			return
+		// Every project.deleted is queued, whatever the current set, so the loop below
+		// can drop an ID that the initial refresh read just before the project was
+		// deleted. The loop discards deletions of projects outside the set.
+		filter = func(e events.Event) bool {
+			return e.Type == events.TypeProjectDeleted || projectSet.Match(e)
 		}
-		filter = projectSet.Match
 	}
 
-	connKey := fmt.Sprintf("%s:%d", principal.Kind, principal.UserID)
-	evictCh, unregister := s.sse.register(connKey)
-	defer unregister()
-
+	// Subscribe before computing the project set so a project.deleted published
+	// in between cannot be missed.
 	var (
 		subCh <-chan events.Event
 		unsub = func() {}
@@ -190,6 +184,22 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		subCh = sub.Events()
 	}
 	defer unsub()
+
+	if projectSet != nil {
+		if err := s.refreshSSEProjectSet(ctx, principal, pinnedProjectID, projectSet); err != nil {
+			s.log.Error("initialize sse project set failed",
+				"request_id", RequestIDFromContext(ctx),
+				"user_id", principal.UserID,
+				"error", err,
+			)
+			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+			return
+		}
+	}
+
+	connKey := fmt.Sprintf("%s:%d", principal.Kind, principal.UserID)
+	evictCh, unregister := s.sse.register(connKey)
+	defer unregister()
 
 	rc := http.NewResponseController(w)
 	_ = rc.SetWriteDeadline(time.Time{})
@@ -227,8 +237,10 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			if !open {
 				return
 			}
+			closeAfter := false
 			if projectSet != nil {
-				if ev.Type == events.TypeMembershipChanged {
+				switch {
+				case ev.Type == events.TypeMembershipChanged:
 					if err := s.refreshSSEProjectSet(ctx, principal, pinnedProjectID, projectSet); err != nil {
 						s.log.Warn("refresh sse project set failed",
 							"request_id", RequestIDFromContext(ctx),
@@ -236,9 +248,17 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 							"error", err,
 						)
 					}
-				} else if !projectSet.AllowsProject(ev.ProjectID) {
+				case !projectSet.AllowsProject(ev.ProjectID):
 					// Drop any buffered event for a project the user lost access to.
 					continue
+				case ev.Type == events.TypeProjectDeleted:
+					// A deleted project's ID may be reused by a new project: stop
+					// matching it so the new project's events are never delivered
+					// here. Streams scoped to that project end after this event,
+					// because a later refresh would restore the pinned ID unchecked.
+					projectSet.Remove(ev.ProjectID)
+					closeAfter = (pinnedProjectID != nil && *pinnedProjectID == ev.ProjectID) ||
+						(principal.TokenProjectID != nil && *principal.TokenProjectID == ev.ProjectID)
 				}
 			}
 			payload, err := json.Marshal(ev.Payload)
@@ -254,6 +274,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			_ = rc.Flush()
+			if closeAfter {
+				return
+			}
 		}
 	}
 }
