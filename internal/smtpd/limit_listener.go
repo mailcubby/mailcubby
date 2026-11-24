@@ -11,6 +11,8 @@ import (
 const (
 	tooManyConnsReply   = "421 4.7.0 Too many connections\r\n"
 	rejectWriteDeadline = 2 * time.Second
+	minAcceptRetryDelay = 5 * time.Millisecond
+	maxAcceptRetryDelay = time.Second
 )
 
 // LimitListener wraps a net.Listener to enforce total and per-IP concurrent
@@ -103,9 +105,14 @@ func (l *LimitListener) ActiveConnections() int {
 	return l.total
 }
 
+// acceptLoop runs until l.done is closed or the inner listener returns a fatal
+// error. Temporary accept errors (for example EMFILE) are retried with capped
+// exponential backoff, like net/http and go-smtp, so a short spike never stops
+// the SMTP listener (ARCHITECTURE 3.3).
 func (l *LimitListener) acceptLoop() {
 	defer l.loopWG.Done()
 
+	var tempDelay time.Duration
 	for {
 		conn, err := l.inner.Accept()
 		if err != nil {
@@ -113,6 +120,23 @@ func (l *LimitListener) acceptLoop() {
 			case <-l.done:
 				return
 			default:
+			}
+			var ne net.Error
+			//nolint:staticcheck // SA1019: same retry rule as net/http and go-smtp Serve.
+			if errors.As(err, &ne) && ne.Temporary() {
+				if tempDelay == 0 {
+					tempDelay = minAcceptRetryDelay
+				} else {
+					tempDelay = min(2*tempDelay, maxAcceptRetryDelay)
+				}
+				t := time.NewTimer(tempDelay)
+				select {
+				case <-t.C:
+				case <-l.done:
+					t.Stop()
+					return
+				}
+				continue
 			}
 			// Forward fatal accept errors to callers blocked in Accept.
 			if !errors.Is(err, net.ErrClosed) {
@@ -123,6 +147,7 @@ func (l *LimitListener) acceptLoop() {
 			}
 			return
 		}
+		tempDelay = 0
 
 		// Admit each raw connection in a short goroutine so a slow peer during
 		// 421 rejection or channel delivery never stalls accepting new connections.
