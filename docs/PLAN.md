@@ -314,11 +314,11 @@ Acceptance:
 **Goal**: everything an owner needs to onboard an app and a client.
 
 Tasks:
-- [ ] API tokens: create/list/revoke endpoints, bearer authentication, effective permission rules (FR-065, FR-066), `last_used_at`.
-- [ ] Project settings UI sections: SMTP (credentials table with copy/reveal/rotate/disable/delete), integration snippets (Laravel, Symfony, Nodemailer, WordPress WP Mail SMTP, Django, Rails, swaks, PHP sendmail_path) for local and server mode, routing and client view toggles, API section with curl examples.
-- [ ] Account > API tokens page.
-- [ ] Setup wizard steps 4 and 5 (first project, credential, snippets, send test, live wait for first message).
-- [ ] Authorisation matrix extended with token principals (`token-read`, `token-write`).
+- [x] API tokens: create/list/revoke endpoints, bearer authentication, effective permission rules (FR-065, FR-066), `last_used_at`.
+- [x] Project settings UI sections: SMTP (credentials table with copy/reveal/rotate/disable/delete), integration snippets (Laravel, Symfony, Nodemailer, WordPress WP Mail SMTP, Django, Rails, swaks, PHP sendmail_path) for local and server mode, routing and client view toggles, API section with curl examples.
+- [x] Account > API tokens page.
+- [x] Setup wizard steps 4 and 5 (first project, credential, snippets, send test, live wait for first message).
+- [x] Authorisation matrix extended with token principals (`token-read`, `token-write`).
 
 Files: `internal/auth/`, `internal/api/`, `web/src/features/{settings,account,setup}/`, `web/e2e/`.
 
@@ -456,3 +456,4 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
   - SSE client should recover/reconnect after non-200 responses (e.g. `502` behind Caddy during restart, or `401` on session expiry) instead of staying stuck on "reconnecting" until reload.
   - Inbox UX: undo-delete should not re-insert into unrelated filtered lists or duplicate rows across pages; mark-read timer should depend on `seenMutation.mutate` so inbox re-renders do not reset it; invite-page "sign out" should call `queryClient.clear()` like other logout paths; admin/role switches should confirm destructive changes (especially self-demotion) and removing yourself from a project should navigate away instead of landing on a 404 settings page.
   - Tooling: make `make check` also detect a stale `web/src/routeTree.gen.ts`.
+- 2026-11-24, Phase 9: `POST /api/v1/tokens` returns `404 not_found` when `project` refers to a nonexistent or inaccessible project (avoiding cross-tenant existence leaks per FR-050), validates `expires_in_days` in `1..3650` when non-null, and sets `Cache-Control: private, no-store`; `GET /api/v1/tokens` lists non-revoked tokens (including expired ones so users can see and revoke them) and `DELETE /api/v1/tokens/{id}` sets `revoked_at` (`404` if missing, already revoked, or owned by another user); `api_tokens.last_used_at` updates are throttled to at most once per minute (matching sessions and SMTP credentials); invalid or revoked `Authorization: Bearer` headers on non-public unsafe routes bypass `csrfMiddleware`'s Origin check so callers receive `401 unauthorized` instead of `403`, while public unsafe routes (`/setup`, `/auth/login`, `/invites/*/accept`, `/password-reset/*`) always enforce Origin.

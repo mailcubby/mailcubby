@@ -166,6 +166,10 @@ test.describe("Server mode setup wizard, login, account, and logout", () => {
       await expect(page.getByLabel("Instance name")).toHaveValue("Acme Staging");
       await page.getByRole("button", { name: "Complete setup" }).click();
 
+      // Advances to Step 4 (First project); skip to reach Projects home directly.
+      await expect(page.getByRole("heading", { name: "Step 4: First project" })).toBeVisible();
+      await page.getByRole("button", { name: "Skip for now" }).click();
+
       // Lands on logged-in Projects home with custom instance name.
       await expect(page).toHaveURL(`${srv.httpURL}/`);
       await expect(page.getByRole("link", { name: "Acme Staging" })).toBeVisible();

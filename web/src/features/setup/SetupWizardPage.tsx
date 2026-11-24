@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   AlertCircle,
   AlertTriangle,
@@ -7,25 +7,59 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  Copy,
+  Eye,
+  EyeOff,
   Inbox,
+  Loader2,
+  Send,
 } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/features/auth/PasswordInput";
-import { ApiError, api, type SetupRequest, unwrap } from "@/lib/api";
+import { IntegrationSnippetsPanel } from "@/features/settings/IntegrationSnippetsPanel";
+import {
+  ApiError,
+  api,
+  getApiErrorMessage,
+  handleApiError,
+  type ProjectDetail,
+  type SetupRequest,
+  type SMTPCredential,
+  unwrap,
+} from "@/lib/api";
+import { copyToClipboard } from "@/lib/clipboard";
 import { authMeQueryOptions, metaQueryOptions } from "@/lib/queries";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 
-type WizardStep = 1 | 2 | 3;
+type WizardStep = 1 | 2 | 3 | 4 | 5;
 
 const STEPS: ReadonlyArray<{ num: WizardStep; label: string }> = [
   { num: 1, label: "Setup token" },
-  { num: 2, label: "Admin account" },
+  { num: 2, label: "Admin" },
   { num: 3, label: "Instance" },
+  { num: 4, label: "Project" },
+  { num: 5, label: "Connect" },
 ];
+
+interface ReceivedFirstMessage {
+  id: string;
+  subject: string;
+  from: string;
+}
+
+function slugifyProjectName(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63);
+}
 
 function passwordStrengthHint(password: string): { label: string; ok: boolean } {
   if (password.length === 0) {
@@ -53,6 +87,7 @@ function passwordStrengthHint(password: string): { label: string; ok: boolean } 
 
 export function SetupWizardPage() {
   const navigate = useNavigate();
+  const currentPathname = useRouterState({ select: (s) => s.location.pathname });
   const queryClient = useQueryClient();
   const { data: meta } = useQuery(metaQueryOptions());
 
@@ -64,6 +99,21 @@ export function SetupWizardPage() {
   const [instanceName, setInstanceName] = useState("");
   const [instanceTouched, setInstanceTouched] = useState(false);
 
+  // Step 4 state (first project + initial SMTP credential)
+  const [projectName, setProjectName] = useState("");
+  const [projectSlug, setProjectSlug] = useState("");
+  const [slugTouched, setSlugTouched] = useState(false);
+  const [projectError, setProjectError] = useState<string | null>(null);
+
+  // Step 5 state (connect app + live wait)
+  const [createdOnboarding, setCreatedOnboarding] = useState<{
+    project: ProjectDetail;
+    credential: SMTPCredential;
+    password: string;
+  } | null>(null);
+  const [passwordRevealed, setPasswordRevealed] = useState(false);
+  const [firstMessage, setFirstMessage] = useState<ReceivedFirstMessage | null>(null);
+
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
@@ -73,6 +123,7 @@ export function SetupWizardPage() {
   const emailInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
   const instanceInputRef = useRef<HTMLInputElement>(null);
+  const projectNameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!instanceTouched && meta?.instance_name) {
@@ -86,6 +137,7 @@ export function SetupWizardPage() {
 
   const moveStep = (next: WizardStep) => {
     setFormError(null);
+    setProjectError(null);
     setStep(next);
     requestAnimationFrame(() => {
       stepHeadingRef.current?.focus();
@@ -102,10 +154,11 @@ export function SetupWizardPage() {
     onSuccess: async () => {
       setFormError(null);
       setFieldErrors({});
-      await queryClient.invalidateQueries({ queryKey: queryKeys.meta() });
+      moveStep(4);
+      // Fetch /auth/me first to populate the in-memory CSRF token for steps 4 & 5.
       await queryClient.fetchQuery(authMeQueryOptions());
-      toast.success("Mailcubby setup complete");
-      await navigate({ to: "/" });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.meta() });
+      toast.success("Admin account created");
     },
     onError: async (err) => {
       if (err instanceof ApiError) {
@@ -154,6 +207,117 @@ export function SetupWizardPage() {
       setFormError("Failed to complete setup. Please try again.");
     },
   });
+
+  // Redirect direct visits to /setup once setup is already complete (steps 4-5 stay on /setup).
+  useEffect(() => {
+    if (
+      currentPathname === "/setup" &&
+      meta &&
+      !meta.setup_required &&
+      step <= 3 &&
+      !setupMutation.isPending
+    ) {
+      void navigate({ to: "/", replace: true });
+    }
+  }, [currentPathname, meta, step, setupMutation.isPending, navigate]);
+
+  const createProjectMutation = useMutation({
+    mutationFn: async (vars: { name: string; slug: string }) => {
+      const project = unwrap(
+        await api.POST("/api/v1/projects", {
+          body: {
+            name: vars.name,
+            ...(vars.slug ? { slug: vars.slug } : {}),
+          },
+        }),
+      );
+      const cred = unwrap(
+        await api.POST("/api/v1/projects/{project}/smtp-credentials", {
+          params: { path: { project: project.slug } },
+          body: { label: "default" },
+        }),
+      );
+      return {
+        project,
+        credential: cred.credential,
+        password: cred.password,
+      };
+    },
+    onSuccess: async (result) => {
+      setProjectError(null);
+      setCreatedOnboarding(result);
+      setFirstMessage(null);
+      setPasswordRevealed(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.authMe() }),
+      ]);
+      toast.success(`Project "${result.project.name}" created`);
+      moveStep(5);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.details) {
+        const first = Object.values(err.details)[0];
+        if (first) {
+          setProjectError(first);
+          return;
+        }
+      }
+      setProjectError(getApiErrorMessage(err, "Failed to create project"));
+    },
+  });
+
+  const sendTestMutation = useMutation({
+    mutationFn: async (slug: string) =>
+      unwrap(
+        await api.POST("/api/v1/projects/{project}/send-test", {
+          params: { path: { project: slug } },
+        }),
+      ),
+    onSuccess: () => {
+      toast.success("Test email sent");
+    },
+    onError: (err) => {
+      handleApiError(err, "Failed to send test email");
+    },
+  });
+
+  // Step 5: subscribe to live SSE events for the created project until the first message arrives.
+  useEffect(() => {
+    if (step !== 5 || !createdOnboarding) {
+      return;
+    }
+    const slug = createdOnboarding.project.slug;
+    const source = new EventSource(`/api/v1/events?project=${encodeURIComponent(slug)}`);
+
+    const handleMessageCreated = (ev: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(String(ev.data)) as {
+          message?: {
+            id?: string;
+            subject?: string;
+            from?: { name?: string; address?: string };
+          };
+        };
+        const msg = parsed.message;
+        if (msg?.id) {
+          setFirstMessage({
+            id: msg.id,
+            subject: msg.subject || "(no subject)",
+            from: msg.from?.name || msg.from?.address || "Unknown sender",
+          });
+        }
+      } catch {
+        // Ignore malformed payloads
+      }
+    };
+
+    source.addEventListener("message.created", handleMessageCreated as EventListener);
+    return () => {
+      source.removeEventListener("message.created", handleMessageCreated as EventListener);
+      source.close();
+    };
+  }, [step, createdOnboarding]);
 
   const handleStep1Submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -217,6 +381,23 @@ export function SetupWizardPage() {
     setupMutation.mutate(payload);
   };
 
+  const handleStep4Submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const trimmedName = projectName.trim();
+    const trimmedSlug = projectSlug.trim();
+    if (trimmedName.length < 1 || trimmedName.length > 80) {
+      setProjectError("Project name must be between 1 and 80 characters.");
+      projectNameInputRef.current?.focus();
+      return;
+    }
+    setProjectError(null);
+    createProjectMutation.mutate({ name: trimmedName, slug: trimmedSlug });
+  };
+
+  if (meta && !meta.setup_required && step <= 3 && !setupMutation.isPending) {
+    return null;
+  }
+
   const currentOrigin = typeof window !== "undefined" ? window.location.origin : "";
   const configuredBaseURL = meta?.base_url ?? "";
   const originMatches =
@@ -229,21 +410,26 @@ export function SetupWizardPage() {
 
   return (
     <main className="flex min-h-full items-center justify-center px-4 py-10">
-      <div className="w-full max-w-lg rounded-lg border border-border bg-surface p-6 shadow-xs">
+      <div
+        className={cn(
+          "w-full rounded-lg border border-border bg-surface p-6 shadow-xs",
+          step >= 5 ? "max-w-2xl" : "max-w-lg",
+        )}
+      >
         <div className="mb-5 flex items-center gap-2.5">
           <span className="flex size-8 items-center justify-center rounded-md bg-foreground text-background">
             <Inbox className="size-4" aria-hidden="true" />
           </span>
           <div>
             <h1 className="text-base font-semibold tracking-tight text-foreground">
-              Set up Mailcubby
+              Set up {meta?.instance_name || "Mailcubby"}
             </h1>
             <p className="text-xs text-muted-foreground">First-run configuration for server mode</p>
           </div>
         </div>
 
         <nav aria-label="Setup progress" className="mb-6">
-          <ol className="grid grid-cols-3 gap-2">
+          <ol className="grid grid-cols-5 gap-1.5">
             {STEPS.map((item) => {
               const done = step > item.num;
               const current = step === item.num;
@@ -252,7 +438,7 @@ export function SetupWizardPage() {
                   key={item.num}
                   aria-current={current ? "step" : undefined}
                   className={cn(
-                    "flex items-center gap-2 rounded-md border px-2.5 py-2 text-xs font-medium",
+                    "flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[11px] font-medium",
                     current
                       ? "border-accent bg-accent/10 text-foreground"
                       : done
@@ -262,7 +448,7 @@ export function SetupWizardPage() {
                 >
                   <span
                     className={cn(
-                      "flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums",
+                      "flex size-4.5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums",
                       current
                         ? "bg-accent text-accent-foreground"
                         : done
@@ -270,9 +456,9 @@ export function SetupWizardPage() {
                           : "border border-border text-muted-foreground",
                     )}
                   >
-                    {done ? <Check className="size-3" aria-hidden="true" /> : item.num}
+                    {done ? <Check className="size-2.5" aria-hidden="true" /> : item.num}
                   </span>
-                  <span className="truncate">{item.label}</span>
+                  <span className="hidden truncate sm:inline">{item.label}</span>
                 </li>
               );
             })}
@@ -510,7 +696,7 @@ export function SetupWizardPage() {
                 id="instance-name"
                 name="instance_name"
                 type="text"
-                enterKeyHint="done"
+                enterKeyHint="next"
                 maxLength={80}
                 value={instanceName}
                 onChange={(e) => {
@@ -601,6 +787,269 @@ export function SetupWizardPage() {
               </Button>
             </div>
           </form>
+        ) : null}
+
+        {step === 4 ? (
+          <form onSubmit={handleStep4Submit} className="flex flex-col gap-4" noValidate>
+            <div>
+              <h2
+                ref={stepHeadingRef}
+                tabIndex={-1}
+                className="text-sm font-semibold text-foreground outline-none"
+              >
+                Step 4: First project
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Create your first project inbox and generate its initial SMTP credential.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="first-project-name" className="text-xs font-medium text-foreground">
+                Project name
+              </label>
+              <Input
+                ref={projectNameInputRef}
+                id="first-project-name"
+                name="project_name"
+                type="text"
+                autoFocus
+                required
+                maxLength={80}
+                placeholder="Shop Staging"
+                value={projectName}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setProjectName(next);
+                  if (!slugTouched) {
+                    setProjectSlug(slugifyProjectName(next));
+                  }
+                  if (projectError) setProjectError(null);
+                }}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="first-project-slug" className="text-xs font-medium text-foreground">
+                Project slug
+              </label>
+              <Input
+                id="first-project-slug"
+                name="project_slug"
+                type="text"
+                maxLength={63}
+                placeholder="shop-staging"
+                className="font-mono"
+                value={projectSlug}
+                onChange={(e) => {
+                  setSlugTouched(true);
+                  setProjectSlug(e.target.value);
+                  if (projectError) setProjectError(null);
+                }}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Used in URLs, SMTP usernames, and recipient routing addresses.
+              </p>
+            </div>
+
+            {projectError ? (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              >
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                <span>{projectError}</span>
+              </div>
+            ) : null}
+
+            <div className="flex items-center justify-between pt-1">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={createProjectMutation.isPending}
+                onClick={() => void navigate({ to: "/" })}
+              >
+                Skip for now
+              </Button>
+              <Button type="submit" disabled={createProjectMutation.isPending}>
+                <span>
+                  {createProjectMutation.isPending
+                    ? "Creating project..."
+                    : "Create project & continue"}
+                </span>
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Button>
+            </div>
+          </form>
+        ) : null}
+
+        {step === 5 && createdOnboarding ? (
+          <div className="flex flex-col gap-4">
+            <div>
+              <h2
+                ref={stepHeadingRef}
+                tabIndex={-1}
+                className="text-sm font-semibold text-foreground outline-none"
+              >
+                Step 5: Connect your app
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Configure your application with the SMTP credentials for{" "}
+                <span className="font-medium text-foreground">
+                  {createdOnboarding.project.name}
+                </span>{" "}
+                or send a built-in test email to verify delivery.
+              </p>
+            </div>
+
+            <div
+              role="status"
+              aria-live="polite"
+              className={cn(
+                "flex flex-wrap items-center justify-between gap-3 rounded-md border px-3.5 py-2.5 text-xs",
+                firstMessage
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+                  : "border-accent/30 bg-accent/10 text-foreground",
+              )}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                {firstMessage ? (
+                  <CheckCircle2
+                    className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Loader2
+                    className="size-4 shrink-0 animate-spin text-accent"
+                    aria-hidden="true"
+                  />
+                )}
+                <div className="min-w-0">
+                  {firstMessage ? (
+                    <>
+                      <div className="font-semibold">First message received!</div>
+                      <div className="truncate text-[11px] opacity-90">
+                        {firstMessage.subject} · from {firstMessage.from}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="font-medium">Waiting for first message...</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Send an email via SMTP or click &quot;Send test email&quot; to test right
+                        now.
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant={firstMessage ? "outline" : "default"}
+                size="xs"
+                disabled={sendTestMutation.isPending}
+                onClick={() => sendTestMutation.mutate(createdOnboarding.project.slug)}
+              >
+                <Send className="size-3" aria-hidden="true" />
+                <span>{sendTestMutation.isPending ? "Sending..." : "Send test email"}</span>
+              </Button>
+            </div>
+
+            <section className="rounded-md border border-border bg-background text-xs">
+              <dl className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-y-0">
+                {[
+                  { label: "Host", value: meta?.smtp.host ?? "localhost" },
+                  { label: "Port", value: String(meta?.smtp.port ?? 587) },
+                  { label: "TLS", value: tlsMode },
+                  { label: "Username", value: createdOnboarding.credential.username },
+                ].map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 sm:odd:border-r"
+                  >
+                    <dt className="text-muted-foreground">{row.label}</dt>
+                    <dd className="flex min-w-0 items-center gap-1 font-mono text-foreground">
+                      <span className="truncate">{row.value}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Copy ${row.label}`}
+                        onClick={() => void copyToClipboard(row.value, row.label)}
+                        className="size-6 shrink-0"
+                      >
+                        <Copy className="size-3" aria-hidden="true" />
+                      </Button>
+                    </dd>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between gap-2 px-3 py-2 sm:col-span-2">
+                  <dt className="text-muted-foreground">Password</dt>
+                  <dd className="flex min-w-0 items-center gap-1 font-mono text-foreground">
+                    <span className="truncate">
+                      {passwordRevealed ? createdOnboarding.password : "••••••••••••"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={passwordRevealed ? "Hide password" : "Reveal password"}
+                      onClick={() => setPasswordRevealed((prev) => !prev)}
+                      className="size-6 shrink-0"
+                    >
+                      {passwordRevealed ? (
+                        <EyeOff className="size-3" aria-hidden="true" />
+                      ) : (
+                        <Eye className="size-3" aria-hidden="true" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Copy Password"
+                      onClick={() =>
+                        void copyToClipboard(createdOnboarding.password, "SMTP password")
+                      }
+                      className="size-6 shrink-0"
+                    >
+                      <Copy className="size-3" aria-hidden="true" />
+                    </Button>
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <IntegrationSnippetsPanel
+              input={{
+                mode: "server",
+                host: meta?.smtp.host ?? "localhost",
+                port: meta?.smtp.port ?? 587,
+                tlsMode,
+                username: createdOnboarding.credential.username,
+                password: passwordRevealed ? createdOnboarding.password : "********",
+              }}
+              passwordRevealed={passwordRevealed}
+              canRevealPassword
+              onToggleRevealPassword={() => setPasswordRevealed((prev) => !prev)}
+            />
+
+            <div className="flex items-center justify-end pt-1">
+              <Button
+                type="button"
+                onClick={() =>
+                  void navigate({
+                    to: "/p/$project",
+                    params: { project: createdOnboarding.project.slug },
+                  })
+                }
+              >
+                <span>Go to inbox</span>
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
         ) : null}
       </div>
     </main>

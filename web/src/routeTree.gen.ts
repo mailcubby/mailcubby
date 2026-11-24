@@ -15,6 +15,7 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AccountPreferencesRouteImport } from './routes/account.preferences'
 import { Route as AccountProfileRouteImport } from './routes/account.profile'
 import { Route as AccountSecurityRouteImport } from './routes/account.security'
+import { Route as AccountTokensRouteImport } from './routes/account.tokens'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminProjectsRouteImport } from './routes/admin.projects'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
@@ -24,8 +25,11 @@ import { Route as ResetTokenRouteImport } from './routes/reset.$token'
 import { Route as PProjectIndexRouteImport } from './routes/p.$project.index'
 import { Route as PProjectMMessageIdRouteImport } from './routes/p.$project.m.$messageId'
 import { Route as PProjectSettingsIndexRouteImport } from './routes/p.$project_.settings.index'
+import { Route as PProjectSettingsApiRouteImport } from './routes/p.$project_.settings.api'
 import { Route as PProjectSettingsGeneralRouteImport } from './routes/p.$project_.settings.general'
 import { Route as PProjectSettingsMembersRouteImport } from './routes/p.$project_.settings.members'
+import { Route as PProjectSettingsRoutingRouteImport } from './routes/p.$project_.settings.routing'
+import { Route as PProjectSettingsSmtpRouteImport } from './routes/p.$project_.settings.smtp'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -55,6 +59,11 @@ const AccountProfileRoute = AccountProfileRouteImport.update({
 const AccountSecurityRoute = AccountSecurityRouteImport.update({
   id: '/account/security',
   path: '/account/security',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountTokensRoute = AccountTokensRouteImport.update({
+  id: '/account/tokens',
+  path: '/account/tokens',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -102,6 +111,11 @@ const PProjectSettingsIndexRoute = PProjectSettingsIndexRouteImport.update({
   path: '/p/$project/settings/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PProjectSettingsApiRoute = PProjectSettingsApiRouteImport.update({
+  id: '/p/$project_/settings/api',
+  path: '/p/$project/settings/api',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PProjectSettingsGeneralRoute = PProjectSettingsGeneralRouteImport.update({
   id: '/p/$project_/settings/general',
   path: '/p/$project/settings/general',
@@ -112,6 +126,16 @@ const PProjectSettingsMembersRoute = PProjectSettingsMembersRouteImport.update({
   path: '/p/$project/settings/members',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PProjectSettingsRoutingRoute = PProjectSettingsRoutingRouteImport.update({
+  id: '/p/$project_/settings/routing',
+  path: '/p/$project/settings/routing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PProjectSettingsSmtpRoute = PProjectSettingsSmtpRouteImport.update({
+  id: '/p/$project_/settings/smtp',
+  path: '/p/$project/settings/smtp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -120,6 +144,7 @@ export interface FileRoutesByFullPath {
   '/account/preferences': typeof AccountPreferencesRoute
   '/account/profile': typeof AccountProfileRoute
   '/account/security': typeof AccountSecurityRoute
+  '/account/tokens': typeof AccountTokensRoute
   '/admin/projects': typeof AdminProjectsRoute
   '/admin/users': typeof AdminUsersRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -128,8 +153,11 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/p/$project/': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
+  '/p/$project/settings/api': typeof PProjectSettingsApiRoute
   '/p/$project/settings/general': typeof PProjectSettingsGeneralRoute
   '/p/$project/settings/members': typeof PProjectSettingsMembersRoute
+  '/p/$project/settings/routing': typeof PProjectSettingsRoutingRoute
+  '/p/$project/settings/smtp': typeof PProjectSettingsSmtpRoute
   '/p/$project/settings/': typeof PProjectSettingsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -139,6 +167,7 @@ export interface FileRoutesByTo {
   '/account/preferences': typeof AccountPreferencesRoute
   '/account/profile': typeof AccountProfileRoute
   '/account/security': typeof AccountSecurityRoute
+  '/account/tokens': typeof AccountTokensRoute
   '/admin/projects': typeof AdminProjectsRoute
   '/admin/users': typeof AdminUsersRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -146,8 +175,11 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/p/$project': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
+  '/p/$project/settings/api': typeof PProjectSettingsApiRoute
   '/p/$project/settings/general': typeof PProjectSettingsGeneralRoute
   '/p/$project/settings/members': typeof PProjectSettingsMembersRoute
+  '/p/$project/settings/routing': typeof PProjectSettingsRoutingRoute
+  '/p/$project/settings/smtp': typeof PProjectSettingsSmtpRoute
   '/p/$project/settings': typeof PProjectSettingsIndexRoute
 }
 export interface FileRoutesById {
@@ -158,6 +190,7 @@ export interface FileRoutesById {
   '/account/preferences': typeof AccountPreferencesRoute
   '/account/profile': typeof AccountProfileRoute
   '/account/security': typeof AccountSecurityRoute
+  '/account/tokens': typeof AccountTokensRoute
   '/admin/projects': typeof AdminProjectsRoute
   '/admin/users': typeof AdminUsersRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -166,8 +199,11 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/p/$project/': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
+  '/p/$project_/settings/api': typeof PProjectSettingsApiRoute
   '/p/$project_/settings/general': typeof PProjectSettingsGeneralRoute
   '/p/$project_/settings/members': typeof PProjectSettingsMembersRoute
+  '/p/$project_/settings/routing': typeof PProjectSettingsRoutingRoute
+  '/p/$project_/settings/smtp': typeof PProjectSettingsSmtpRoute
   '/p/$project_/settings/': typeof PProjectSettingsIndexRoute
 }
 export interface FileRouteTypes {
@@ -179,6 +215,7 @@ export interface FileRouteTypes {
     | '/account/preferences'
     | '/account/profile'
     | '/account/security'
+    | '/account/tokens'
     | '/admin/projects'
     | '/admin/users'
     | '/invite/$token'
@@ -187,8 +224,11 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/p/$project/'
     | '/p/$project/m/$messageId'
+    | '/p/$project/settings/api'
     | '/p/$project/settings/general'
     | '/p/$project/settings/members'
+    | '/p/$project/settings/routing'
+    | '/p/$project/settings/smtp'
     | '/p/$project/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -198,6 +238,7 @@ export interface FileRouteTypes {
     | '/account/preferences'
     | '/account/profile'
     | '/account/security'
+    | '/account/tokens'
     | '/admin/projects'
     | '/admin/users'
     | '/invite/$token'
@@ -205,8 +246,11 @@ export interface FileRouteTypes {
     | '/admin'
     | '/p/$project'
     | '/p/$project/m/$messageId'
+    | '/p/$project/settings/api'
     | '/p/$project/settings/general'
     | '/p/$project/settings/members'
+    | '/p/$project/settings/routing'
+    | '/p/$project/settings/smtp'
     | '/p/$project/settings'
   id:
     | '__root__'
@@ -216,6 +260,7 @@ export interface FileRouteTypes {
     | '/account/preferences'
     | '/account/profile'
     | '/account/security'
+    | '/account/tokens'
     | '/admin/projects'
     | '/admin/users'
     | '/invite/$token'
@@ -224,8 +269,11 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/p/$project/'
     | '/p/$project/m/$messageId'
+    | '/p/$project_/settings/api'
     | '/p/$project_/settings/general'
     | '/p/$project_/settings/members'
+    | '/p/$project_/settings/routing'
+    | '/p/$project_/settings/smtp'
     | '/p/$project_/settings/'
   fileRoutesById: FileRoutesById
 }
@@ -236,14 +284,18 @@ export interface RootRouteChildren {
   AccountPreferencesRoute: typeof AccountPreferencesRoute
   AccountProfileRoute: typeof AccountProfileRoute
   AccountSecurityRoute: typeof AccountSecurityRoute
+  AccountTokensRoute: typeof AccountTokensRoute
   AdminProjectsRoute: typeof AdminProjectsRoute
   AdminUsersRoute: typeof AdminUsersRoute
   InviteTokenRoute: typeof InviteTokenRoute
   PProjectRoute: typeof PProjectRouteWithChildren
   ResetTokenRoute: typeof ResetTokenRoute
   AdminIndexRoute: typeof AdminIndexRoute
+  PProjectSettingsApiRoute: typeof PProjectSettingsApiRoute
   PProjectSettingsGeneralRoute: typeof PProjectSettingsGeneralRoute
   PProjectSettingsMembersRoute: typeof PProjectSettingsMembersRoute
+  PProjectSettingsRoutingRoute: typeof PProjectSettingsRoutingRoute
+  PProjectSettingsSmtpRoute: typeof PProjectSettingsSmtpRoute
   PProjectSettingsIndexRoute: typeof PProjectSettingsIndexRoute
 }
 
@@ -289,6 +341,13 @@ declare module '@tanstack/react-router' {
       path: '/account/security'
       fullPath: '/account/security'
       preLoaderRoute: typeof AccountSecurityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account/tokens': {
+      id: '/account/tokens'
+      path: '/account/tokens'
+      fullPath: '/account/tokens'
+      preLoaderRoute: typeof AccountTokensRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -354,6 +413,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PProjectSettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/p/$project_/settings/api': {
+      id: '/p/$project_/settings/api'
+      path: '/p/$project/settings/api'
+      fullPath: '/p/$project/settings/api'
+      preLoaderRoute: typeof PProjectSettingsApiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/p/$project_/settings/general': {
       id: '/p/$project_/settings/general'
       path: '/p/$project/settings/general'
@@ -366,6 +432,20 @@ declare module '@tanstack/react-router' {
       path: '/p/$project/settings/members'
       fullPath: '/p/$project/settings/members'
       preLoaderRoute: typeof PProjectSettingsMembersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/p/$project_/settings/routing': {
+      id: '/p/$project_/settings/routing'
+      path: '/p/$project/settings/routing'
+      fullPath: '/p/$project/settings/routing'
+      preLoaderRoute: typeof PProjectSettingsRoutingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/p/$project_/settings/smtp': {
+      id: '/p/$project_/settings/smtp'
+      path: '/p/$project/settings/smtp'
+      fullPath: '/p/$project/settings/smtp'
+      preLoaderRoute: typeof PProjectSettingsSmtpRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -392,14 +472,18 @@ const rootRouteChildren: RootRouteChildren = {
   AccountPreferencesRoute: AccountPreferencesRoute,
   AccountProfileRoute: AccountProfileRoute,
   AccountSecurityRoute: AccountSecurityRoute,
+  AccountTokensRoute: AccountTokensRoute,
   AdminProjectsRoute: AdminProjectsRoute,
   AdminUsersRoute: AdminUsersRoute,
   InviteTokenRoute: InviteTokenRoute,
   PProjectRoute: PProjectRouteWithChildren,
   ResetTokenRoute: ResetTokenRoute,
   AdminIndexRoute: AdminIndexRoute,
+  PProjectSettingsApiRoute: PProjectSettingsApiRoute,
   PProjectSettingsGeneralRoute: PProjectSettingsGeneralRoute,
   PProjectSettingsMembersRoute: PProjectSettingsMembersRoute,
+  PProjectSettingsRoutingRoute: PProjectSettingsRoutingRoute,
+  PProjectSettingsSmtpRoute: PProjectSettingsSmtpRoute,
   PProjectSettingsIndexRoute: PProjectSettingsIndexRoute,
 }
 export const routeTree = rootRouteImport

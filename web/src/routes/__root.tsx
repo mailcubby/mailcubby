@@ -166,8 +166,15 @@ function ServerProtectedGate({ pathname, searchStr }: { pathname: string; search
 
 function RootLayout() {
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
+  // Use resolvedLocation so the shell (AuthPublicShell vs ServerProtectedGate)
+  // only swaps once the target route's lazy chunk has resolved, avoiding
+  // mounting the outgoing route inside the incoming shell during transitions.
+  const pathname = useRouterState({
+    select: (s) => (s.resolvedLocation ?? s.location).pathname,
+  });
+  const searchStr = useRouterState({
+    select: (s) => (s.resolvedLocation ?? s.location).searchStr,
+  });
   const metaQuery = useQuery(metaQueryOptions());
   const meta = metaQuery.data;
 
@@ -187,9 +194,6 @@ function RootLayout() {
       void navigate({ to: "/setup", replace: true });
       return;
     }
-    if (!meta.setup_required && pathname === "/setup") {
-      void navigate({ to: "/", replace: true });
-    }
   }, [meta, navigate, pathname]);
 
   if (metaQuery.isPending) {
@@ -205,9 +209,6 @@ function RootLayout() {
 
   if (meta?.mode === "server") {
     if (meta.setup_required && pathname !== "/setup") {
-      return null;
-    }
-    if (!meta.setup_required && pathname === "/setup") {
       return null;
     }
     if (isPublicRoute) {
