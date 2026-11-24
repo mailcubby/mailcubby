@@ -7,10 +7,42 @@ export interface SnippetInput {
   password: string;
 }
 
+export interface SnippetTableRow {
+  label: string;
+  value: string;
+}
+
 export interface IntegrationSnippet {
   id: string;
   label: string;
   code: string;
+  table?: ReadonlyArray<SnippetTableRow>;
+}
+
+export interface ApiCurlExample {
+  id: string;
+  title: string;
+  description: string;
+  code: string;
+}
+
+function escapeSingleQuotedShell(value: string): string {
+  return value.replaceAll("'", "'\"'\"'");
+}
+
+export function formatWordPressSettingsTable(input: SnippetInput): ReadonlyArray<SnippetTableRow> {
+  const encryption =
+    input.tlsMode === "tls" ? "SSL" : input.tlsMode === "starttls" ? "TLS" : "None";
+  return [
+    { label: "Mailer", value: "Other SMTP" },
+    { label: "SMTP Host", value: input.host },
+    { label: "Encryption", value: encryption },
+    { label: "SMTP Port", value: String(input.port) },
+    { label: "Auto TLS", value: input.tlsMode === "starttls" ? "On" : "Off" },
+    { label: "Authentication", value: "On" },
+    { label: "SMTP Username", value: input.username },
+    { label: "SMTP Password", value: input.password },
+  ];
 }
 
 export function generateIntegrationSnippets(input: SnippetInput): IntegrationSnippet[] {
@@ -88,13 +120,18 @@ export function generateIntegrationSnippets(input: SnippetInput): IntegrationSni
   ].join("\n");
 
   const swaksTlsFlag = isImplicitTls ? " --tls-on-connect" : tlsMode === "starttls" ? " --tls" : "";
-  const swaks = `swaks --to test@example.com --server ${host}:${port}${swaksTlsFlag} --auth PLAIN --auth-user ${username} --auth-password '${password}'`;
+  const swaks = `swaks --to test@example.com --server ${host}:${port}${swaksTlsFlag} --auth PLAIN --auth-user ${username} --auth-password '${escapeSingleQuotedShell(password)}'`;
 
   const snippets: IntegrationSnippet[] = [
     { id: "laravel", label: "Laravel", code: laravel },
     { id: "symfony", label: "Symfony", code: symfony },
     { id: "nodemailer", label: "Nodemailer", code: nodemailer },
-    { id: "wordpress", label: "WordPress", code: wordpress },
+    {
+      id: "wordpress",
+      label: "WordPress",
+      table: formatWordPressSettingsTable(input),
+      code: wordpress,
+    },
     { id: "django", label: "Django", code: django },
     { id: "rails", label: "Rails", code: rails },
     { id: "swaks", label: "swaks", code: swaks },
@@ -109,4 +146,38 @@ export function generateIntegrationSnippets(input: SnippetInput): IntegrationSni
   }
 
   return snippets;
+}
+
+export function generateApiCurlExamples(input: {
+  mode: "local" | "server";
+  baseUrl: string;
+  projectSlug: string;
+}): ApiCurlExample[] {
+  const origin = input.baseUrl.replace(/\/+$/, "");
+  const slug = encodeURIComponent(input.projectSlug);
+  const authLine =
+    input.mode === "server" ? `  -H "Authorization: Bearer $MAILCUBBY_TOKEN" \\\n` : "";
+
+  return [
+    {
+      id: "list",
+      title: "List messages",
+      description: "Fetch the newest messages in this project (supports query, tag, and limit).",
+      code: `curl -sS \\\n${authLine}  "${origin}/api/v1/projects/${slug}/messages?limit=20"`,
+    },
+    {
+      id: "wait",
+      title: "Wait for a matching message",
+      description:
+        "Block until a message matching your search query arrives (returns 200 or 204 on timeout).",
+      code: `curl -sS \\\n${authLine}  "${origin}/api/v1/projects/${slug}/messages/wait?query=subject:welcome&timeout=30s"`,
+    },
+    {
+      id: "delete-all",
+      title: "Delete all messages",
+      description:
+        "Clear the inbox (requires a write token in server mode; pass ?query=... to delete a subset).",
+      code: `curl -sS -X DELETE \\\n${authLine}  "${origin}/api/v1/projects/${slug}/messages"`,
+    },
+  ];
 }

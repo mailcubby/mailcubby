@@ -1,6 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { AlertCircle, ArrowLeft, Settings2, Users } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Code2,
+  KeyRound,
+  Route as RouteIcon,
+  Settings2,
+  Users,
+} from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +18,7 @@ import { PROJECT_COLOR_DOT_CLASS } from "@/lib/format";
 import { metaQueryOptions, projectQueryOptions } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-export type ProjectSettingsSection = "general" | "members";
+export type ProjectSettingsSection = "general" | "smtp" | "members" | "routing" | "api";
 
 export interface ProjectSettingsLayoutProps {
   projectSlug: string;
@@ -120,7 +128,12 @@ export function ProjectSettingsLayout({
   const navItems: Array<{
     id: ProjectSettingsSection;
     label: string;
-    to: "/p/$project/settings/general" | "/p/$project/settings/members";
+    to:
+      | "/p/$project/settings/general"
+      | "/p/$project/settings/smtp"
+      | "/p/$project/settings/members"
+      | "/p/$project/settings/routing"
+      | "/p/$project/settings/api";
     Icon: typeof Settings2;
   }> = [];
 
@@ -132,6 +145,12 @@ export function ProjectSettingsLayout({
       Icon: Settings2,
     });
   }
+  navItems.push({
+    id: "smtp",
+    label: "SMTP",
+    to: "/p/$project/settings/smtp",
+    Icon: KeyRound,
+  });
   if (isServer) {
     navItems.push({
       id: "members",
@@ -140,6 +159,20 @@ export function ProjectSettingsLayout({
       Icon: Users,
     });
   }
+  if (isOwner) {
+    navItems.push({
+      id: "routing",
+      label: "Routing & client view",
+      to: "/p/$project/settings/routing",
+      Icon: RouteIcon,
+    });
+  }
+  navItems.push({
+    id: "api",
+    label: "API",
+    to: "/p/$project/settings/api",
+    Icon: Code2,
+  });
 
   return (
     <main className="h-full overflow-y-auto px-4 py-6 sm:px-6">

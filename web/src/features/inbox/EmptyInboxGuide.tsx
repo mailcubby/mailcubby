@@ -1,14 +1,20 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { Copy, Inbox, Send } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Copy, Eye, EyeOff, Inbox, KeyRound, Send } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { generateIntegrationSnippets } from "@/features/settings/snippets";
-import { api, type ProjectDetail, type ProjectRole, unwrap } from "@/lib/api";
+import { IntegrationSnippetsPanel } from "@/features/settings/IntegrationSnippetsPanel";
+import {
+  ApiError,
+  api,
+  handleApiError,
+  type ProjectDetail,
+  type ProjectRole,
+  unwrap,
+} from "@/lib/api";
 import { copyToClipboard } from "@/lib/clipboard";
-import { metaQueryOptions } from "@/lib/queries";
-import { cn } from "@/lib/utils";
+import { metaQueryOptions, projectSMTPCredentialsQueryOptions } from "@/lib/queries";
 
 export interface EmptyInboxGuideProps {
   project: ProjectDetail;
@@ -19,7 +25,28 @@ export interface EmptyInboxGuideProps {
 export function EmptyInboxGuide({ project, effectiveRole, onSentTest }: EmptyInboxGuideProps) {
   const navigate = useNavigate();
   const { data: meta } = useQuery(metaQueryOptions());
-  const [activeSnippetId, setActiveSnippetId] = useState("laravel");
+  const role = effectiveRole ?? project.role;
+  const isServer = meta?.mode === "server";
+  const isViewer = role === "viewer";
+
+  const { data: credsData } = useQuery({
+    ...projectSMTPCredentialsQueryOptions(project.slug),
+    enabled: isServer && !isViewer,
+  });
+
+  const [revealed, setRevealed] = useState<{ slug: string; password: string } | null>(null);
+  const [revealing, setRevealing] = useState(false);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const revealedPassword = revealed?.slug === project.slug ? revealed.password : null;
+
+  useEffect(() => {
+    return () => {
+      if (revealTimerRef.current) {
+        clearTimeout(revealTimerRef.current);
+      }
+    };
+  }, []);
 
   const sendTestMutation = useMutation({
     mutationFn: async () =>
@@ -38,29 +65,7 @@ export function EmptyInboxGuide({ project, effectiveRole, onSentTest }: EmptyInb
     },
   });
 
-  const mode = meta?.mode ?? "local";
-  const host = meta?.smtp.host ?? "localhost";
-  const port = meta?.smtp.port ?? 1025;
-  const tlsMode = meta?.smtp.tls_mode ?? "none";
-  const username = project.slug;
-  const password = mode === "local" ? "dev" : "********";
-
-  const snippets = useMemo(
-    () =>
-      generateIntegrationSnippets({
-        mode,
-        host,
-        port,
-        tlsMode,
-        username,
-        password,
-      }),
-    [mode, host, port, tlsMode, username, password],
-  );
-
-  const activeSnippet = snippets.find((s) => s.id === activeSnippetId) ?? snippets[0];
-
-  if ((effectiveRole ?? project.role) === "viewer") {
+  if (isViewer) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground">
         <Inbox className="size-8 opacity-50" aria-hidden="true" />
@@ -71,6 +76,56 @@ export function EmptyInboxGuide({ project, effectiveRole, onSentTest }: EmptyInb
       </div>
     );
   }
+
+  const mode = meta?.mode ?? "local";
+  const activeCred = credsData?.items.find((c) => !c.disabled) ?? credsData?.items[0] ?? null;
+  const host = credsData?.connection.host ?? meta?.smtp.host ?? "localhost";
+  const port = credsData?.connection.port ?? meta?.smtp.port ?? 1025;
+  const tlsMode = credsData?.connection.tls_mode ?? meta?.smtp.tls_mode ?? "none";
+  const username = isServer
+    ? (activeCred?.username ?? `${project.slug}-<credential>`)
+    : project.slug;
+  const password = isServer ? (revealedPassword ?? "********") : "dev";
+
+  const handleToggleReveal = async () => {
+    if (!activeCred) return;
+    if (revealedPassword) {
+      setRevealed(null);
+      if (revealTimerRef.current) {
+        clearTimeout(revealTimerRef.current);
+        revealTimerRef.current = null;
+      }
+      return;
+    }
+    setRevealing(true);
+    try {
+      const res = unwrap(
+        await api.POST("/api/v1/projects/{project}/smtp-credentials/{id}/reveal", {
+          params: { path: { project: project.slug, id: activeCred.id } },
+        }),
+      );
+      setRevealed({ slug: project.slug, password: res.password });
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = setTimeout(() => {
+        setRevealed(null);
+        revealTimerRef.current = null;
+      }, 30_000);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        toast.error("Only project owners can reveal SMTP passwords for this project");
+      } else {
+        handleApiError(err, "Failed to reveal SMTP password");
+      }
+    } finally {
+      setRevealing(false);
+    }
+  };
+
+  const showRecipientRouting =
+    Boolean(meta?.inbox_domain) &&
+    (!isServer ||
+      ("recipient_routing_enabled" in project.settings &&
+        project.settings.recipient_routing_enabled));
 
   return (
     <div className="h-full overflow-y-auto bg-background p-6">
@@ -95,21 +150,30 @@ export function EmptyInboxGuide({ project, effectiveRole, onSentTest }: EmptyInb
         </div>
 
         <section className="rounded-lg border border-border bg-surface">
-          <div className="border-b border-border px-4 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              SMTP Connection ({mode === "local" ? "Local mode" : "Server mode"})
+              SMTP Connection ({isServer ? "Server mode" : "Local mode"})
             </h3>
+            {isServer ? (
+              <Link
+                to="/p/$project/settings/smtp"
+                params={{ project: project.slug }}
+                className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+              >
+                <KeyRound className="size-3" aria-hidden="true" />
+                <span>{activeCred ? "Manage credentials" : "Create SMTP credential"}</span>
+              </Link>
+            ) : null}
           </div>
           <dl className="grid grid-cols-1 divide-y divide-border text-xs sm:grid-cols-2 sm:divide-y-0">
             {[
-              { label: "Host", value: host },
-              { label: "Port", value: String(port) },
-              { label: "TLS", value: tlsMode },
-              { label: "Username", value: username },
+              { label: "Host", value: host, copyValue: host },
+              { label: "Port", value: String(port), copyValue: String(port) },
+              { label: "TLS", value: tlsMode, copyValue: tlsMode },
               {
-                label: "Password",
-                value: mode === "local" ? "any (e.g. dev)" : "********",
-                copyValue: mode === "local" ? "dev" : undefined,
+                label: "Username",
+                value: username,
+                copyValue: activeCred ? username : !isServer ? username : undefined,
               },
             ].map((row) => (
               <div
@@ -119,12 +183,16 @@ export function EmptyInboxGuide({ project, effectiveRole, onSentTest }: EmptyInb
                 <dt className="text-muted-foreground">{row.label}</dt>
                 <dd className="flex min-w-0 items-center gap-1.5 font-mono text-foreground">
                   <span className="truncate">{row.value}</span>
-                  {(row.copyValue ?? row.value) ? (
+                  {row.copyValue ? (
                     <Button
                       variant="ghost"
                       size="icon"
                       aria-label={`Copy ${row.label}`}
-                      onClick={() => void copyToClipboard(row.copyValue ?? row.value, row.label)}
+                      onClick={() => {
+                        if (row.copyValue) {
+                          void copyToClipboard(row.copyValue, row.label);
+                        }
+                      }}
                       className="size-6 shrink-0"
                     >
                       <Copy className="size-3" aria-hidden="true" />
@@ -133,10 +201,57 @@ export function EmptyInboxGuide({ project, effectiveRole, onSentTest }: EmptyInb
                 </dd>
               </div>
             ))}
+            <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5 sm:col-span-2 sm:border-b-0">
+              <dt className="text-muted-foreground">Password</dt>
+              <dd className="flex min-w-0 items-center gap-1.5 font-mono text-foreground">
+                <span className="truncate">
+                  {isServer ? (revealedPassword ?? "********") : "any (e.g. dev)"}
+                </span>
+                {isServer && activeCred ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={revealedPassword ? "Hide password" : "Reveal password"}
+                      disabled={revealing}
+                      onClick={() => void handleToggleReveal()}
+                      className="size-6 shrink-0"
+                    >
+                      {revealedPassword ? (
+                        <EyeOff className="size-3" aria-hidden="true" />
+                      ) : (
+                        <Eye className="size-3" aria-hidden="true" />
+                      )}
+                    </Button>
+                    {revealedPassword ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Copy Password"
+                        onClick={() => void copyToClipboard(revealedPassword, "SMTP password")}
+                        className="size-6 shrink-0"
+                      >
+                        <Copy className="size-3" aria-hidden="true" />
+                      </Button>
+                    ) : null}
+                  </>
+                ) : !isServer ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Copy Password"
+                    onClick={() => void copyToClipboard("dev", "Password")}
+                    className="size-6 shrink-0"
+                  >
+                    <Copy className="size-3" aria-hidden="true" />
+                  </Button>
+                ) : null}
+              </dd>
+            </div>
           </dl>
         </section>
 
-        {meta?.inbox_domain ? (
+        {showRecipientRouting && meta?.inbox_domain ? (
           <section className="rounded-lg border border-border bg-surface p-4 text-xs">
             <h3 className="font-semibold text-foreground">Recipient routing addresses</h3>
             <p className="mt-1 text-muted-foreground">
@@ -163,52 +278,20 @@ export function EmptyInboxGuide({ project, effectiveRole, onSentTest }: EmptyInb
           </section>
         ) : null}
 
-        {activeSnippet ? (
-          <section className="overflow-hidden rounded-lg border border-border bg-surface">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-1.5">
-              <div
-                role="tablist"
-                aria-label="Integration snippets"
-                className="flex flex-wrap items-center gap-1"
-              >
-                {snippets.map((snippet) => {
-                  const selected = snippet.id === activeSnippet.id;
-                  return (
-                    <button
-                      key={snippet.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={selected}
-                      onClick={() => setActiveSnippetId(snippet.id)}
-                      className={cn(
-                        "cursor-pointer rounded-sm px-2 py-1 text-xs font-medium transition-colors",
-                        selected
-                          ? "bg-muted text-foreground"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {snippet.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={() =>
-                  void copyToClipboard(activeSnippet.code, `${activeSnippet.label} snippet`)
-                }
-              >
-                <Copy className="size-3" aria-hidden="true" />
-                <span>Copy snippet</span>
-              </Button>
-            </div>
-            <pre className="overflow-x-auto p-4 font-mono text-xs leading-5 text-foreground">
-              <code>{activeSnippet.code}</code>
-            </pre>
-          </section>
-        ) : null}
+        <IntegrationSnippetsPanel
+          input={{
+            mode,
+            host,
+            port,
+            tlsMode,
+            username,
+            password,
+          }}
+          passwordRevealed={Boolean(revealedPassword)}
+          canRevealPassword={Boolean(isServer && activeCred)}
+          revealingPassword={revealing}
+          onToggleRevealPassword={activeCred ? () => void handleToggleReveal() : undefined}
+        />
       </div>
     </div>
   );

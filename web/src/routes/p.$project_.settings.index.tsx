@@ -11,7 +11,7 @@ function ProjectSettingsIndexRoute() {
   const { data } = useQuery(projectQueryOptions(project));
 
   if (data && data.role === "member") {
-    return <Navigate to="/p/$project/settings/members" params={{ project }} replace />;
+    return <Navigate to="/p/$project/settings/smtp" params={{ project }} replace />;
   }
   return <Navigate to="/p/$project/settings/general" params={{ project }} replace />;
 }
