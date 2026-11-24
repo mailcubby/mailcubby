@@ -27,6 +27,7 @@ const SHORTCUT_GROUPS: ReadonlyArray<ShortcutGroup> = [
     items: [
       { keys: ["e", "#", "Del"], description: "Delete message (with undo)" },
       { keys: ["u"], description: "Toggle read / unread" },
+      { keys: ["t"], description: "Edit tags on message or selection" },
       { keys: ["x"], description: "Select message" },
       { keys: ["Shift+j", "Shift+k"], description: "Extend selection down / up" },
     ],
@@ -43,7 +44,7 @@ const SHORTCUT_GROUPS: ReadonlyArray<ShortcutGroup> = [
     title: "Global",
     items: [
       { keys: ["⌘/Ctrl", "K"], description: "Open command palette" },
-      { keys: ["/"], description: "Filter projects or open command palette" },
+      { keys: ["/"], description: "Focus search" },
       { keys: ["n"], description: "New project (on Projects home)" },
       { keys: ["?"], description: "Open keyboard shortcuts help" },
     ],

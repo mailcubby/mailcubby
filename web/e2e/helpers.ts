@@ -62,6 +62,34 @@ export function sendFixture(
   });
 }
 
+export function sendRawMail(
+  rawEmail: string,
+  options?: { user?: string; recipients?: string[] },
+): Promise<void> {
+  const { binaryPath, smtpAddr, repoRoot } = getE2EConfig();
+
+  const args = ["sendmail", "--smtp", smtpAddr];
+  if (options?.user) {
+    args.push("--user", options.user, "--password", "dev");
+  }
+  if (options?.recipients && options.recipients.length > 0) {
+    args.push(...options.recipients);
+  } else {
+    args.push("-t");
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = execFile(binaryPath, args, { cwd: repoRoot }, (err, _stdout, stderr) => {
+      if (err) {
+        reject(new Error(`sendmail failed: ${err.message}\n${stderr}`));
+        return;
+      }
+      resolve();
+    });
+    child.stdin?.end(rawEmail);
+  });
+}
+
 export async function createProjectViaAPI(
   name: string,
   slug?: string,

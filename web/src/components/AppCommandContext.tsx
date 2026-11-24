@@ -1,14 +1,17 @@
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
-import type { MessageSummary } from "@/lib/api";
+import type { MessageSummary, TagSummary } from "@/lib/api";
 
 export interface ActiveInboxActions {
   projectSlug: string;
   projectName: string;
   messageCount: number;
   messages: ReadonlyArray<MessageSummary>;
+  tags: ReadonlyArray<TagSummary>;
   toggleSidebar: () => void;
   openDeleteAll: () => void;
   sendTestEmail: () => void;
+  applySearchOperator: (operator: string, complete: boolean) => void;
+  selectTagFilter: (tagName: string) => void;
 }
 
 export interface AppCommandContextValue {

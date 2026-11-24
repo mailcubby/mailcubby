@@ -9,6 +9,7 @@ export const queryKeys = {
   authMe: () => ["auth", "me"] as const,
   projects: () => ["projects"] as const,
   project: (slug: string) => ["projects", slug] as const,
+  tags: (slug: string) => ["projects", slug, "tags"] as const,
   messages: (slug: string, params?: MessageListQueryParams) =>
     ["projects", slug, "messages", params ?? {}] as const,
   message: (slug: string, id: string) => ["projects", slug, "messages", id] as const,

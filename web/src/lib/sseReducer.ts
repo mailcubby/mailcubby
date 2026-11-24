@@ -79,6 +79,8 @@ export type MessageInfiniteData = InfiniteData<MessageListResponse, string | und
 export interface ApplySSEResult {
   insertedMessage: boolean;
   needsProjectsRefetch: boolean;
+  invalidateTagsForProject?: string;
+  invalidateFilteredListsForProject?: string;
 }
 
 function hasMessageInPages(data: MessageInfiniteData, messageId: string): boolean {
@@ -236,6 +238,17 @@ function isMessageListKey(queryKey: readonly unknown[], projectSlug: string): bo
   );
 }
 
+export function isFilteredMessageListKey(
+  queryKey: readonly unknown[],
+  projectSlug: string,
+): boolean {
+  if (!isMessageListKey(queryKey, projectSlug)) {
+    return false;
+  }
+  const params = queryKey[3] as Record<string, unknown>;
+  return Boolean(params.query || params.tag || params.credential !== undefined);
+}
+
 function bumpSparklineLatest(sparkline: ReadonlyArray<number>): number[] {
   if (sparkline.length === 0) {
     return [1];
@@ -255,7 +268,8 @@ export function applySSEEvent(queryClient: QueryClient, event: SSEEvent): ApplyS
     case "message.created": {
       const { project: slug, message } = event.payload;
       let insertedMessage = false;
-      let sawCachedList = false;
+      let sawUnfilteredList = false;
+      let hasFilteredList = false;
 
       const listQueries = queryClient.getQueriesData<MessageInfiniteData>({
         predicate: (q) => isMessageListKey(q.queryKey, slug),
@@ -265,7 +279,11 @@ export function applySSEEvent(queryClient: QueryClient, event: SSEEvent): ApplyS
         if (!current) {
           continue;
         }
-        sawCachedList = true;
+        if (isFilteredMessageListKey(key, slug)) {
+          hasFilteredList = true;
+          continue;
+        }
+        sawUnfilteredList = true;
         const result = insertMessageIntoPages(current, message);
         if (result.inserted) {
           insertedMessage = true;
@@ -274,8 +292,8 @@ export function applySSEEvent(queryClient: QueryClient, event: SSEEvent): ApplyS
       }
 
       // Only increment local counters when the message wasn't already present in a loaded list
-      // (or when no list is loaded yet, e.g., while viewing Projects Home).
-      const shouldBumpCounters = !sawCachedList || insertedMessage;
+      // (or when no unfiltered list is loaded yet, e.g., while viewing Projects Home or a filtered view).
+      const shouldBumpCounters = !sawUnfilteredList || insertedMessage;
       let needsProjectsRefetch = false;
 
       if (shouldBumpCounters) {
@@ -317,7 +335,12 @@ export function applySSEEvent(queryClient: QueryClient, event: SSEEvent): ApplyS
         }
       }
 
-      return { insertedMessage: shouldBumpCounters, needsProjectsRefetch };
+      return {
+        insertedMessage: shouldBumpCounters,
+        needsProjectsRefetch,
+        ...(message.tags.length > 0 ? { invalidateTagsForProject: slug } : {}),
+        ...(hasFilteredList ? { invalidateFilteredListsForProject: slug } : {}),
+      };
     }
 
     case "message.updated": {
@@ -350,7 +373,13 @@ export function applySSEEvent(queryClient: QueryClient, event: SSEEvent): ApplyS
         });
       }
 
-      return { insertedMessage: false, needsProjectsRefetch: false };
+      return {
+        insertedMessage: false,
+        needsProjectsRefetch: false,
+        ...(tags !== undefined
+          ? { invalidateTagsForProject: slug, invalidateFilteredListsForProject: slug }
+          : {}),
+      };
     }
 
     case "message.deleted": {
@@ -380,7 +409,11 @@ export function applySSEEvent(queryClient: QueryClient, event: SSEEvent): ApplyS
         }
       }
 
-      return { insertedMessage: false, needsProjectsRefetch: false };
+      return {
+        insertedMessage: false,
+        needsProjectsRefetch: false,
+        invalidateTagsForProject: slug,
+      };
     }
 
     case "project.updated": {

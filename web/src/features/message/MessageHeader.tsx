@@ -8,25 +8,40 @@ import {
   Mail,
   MailOpen,
   Trash2,
+  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { Address, MessageDetail } from "@/lib/api";
+import { TagPickerPopover } from "@/features/inbox/TagPickerPopover";
+import type { Address, MessageDetail, ProjectRole, TagSummary } from "@/lib/api";
 import { copyToClipboard } from "@/lib/clipboard";
-import { formatAddress, formatBytes, formatExactTimestamp, formatRelativeTime } from "@/lib/format";
+import {
+  formatAddress,
+  formatBytes,
+  formatExactTimestamp,
+  formatRelativeTime,
+  PROJECT_COLOR_DOT_CLASS,
+} from "@/lib/format";
 import { useClock24hPreference } from "@/lib/preferences";
+import { cn } from "@/lib/utils";
 
 export interface MessageHeaderProps {
   projectSlug: string;
+  projectRole: ProjectRole;
+  projectTags: ReadonlyArray<TagSummary>;
   message: MessageDetail;
   hasPrevious: boolean;
   hasNext: boolean;
   onPrevious: () => void;
   onNext: () => void;
   onToggleSeen: () => void;
+  onUpdateTags: (nextTags: string[]) => void;
   onDelete: () => void;
   isUpdatingSeen: boolean;
+  isUpdatingTags: boolean;
+  tagEditorOpen: boolean;
+  onTagEditorOpenChange: (open: boolean) => void;
 }
 
 function AddressList({ label, addresses }: { label: string; addresses: ReadonlyArray<Address> }) {
@@ -77,16 +92,43 @@ function AddressList({ label, addresses }: { label: string; addresses: ReadonlyA
 
 export function MessageHeader({
   projectSlug,
+  projectRole,
+  projectTags,
   message,
   hasPrevious,
   hasNext,
   onPrevious,
   onNext,
   onToggleSeen,
+  onUpdateTags,
   onDelete,
   isUpdatingSeen,
+  isUpdatingTags,
+  tagEditorOpen,
+  onTagEditorOpenChange,
 }: MessageHeaderProps) {
   const [clock24h] = useClock24hPreference();
+
+  const canEditTags = projectRole !== "viewer";
+  const tagColorByLower = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const tag of projectTags) {
+      map.set(
+        tag.name.toLowerCase(),
+        PROJECT_COLOR_DOT_CLASS[tag.color] ?? PROJECT_COLOR_DOT_CLASS.slate,
+      );
+    }
+    return map;
+  }, [projectTags]);
+
+  const handleToggleTag = (tagName: string) => {
+    const targetLower = tagName.toLowerCase();
+    const exists = message.tags.some((t) => t.toLowerCase() === targetLower);
+    const next = exists
+      ? message.tags.filter((t) => t.toLowerCase() !== targetLower)
+      : [...message.tags, tagName];
+    onUpdateTags(next);
+  };
 
   const subject = message.subject.trim() || "(no subject)";
   const relative = formatRelativeTime(message.received_at, new Date(), clock24h);
@@ -228,16 +270,44 @@ export function MessageHeader({
         </div>
       </div>
 
-      {message.credential_label || message.tags.length > 0 ? (
+      {message.credential_label || message.tags.length > 0 || canEditTags ? (
         <div className="flex flex-wrap items-center gap-1.5">
           {message.credential_label ? (
             <Badge variant="outline">via {message.credential_label}</Badge>
           ) : null}
-          {message.tags.map((tag) => (
-            <Badge key={tag} variant="secondary">
-              {tag}
-            </Badge>
-          ))}
+          {message.tags.map((tag) => {
+            const dot = tagColorByLower.get(tag.toLowerCase()) ?? PROJECT_COLOR_DOT_CLASS.slate;
+            return (
+              <Badge key={tag} variant="secondary" className="gap-1.5 pr-1">
+                <span className={cn("size-1.5 shrink-0 rounded-full", dot)} aria-hidden="true" />
+                <span>{tag}</span>
+                {canEditTags ? (
+                  <button
+                    type="button"
+                    aria-label={`Remove tag ${tag}`}
+                    disabled={isUpdatingTags}
+                    onClick={() => handleToggleTag(tag)}
+                    className="inline-flex size-3.5 cursor-pointer items-center justify-center rounded-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="size-2.5" aria-hidden="true" />
+                  </button>
+                ) : null}
+              </Badge>
+            );
+          })}
+          {canEditTags ? (
+            <TagPickerPopover
+              mode="message"
+              open={tagEditorOpen}
+              onOpenChange={onTagEditorOpenChange}
+              projectTags={projectTags}
+              selectedTags={message.tags}
+              disabled={isUpdatingTags}
+              onToggleTag={handleToggleTag}
+              triggerLabel={message.tags.length > 0 ? "Edit tags" : "Add tag"}
+              triggerTitle="Edit tags (t)"
+            />
+          ) : null}
         </div>
       ) : null}
     </header>

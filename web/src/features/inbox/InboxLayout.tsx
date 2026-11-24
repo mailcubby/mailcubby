@@ -22,10 +22,14 @@ import {
 } from "@/lib/api";
 import { scheduleOptimisticDelete } from "@/lib/pendingDeletes";
 import { useSingleKeyShortcutsPreference } from "@/lib/preferences";
-import { metaQueryOptions, projectQueryOptions } from "@/lib/queries";
-import { queryKeys } from "@/lib/queryKeys";
+import { metaQueryOptions, projectQueryOptions, projectTagsQueryOptions } from "@/lib/queries";
+import { type MessageListQueryParams, queryKeys } from "@/lib/queryKeys";
 import { type KeyShortcutBinding, useKeyShortcuts } from "@/lib/shortcuts";
-import { type MessageInfiniteData, updateMessagesInPages } from "@/lib/sseReducer";
+import {
+  isFilteredMessageListKey,
+  type MessageInfiniteData,
+  updateMessagesInPages,
+} from "@/lib/sseReducer";
 import { usePersistentState } from "@/lib/usePersistentState";
 import type { InboxFilter } from "@/routes/p.$project";
 
@@ -79,9 +83,12 @@ export function InboxLayout() {
   const search = useSearch({ from: "/p/$project" });
   const projectSlug = params.project ?? "";
   const activeMessageId = params.messageId;
-  const filter: InboxFilter = search.filter === "unread" ? "unread" : "all";
+  const searchQuery = search.q ?? (search.filter === "unread" ? "is:unread" : "");
+  const activeTag = search.tag;
+  const filter: InboxFilter =
+    searchQuery.trim().toLowerCase() === "is:unread" && !activeTag ? "unread" : "all";
 
-  const { openPalette, setActiveInbox } = useAppCommands();
+  const { setActiveInbox } = useAppCommands();
   const [singleKeyEnabled] = useSingleKeyShortcutsPreference();
 
   const viewportWidth = useViewportWidth();
@@ -100,7 +107,9 @@ export function InboxLayout() {
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [tagEditorOpen, setTagEditorOpen] = useState(false);
   const readingPaneRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: meta } = useQuery(metaQueryOptions());
   const {
@@ -110,8 +119,22 @@ export function InboxLayout() {
     refetch: refetchProject,
   } = useQuery(projectQueryOptions(projectSlug));
 
+  const { data: projectTags = [] } = useQuery({
+    ...projectTagsQueryOptions(projectSlug),
+    enabled: Boolean(project),
+  });
+
+  const trimmedQuery = searchQuery.trim();
+  const listParams = useMemo<MessageListQueryParams>(
+    () => ({
+      ...(trimmedQuery ? { query: trimmedQuery } : {}),
+      ...(activeTag ? { tag: activeTag } : {}),
+    }),
+    [trimmedQuery, activeTag],
+  );
+
   const messagesQuery = useInfiniteQuery({
-    queryKey: queryKeys.messages(projectSlug),
+    queryKey: queryKeys.messages(projectSlug, listParams),
     initialPageParam: undefined as string | undefined,
     enabled: Boolean(project),
     queryFn: async ({ pageParam }) =>
@@ -119,23 +142,65 @@ export function InboxLayout() {
         await api.GET("/api/v1/projects/{project}/messages", {
           params: {
             path: { project: projectSlug },
-            query: pageParam ? { limit: 50, cursor: pageParam } : { limit: 50 },
+            query: {
+              limit: 50,
+              ...(pageParam ? { cursor: pageParam } : {}),
+              ...(listParams.query ? { query: listParams.query } : {}),
+              ...(listParams.tag ? { tag: listParams.tag } : {}),
+            },
           },
         }),
       ),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
 
-  const allMessages = useMemo(
+  const visibleMessages = useMemo(
     () => messagesQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [messagesQuery.data],
   );
 
-  // Phase 4 filters unread client-side until Phase 5 adds server-side `query=is:unread`.
-  const visibleMessages = useMemo(
-    () => (filter === "unread" ? allMessages.filter((m) => !m.seen) : allMessages),
-    [allMessages, filter],
-  );
+  const recentSenders = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    const addFromList = (list: ReadonlyArray<MessageSummary>) => {
+      for (const m of list) {
+        for (const candidate of [m.from.address, m.from.name]) {
+          const val = candidate.trim();
+          if (!val) {
+            continue;
+          }
+          const key = val.toLowerCase();
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          out.push(val);
+          if (out.length >= 20) {
+            return;
+          }
+        }
+      }
+    };
+    addFromList(visibleMessages);
+    if (out.length < 20) {
+      const unfiltered = queryClient.getQueryData<MessageInfiniteData>(
+        queryKeys.messages(projectSlug),
+      );
+      if (unfiltered) {
+        addFromList(unfiltered.pages.flatMap((p) => p.items));
+      }
+    }
+    return out;
+  }, [visibleMessages, queryClient, projectSlug]);
+
+  const prevMessageKeyRef = useRef(`${projectSlug}:${activeMessageId ?? ""}`);
+  const currentMessageKey = `${projectSlug}:${activeMessageId ?? ""}`;
+  if (prevMessageKeyRef.current !== currentMessageKey) {
+    prevMessageKeyRef.current = currentMessageKey;
+    if (tagEditorOpen) {
+      setTagEditorOpen(false);
+    }
+  }
 
   useEffect(() => {
     const instanceName = meta?.instance_name || "Mailcubby";
@@ -147,22 +212,77 @@ export function InboxLayout() {
     document.title = `${prefix}${project.name} · ${instanceName}`;
   }, [project, meta?.instance_name]);
 
+  const updateSearchState = useCallback(
+    (nextQ: string | undefined, nextTag: string | undefined, replace = true) => {
+      const cleanedQ = nextQ?.trim() || undefined;
+      const cleanedTag = nextTag?.trim() || undefined;
+      const nextSearch = {
+        ...(cleanedQ ? { q: cleanedQ } : {}),
+        ...(cleanedTag ? { tag: cleanedTag } : {}),
+      };
+      if (activeMessageId) {
+        void navigate({
+          to: "/p/$project/m/$messageId",
+          params: { project: projectSlug, messageId: activeMessageId },
+          search: (prev) => ({
+            ...(prev.tab ? { tab: prev.tab } : {}),
+            ...nextSearch,
+          }),
+          replace,
+        });
+      } else {
+        void navigate({
+          to: "/p/$project",
+          params: { project: projectSlug },
+          search: nextSearch,
+          replace,
+        });
+      }
+    },
+    [navigate, projectSlug, activeMessageId],
+  );
+
   const handleSelectFilter = useCallback(
     (next: InboxFilter) => {
-      void navigate({
-        to: "/p/$project",
-        params: { project: projectSlug },
-        search: next === "unread" ? { filter: "unread" } : {},
-      });
+      updateSearchState(next === "unread" ? "is:unread" : undefined, undefined, false);
     },
-    [navigate, projectSlug],
+    [updateSearchState],
   );
+
+  const handleSelectTag = useCallback(
+    (tagName: string | undefined) => {
+      updateSearchState(searchQuery || undefined, tagName, false);
+    },
+    [updateSearchState, searchQuery],
+  );
+
+  const handleChangeQuery = useCallback(
+    (nextQ: string) => {
+      updateSearchState(nextQ, activeTag, true);
+    },
+    [updateSearchState, activeTag],
+  );
+
+  const handleClearTag = useCallback(() => {
+    updateSearchState(searchQuery || undefined, undefined, false);
+  }, [updateSearchState, searchQuery]);
+
+  const handleClearSearchAll = useCallback(() => {
+    updateSearchState(undefined, undefined, false);
+  }, [updateSearchState]);
 
   const invalidateInbox = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.project(projectSlug) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.projects() }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.messages(projectSlug) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.tags(projectSlug) }),
+      queryClient.invalidateQueries({
+        predicate: (q) =>
+          q.queryKey.length >= 3 &&
+          q.queryKey[0] === "projects" &&
+          q.queryKey[1] === projectSlug &&
+          q.queryKey[2] === "messages",
+      }),
     ]);
   }, [queryClient, projectSlug]);
 
@@ -176,7 +296,7 @@ export function InboxLayout() {
       ),
     onMutate: ({ id, seen }) => {
       // Optimistically reflect seen state in cached list, detail, and unread count.
-      const existing = allMessages.find((m) => m.id === id);
+      const existing = visibleMessages.find((m) => m.id === id);
       const changed = existing ? existing.seen !== seen : true;
       const listQueries = queryClient.getQueriesData<MessageInfiniteData>({
         predicate: (q) =>
@@ -229,6 +349,52 @@ export function InboxLayout() {
     [project?.role, seenMutation],
   );
 
+  const tagsMutation = useMutation({
+    mutationFn: async ({ id, tags }: { id: string; tags: string[] }) =>
+      unwrap(
+        await api.PATCH("/api/v1/projects/{project}/messages/{id}", {
+          params: { path: { project: projectSlug, id } },
+          body: { tags },
+        }),
+      ),
+    onSuccess: async (updated) => {
+      const listQueries = queryClient.getQueriesData<MessageInfiniteData>({
+        predicate: (q) =>
+          q.queryKey.length === 4 &&
+          q.queryKey[0] === "projects" &&
+          q.queryKey[1] === projectSlug &&
+          q.queryKey[2] === "messages" &&
+          typeof q.queryKey[3] === "object" &&
+          q.queryKey[3] !== null,
+      });
+      for (const [key, current] of listQueries) {
+        const next = updateMessagesInPages(current, [updated.id], { tags: updated.tags });
+        if (next !== current) {
+          queryClient.setQueryData<MessageInfiniteData>(key, next);
+        }
+      }
+      queryClient.setQueryData<MessageDetail>(queryKeys.message(projectSlug, updated.id), (prev) =>
+        prev ? { ...prev, tags: updated.tags } : prev,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.tags(projectSlug) }),
+        queryClient.invalidateQueries({
+          predicate: (q) => isFilteredMessageListKey(q.queryKey, projectSlug),
+        }),
+      ]);
+    },
+  });
+
+  const updateMessageTags = useCallback(
+    (message: MessageSummary, nextTags: string[]) => {
+      if (project?.role === "viewer") {
+        return;
+      }
+      tagsMutation.mutate({ id: message.id, tags: nextTags });
+    },
+    [project?.role, tagsMutation],
+  );
+
   const deleteMessageWithUndo = useCallback(
     (message: MessageSummary) => {
       if (project?.role === "viewer") {
@@ -247,9 +413,14 @@ export function InboxLayout() {
           void navigate({
             to: "/p/$project/m/$messageId",
             params: { project: projectSlug, messageId: nextMsg.id },
+            search: (prev) => prev,
           });
         } else {
-          void navigate({ to: "/p/$project", params: { project: projectSlug } });
+          void navigate({
+            to: "/p/$project",
+            params: { project: projectSlug },
+            search: (prev) => prev,
+          });
         }
       }
     },
@@ -281,6 +452,36 @@ export function InboxLayout() {
     }
   }, [isDesktop, setSidebarCollapsed]);
 
+  const focusSearch = useCallback(() => {
+    const el = searchInputRef.current;
+    if (el) {
+      el.focus();
+      const len = el.value.length;
+      el.setSelectionRange(len, len);
+    }
+  }, []);
+
+  const applySearchOperator = useCallback(
+    (operator: string, complete: boolean) => {
+      const base = searchQuery.trim();
+      const next = base ? `${base} ${operator}` : operator;
+      if (complete) {
+        updateSearchState(next, activeTag, false);
+      } else {
+        updateSearchState(next, activeTag, true);
+        requestAnimationFrame(() => {
+          const el = searchInputRef.current;
+          if (el) {
+            el.focus();
+            el.value = next;
+            el.setSelectionRange(next.length, next.length);
+          }
+        });
+      }
+    },
+    [searchQuery, activeTag, updateSearchState],
+  );
+
   const sendTestMutate = sendTestMutation.mutate;
   useEffect(() => {
     if (!project) {
@@ -291,15 +492,27 @@ export function InboxLayout() {
       projectSlug: project.slug,
       projectName: project.name,
       messageCount: project.message_count,
-      messages: allMessages,
+      messages: visibleMessages,
+      tags: projectTags,
       toggleSidebar,
       openDeleteAll: () => setDeleteAllOpen(true),
       sendTestEmail: () => sendTestMutate(),
+      applySearchOperator,
+      selectTagFilter: (tagName) => handleSelectTag(tagName),
     });
     return () => {
       setActiveInbox(null);
     };
-  }, [project, allMessages, toggleSidebar, sendTestMutate, setActiveInbox]);
+  }, [
+    project,
+    visibleMessages,
+    projectTags,
+    toggleSidebar,
+    sendTestMutate,
+    applySearchOperator,
+    handleSelectTag,
+    setActiveInbox,
+  ]);
 
   const layoutShortcuts = useMemo<KeyShortcutBinding[]>(
     () => [
@@ -309,10 +522,10 @@ export function InboxLayout() {
       },
       {
         keys: "/",
-        handler: openPalette,
+        handler: focusSearch,
       },
     ],
-    [toggleSidebar, openPalette],
+    [toggleSidebar, focusSearch],
   );
 
   useKeyShortcuts(layoutShortcuts, { singleKeyEnabled });
@@ -376,8 +589,16 @@ export function InboxLayout() {
   const listPane = (
     <MessageListPane
       project={project}
+      tags={projectTags}
       messages={visibleMessages}
+      recentSenders={recentSenders}
       filter={filter}
+      searchQuery={searchQuery}
+      {...(activeTag ? { activeTag } : {})}
+      searchInputRef={searchInputRef}
+      onChangeQuery={handleChangeQuery}
+      onClearTag={handleClearTag}
+      onClearSearchAll={handleClearSearchAll}
       activeMessageId={activeMessageId}
       isLoading={messagesQuery.isPending}
       isFetchingNextPage={messagesQuery.isFetchingNextPage}
@@ -403,16 +624,23 @@ export function InboxLayout() {
 
   const contextValue = {
     project,
+    tags: projectTags,
     messages: visibleMessages,
-    allLoadedCount: allMessages.length,
+    allLoadedCount: visibleMessages.length,
     filter,
+    searchQuery,
+    activeTag,
     activeMessageId,
     isLoadingMessages: messagesQuery.isPending,
     readingPaneRef,
     invalidateInbox,
     deleteMessageWithUndo,
     toggleMessageSeen,
+    updateMessageTags,
     isUpdatingSeen: seenMutation.isPending,
+    isUpdatingTags: tagsMutation.isPending,
+    tagEditorOpen,
+    setTagEditorOpen,
   };
 
   return (
@@ -446,8 +674,11 @@ export function InboxLayout() {
                 >
                   <InboxSidebar
                     project={project}
+                    tags={projectTags}
                     filter={filter}
+                    {...(activeTag ? { activeTag } : {})}
                     onSelectFilter={handleSelectFilter}
+                    onSelectTag={handleSelectTag}
                     onCollapse={() => setSidebarCollapsed(true)}
                   />
                 </ResizablePanel>
@@ -536,8 +767,11 @@ export function InboxLayout() {
               <div className="min-h-0 flex-1 overflow-hidden">
                 <InboxSidebar
                   project={project}
+                  tags={projectTags}
                   filter={filter}
+                  {...(activeTag ? { activeTag } : {})}
                   onSelectFilter={handleSelectFilter}
+                  onSelectTag={handleSelectTag}
                   onCloseDrawer={() => setDrawerOpen(false)}
                 />
               </div>

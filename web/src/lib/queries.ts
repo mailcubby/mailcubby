@@ -40,6 +40,19 @@ export function projectQueryOptions(project: string) {
   });
 }
 
+export function projectTagsQueryOptions(project: string) {
+  return queryOptions({
+    queryKey: queryKeys.tags(project),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/projects/{project}/tags", {
+          params: { path: { project } },
+        }),
+      ),
+    staleTime: 10_000,
+  });
+}
+
 export function messageDetailQueryOptions(project: string, messageId: string) {
   return queryOptions({
     queryKey: queryKeys.message(project, messageId),

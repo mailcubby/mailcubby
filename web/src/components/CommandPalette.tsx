@@ -13,6 +13,7 @@ import {
   Send,
   SlidersHorizontal,
   Sun,
+  Tag,
   Trash2,
 } from "lucide-react";
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -24,7 +25,13 @@ import { type ThemePreference, useTheme } from "@/lib/theme";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { cn } from "@/lib/utils";
 
-type PaletteGroup = "Recent" | "Projects" | "Recent messages" | "Actions";
+type PaletteGroup =
+  | "Recent"
+  | "Projects"
+  | "Tags"
+  | "Search operators"
+  | "Recent messages"
+  | "Actions";
 
 interface PaletteItem {
   id: string;
@@ -38,6 +45,8 @@ interface PaletteItem {
   destructive?: boolean;
   icon:
     | "project"
+    | "tag"
+    | "search"
     | "message"
     | "send"
     | "trash"
@@ -104,6 +113,10 @@ function renderItemIcon(item: PaletteItem) {
     item.destructive ? "text-destructive" : "text-muted-foreground",
   );
   switch (item.icon) {
+    case "tag":
+      return <Tag className={className} aria-hidden="true" />;
+    case "search":
+      return <Search className={className} aria-hidden="true" />;
     case "message":
       return <Mail className={className} aria-hidden="true" />;
     case "send":
@@ -232,6 +245,46 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       }
     }
 
+    if (activeInbox) {
+      for (const tag of activeInbox.tags) {
+        items.push({
+          id: `tag:${activeInbox.projectSlug}:${tag.id}`,
+          group: "Tags",
+          label: `Filter by tag: ${tag.name}`,
+          subtitle: `${formatCount(tag.message_count)} ${tag.message_count === 1 ? "message" : "messages"}`,
+          keywords: `tag filter label ${tag.name}`,
+          icon: "tag",
+          onSelect: () => activeInbox.selectTagFilter(tag.name),
+        });
+      }
+
+      const searchOps: ReadonlyArray<{
+        op: string;
+        desc: string;
+        complete: boolean;
+      }> = [
+        { op: "from:", desc: "Search by sender", complete: false },
+        { op: "to:", desc: "Search by recipient", complete: false },
+        { op: "subject:", desc: "Search by subject", complete: false },
+        { op: "tag:", desc: "Search by tag", complete: false },
+        { op: "is:unread", desc: "Show unread messages", complete: true },
+        { op: "has:attachment", desc: "Messages with attachments", complete: true },
+        { op: "after:", desc: "Received on or after date", complete: false },
+        { op: "before:", desc: "Received before date", complete: false },
+      ];
+      for (const entry of searchOps) {
+        items.push({
+          id: `search:${entry.op}`,
+          group: "Search operators",
+          label: entry.op,
+          subtitle: entry.desc,
+          keywords: `search filter operator query ${entry.op} ${entry.desc}`,
+          icon: "search",
+          onSelect: () => activeInbox.applySearchOperator(entry.op, entry.complete),
+        });
+      }
+    }
+
     if (activeInbox && activeInbox.messages.length > 0) {
       for (const msg of activeInbox.messages.slice(0, 8)) {
         const subject = msg.subject.trim() || "(no subject)";
@@ -354,7 +407,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       if (recentItems.length > 0) {
         grouped.push({ group: "Recent", items: recentItems });
       }
-      for (const groupName of ["Projects", "Recent messages", "Actions"] as const) {
+      for (const groupName of [
+        "Projects",
+        "Tags",
+        "Search operators",
+        "Recent messages",
+        "Actions",
+      ] as const) {
         const list = allItems.filter((item) => item.group === groupName && !recentSet.has(item.id));
         if (list.length > 0) {
           grouped.push({ group: groupName, items: list });
@@ -372,7 +431,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       .sort((a, b) => b.score - a.score);
 
     const grouped: Array<{ group: PaletteGroup; items: PaletteItem[] }> = [];
-    for (const groupName of ["Projects", "Recent messages", "Actions"] as const) {
+    for (const groupName of [
+      "Projects",
+      "Tags",
+      "Search operators",
+      "Recent messages",
+      "Actions",
+    ] as const) {
       const list = scored
         .filter((entry) => entry.item.group === groupName)
         .map((entry) => entry.item);

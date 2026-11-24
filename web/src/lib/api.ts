@@ -21,7 +21,11 @@ export type MessageEnvelope = components["schemas"]["MessageEnvelope"];
 export type MessageSummary = components["schemas"]["MessageSummary"];
 export type MessageListResponse = components["schemas"]["MessageListResponse"];
 export type MessageDetail = components["schemas"]["MessageDetail"];
+export type PatchMessageRequest = components["schemas"]["PatchMessageRequest"];
 export type BulkMessagesRequest = components["schemas"]["BulkMessagesRequest"];
+export type TagSummary = components["schemas"]["TagSummary"];
+export type CreateTagRequest = components["schemas"]["CreateTagRequest"];
+export type UpdateTagRequest = components["schemas"]["UpdateTagRequest"];
 export type ErrorEnvelope = components["schemas"]["ErrorEnvelope"];
 
 export class ApiError extends Error {

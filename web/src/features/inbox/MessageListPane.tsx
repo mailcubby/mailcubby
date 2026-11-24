@@ -27,12 +27,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, type MessageSummary, type ProjectDetail, unwrap } from "@/lib/api";
+import { SearchBar } from "@/features/inbox/SearchBar";
+import { combineQueryAndTag } from "@/features/inbox/searchQuery";
+import { TagPickerPopover } from "@/features/inbox/TagPickerPopover";
+import { api, type MessageSummary, type ProjectDetail, type TagSummary, unwrap } from "@/lib/api";
 import {
   formatCount,
   formatExactTimestamp,
   formatRelativeTime,
   getSenderLabel,
+  PROJECT_COLOR_DOT_CLASS,
 } from "@/lib/format";
 import {
   useClock24hPreference,
@@ -49,8 +53,16 @@ const HOVER_PREFETCH_DELAY_MS = 100;
 
 export interface MessageListPaneProps {
   project: ProjectDetail;
+  tags: ReadonlyArray<TagSummary>;
   messages: ReadonlyArray<MessageSummary>;
+  recentSenders: ReadonlyArray<string>;
   filter: InboxFilter;
+  searchQuery: string;
+  activeTag?: string;
+  searchInputRef: RefObject<HTMLInputElement | null>;
+  onChangeQuery: (next: string) => void;
+  onClearTag: () => void;
+  onClearSearchAll: () => void;
   activeMessageId: string | undefined;
   isLoading: boolean;
   isFetchingNextPage: boolean;
@@ -69,8 +81,16 @@ export interface MessageListPaneProps {
 
 export function MessageListPane({
   project,
+  tags,
   messages,
+  recentSenders,
   filter,
+  searchQuery,
+  activeTag,
+  searchInputRef,
+  onChangeQuery,
+  onClearTag,
+  onClearSearchAll,
   activeMessageId,
   isLoading,
   isFetchingNextPage,
@@ -99,8 +119,20 @@ export function MessageListPane({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [newSinceScrolled, setNewSinceScrolled] = useState(0);
   const [now, setNow] = useState(() => new Date());
+
+  const tagColorByLower = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const tag of tags) {
+      map.set(
+        tag.name.toLowerCase(),
+        PROJECT_COLOR_DOT_CLASS[tag.color] ?? PROJECT_COLOR_DOT_CLASS.slate,
+      );
+    }
+    return map;
+  }, [tags]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
@@ -149,45 +181,66 @@ export function MessageListPane({
     });
   }, [messages]);
 
+  const activeFilterQuery = combineQueryAndTag(searchQuery, activeTag);
+  const hasActiveFilter = activeFilterQuery.length > 0;
+
   const bulkMutation = useMutation({
     mutationFn: async ({
       ids,
       action,
+      tags: bulkTags,
     }: {
       ids: string[];
-      action: "delete" | "seen" | "unseen";
+      action: "delete" | "seen" | "unseen" | "add_tags" | "remove_tags";
+      tags?: string[];
     }) => {
       return unwrap(
         await api.POST("/api/v1/projects/{project}/messages/bulk", {
           params: { path: { project: project.slug } },
-          body: { ids, action },
+          body: bulkTags ? { ids, action, tags: bulkTags } : { ids, action },
         }),
       );
     },
     onSuccess: async (res, vars) => {
       setConfirmBulkDelete(false);
+      setBulkTagOpen(false);
       setSelectedIds(new Set());
       setLastSelectedIndex(null);
 
       if (vars.action === "delete") {
         toast.success(`Deleted ${res.affected} ${res.affected === 1 ? "message" : "messages"}`);
         if (activeMessageId && vars.ids.includes(activeMessageId)) {
-          void navigate({ to: "/p/$project", params: { project: project.slug } });
+          void navigate({
+            to: "/p/$project",
+            params: { project: project.slug },
+            search: (prev) => prev,
+          });
         }
       } else if (vars.action === "seen") {
         toast.success("Marked as read");
-      } else {
+      } else if (vars.action === "unseen") {
         toast.success("Marked as unread");
+      } else if (vars.action === "add_tags") {
+        toast.success(
+          `Added tag to ${res.affected} ${res.affected === 1 ? "message" : "messages"}`,
+        );
+      } else {
+        toast.success(
+          `Removed tag from ${res.affected} ${res.affected === 1 ? "message" : "messages"}`,
+        );
       }
       await onMutated();
     },
   });
 
   const deleteAllMutation = useMutation({
-    mutationFn: async () =>
+    mutationFn: async (queryFilter: string) =>
       unwrap(
         await api.DELETE("/api/v1/projects/{project}/messages", {
-          params: { path: { project: project.slug } },
+          params: {
+            path: { project: project.slug },
+            ...(queryFilter ? { query: { query: queryFilter } } : {}),
+          },
         }),
       ),
     onSuccess: async (res) => {
@@ -196,7 +249,11 @@ export function MessageListPane({
       setLastSelectedIndex(null);
       toast.success(`Deleted ${res.affected} ${res.affected === 1 ? "message" : "messages"}`);
       if (activeMessageId) {
-        void navigate({ to: "/p/$project", params: { project: project.slug } });
+        void navigate({
+          to: "/p/$project",
+          params: { project: project.slug },
+          search: (prev) => prev,
+        });
       }
       await onMutated();
     },
@@ -240,6 +297,7 @@ export function MessageListPane({
       void navigate({
         to: "/p/$project/m/$messageId",
         params: { project: project.slug, messageId: target.id },
+        search: (prev) => prev,
       });
     },
     [messages, navigate, project.slug, rowVirtualizer],
@@ -402,6 +460,11 @@ export function MessageListPane({
           }
         },
       },
+      {
+        keys: "t",
+        enabled: selectedArray.length > 0 && project.role !== "viewer",
+        handler: () => setBulkTagOpen(true),
+      },
     ];
   }, [
     activeMessageId,
@@ -414,6 +477,7 @@ export function MessageListPane({
     readingPaneRef,
     handleToggleSelect,
     bulkMutate,
+    project.role,
   ]);
 
   useKeyShortcuts(inboxShortcuts, { singleKeyEnabled });
@@ -439,7 +503,10 @@ export function MessageListPane({
   }, []);
 
   const allLoadedSelected = messages.length > 0 && selectedIds.size === messages.length;
-  const headingLabel = filter === "unread" ? "Unread" : "Inbox";
+  const headingLabel = activeTag ? `#${activeTag}` : filter === "unread" ? "Unread" : "Inbox";
+  const countDisplay = hasActiveFilter
+    ? `${formatCount(messages.length)}${hasNextPage ? "+" : ""}`
+    : formatCount(filter === "unread" ? project.unread_count : project.message_count);
 
   return (
     <section
@@ -504,6 +571,25 @@ export function MessageListPane({
               <Mail className="size-3.5" aria-hidden="true" />
               <span className="hidden xl:inline">Mark unread</span>
             </Button>
+            {project.role !== "viewer" ? (
+              <TagPickerPopover
+                mode="bulk"
+                open={bulkTagOpen}
+                onOpenChange={setBulkTagOpen}
+                projectTags={tags}
+                disabled={bulkMutation.isPending}
+                align="right"
+                triggerLabel="Tag"
+                triggerTitle="Add or remove tag (t)"
+                onBulkApply={(action, tagName) => {
+                  bulkMutation.mutate({
+                    ids: selectedArray,
+                    action,
+                    tags: [tagName],
+                  });
+                }}
+              />
+            ) : null}
             <Button
               variant="destructive"
               size="xs"
@@ -531,9 +617,7 @@ export function MessageListPane({
               </Button>
             ) : null}
             <h1 className="truncate text-[13px] font-semibold text-foreground">{headingLabel}</h1>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {formatCount(filter === "unread" ? project.unread_count : project.message_count)}
-            </span>
+            <span className="text-xs text-muted-foreground tabular-nums">{countDisplay}</span>
           </div>
 
           <div className="flex items-center gap-1">
@@ -559,7 +643,8 @@ export function MessageListPane({
             >
               <RefreshCw className="size-3.5" aria-hidden="true" />
             </Button>
-            {project.message_count > 0 ? (
+            {project.role !== "viewer" &&
+            (hasActiveFilter ? messages.length > 0 : project.message_count > 0) ? (
               <Button
                 variant="ghost"
                 size="xs"
@@ -567,12 +652,23 @@ export function MessageListPane({
                 onClick={() => onDeleteAllOpenChange(true)}
               >
                 <Trash2 className="size-3.5" aria-hidden="true" />
-                <span>Delete all</span>
+                <span>{hasActiveFilter ? "Delete matching" : "Delete all"}</span>
               </Button>
             ) : null}
           </div>
         </div>
       )}
+
+      <SearchBar
+        inputRef={searchInputRef}
+        value={searchQuery}
+        {...(activeTag ? { activeTag } : {})}
+        tags={tags}
+        recentSenders={recentSenders}
+        onChangeQuery={onChangeQuery}
+        onClearTag={onClearTag}
+        onClearAll={onClearSearchAll}
+      />
 
       {newSinceScrolled > 0 ? (
         <div className="pointer-events-none absolute top-13 right-0 left-0 z-20 flex justify-center">
@@ -620,13 +716,24 @@ export function MessageListPane({
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 py-12 text-center text-muted-foreground">
             <Mail className="size-6 opacity-60" aria-hidden="true" />
             <p className="text-[13px] font-medium text-foreground">
-              {filter === "unread" ? "No unread messages" : "No messages yet"}
+              {hasActiveFilter
+                ? "No matching messages"
+                : filter === "unread"
+                  ? "No unread messages"
+                  : "No messages yet"}
             </p>
             <p className="text-xs text-muted-foreground">
-              {filter === "unread"
-                ? "All messages in this project have been read."
-                : "Send mail via SMTP or use the setup guide to test."}
+              {hasActiveFilter
+                ? "Try broadening or clearing your search filters."
+                : filter === "unread"
+                  ? "All messages in this project have been read."
+                  : "Send mail via SMTP or use the setup guide to test."}
             </p>
+            {hasActiveFilter ? (
+              <Button variant="outline" size="xs" onClick={onClearSearchAll} className="mt-1">
+                Clear filters
+              </Button>
+            ) : null}
           </div>
         ) : (
           <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
@@ -706,6 +813,7 @@ export function MessageListPane({
                       void navigate({
                         to: "/p/$project/m/$messageId",
                         params: { project: project.slug, messageId: msg.id },
+                        search: (prev) => prev,
                       });
                     }}
                     className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 text-left"
@@ -742,11 +850,23 @@ export function MessageListPane({
                         {msg.attachment_count > 0 ? (
                           <Paperclip className="size-3 text-muted-foreground" aria-hidden="true" />
                         ) : null}
-                        {visibleTags.map((tag) => (
-                          <Badge key={tag} variant="secondary" className="max-w-20 truncate">
-                            {tag}
-                          </Badge>
-                        ))}
+                        {visibleTags.map((tag) => {
+                          const dot =
+                            tagColorByLower.get(tag.toLowerCase()) ?? PROJECT_COLOR_DOT_CLASS.slate;
+                          return (
+                            <Badge
+                              key={tag}
+                              variant="secondary"
+                              className="max-w-24 gap-1 truncate"
+                            >
+                              <span
+                                className={cn("size-1.5 shrink-0 rounded-full", dot)}
+                                aria-hidden="true"
+                              />
+                              <span className="truncate">{tag}</span>
+                            </Badge>
+                          );
+                        })}
                         {extraTags > 0 ? <Badge variant="outline">+{extraTags}</Badge> : null}
                       </div>
                     </div>
@@ -789,12 +909,20 @@ export function MessageListPane({
       <ConfirmDialog
         open={deleteAllOpen}
         onOpenChange={onDeleteAllOpenChange}
-        title={`Delete all ${formatCount(project.message_count)} messages?`}
-        description={`This permanently deletes all ${formatCount(project.message_count)} ${project.message_count === 1 ? "message" : "messages"} in ${project.name}. This cannot be undone.`}
-        confirmLabel="Delete all"
+        title={
+          hasActiveFilter
+            ? `Delete ${countDisplay} matching ${messages.length === 1 ? "message" : "messages"}?`
+            : `Delete all ${formatCount(project.message_count)} messages?`
+        }
+        description={
+          hasActiveFilter
+            ? `This permanently deletes all messages in ${project.name} matching "${activeFilterQuery}". This cannot be undone.`
+            : `This permanently deletes all ${formatCount(project.message_count)} ${project.message_count === 1 ? "message" : "messages"} in ${project.name}. This cannot be undone.`
+        }
+        confirmLabel={hasActiveFilter ? "Delete matching" : "Delete all"}
         destructive
         pending={deleteAllMutation.isPending}
-        onConfirm={() => deleteAllMutation.mutate()}
+        onConfirm={() => deleteAllMutation.mutate(activeFilterQuery)}
       />
     </section>
   );

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -8,35 +8,56 @@ import {
   Inbox,
   MailOpen,
   PanelLeftClose,
+  Plus,
   Search,
+  Trash2,
 } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useRealtime } from "@/components/RealtimeProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import type { ProjectDetail } from "@/lib/api";
+import { isValidTagName } from "@/features/inbox/searchQuery";
+import {
+  api,
+  handleApiError,
+  type ProjectColor,
+  type ProjectDetail,
+  type TagSummary,
+  unwrap,
+  unwrapVoid,
+} from "@/lib/api";
 import { copyToClipboard } from "@/lib/clipboard";
-import { formatCount, PROJECT_COLOR_DOT_CLASS } from "@/lib/format";
+import { formatCount, PROJECT_COLOR_DOT_CLASS, PROJECT_COLORS } from "@/lib/format";
 import { metaQueryOptions, projectsQueryOptions } from "@/lib/queries";
+import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import type { InboxFilter } from "@/routes/p.$project";
 
 export interface InboxSidebarProps {
   project: ProjectDetail;
+  tags: ReadonlyArray<TagSummary>;
   filter: InboxFilter;
+  activeTag?: string;
   onSelectFilter: (next: InboxFilter) => void;
+  onSelectTag: (tagName: string | undefined) => void;
   onCollapse?: () => void;
   onCloseDrawer?: () => void;
 }
 
 export function InboxSidebar({
   project,
+  tags,
   filter,
+  activeTag,
   onSelectFilter,
+  onSelectTag,
   onCollapse,
   onCloseDrawer,
 }: InboxSidebarProps) {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { status: realtimeStatus } = useRealtime();
   const { data: meta } = useQuery(metaQueryOptions());
@@ -44,8 +65,70 @@ export function InboxSidebar({
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [switcherFilter, setSwitcherFilter] = useState("");
+  const [createTagOpen, setCreateTagOpen] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState<ProjectColor>("blue");
+  const [newTagError, setNewTagError] = useState<string | null>(null);
+  const [deletingTag, setDeletingTag] = useState<TagSummary | null>(null);
   const switcherRef = useRef<HTMLDivElement | null>(null);
   const switcherSearchId = useId();
+  const newTagInputId = useId();
+
+  const canManageTags = project.role !== "viewer";
+
+  const createTagMutation = useMutation({
+    mutationFn: async ({ name, color }: { name: string; color: ProjectColor }) =>
+      unwrap(
+        await api.POST("/api/v1/projects/{project}/tags", {
+          params: { path: { project: project.slug } },
+          body: { name, color },
+        }),
+      ),
+    onSuccess: async (created) => {
+      setCreateTagOpen(false);
+      setNewTagName("");
+      setNewTagError(null);
+      toast.success(`Tag "${created.name}" created`);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.tags(project.slug) });
+    },
+    onError: (err) => {
+      handleApiError(err, "Failed to create tag");
+    },
+  });
+
+  const deleteTagMutation = useMutation({
+    mutationFn: async (tag: TagSummary) =>
+      unwrapVoid(
+        await api.DELETE("/api/v1/projects/{project}/tags/{id}", {
+          params: { path: { project: project.slug, id: tag.id } },
+        }),
+      ),
+    onSuccess: async (_data, tag) => {
+      setDeletingTag(null);
+      if (activeTag && activeTag.toLowerCase() === tag.name.toLowerCase()) {
+        onSelectTag(undefined);
+      }
+      toast.success(`Deleted tag "${tag.name}"`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.tags(project.slug) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.messages(project.slug) }),
+      ]);
+    },
+    onError: (err) => {
+      handleApiError(err, "Failed to delete tag");
+    },
+  });
+
+  const handleCreateTagSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = newTagName.trim();
+    if (!isValidTagName(trimmed)) {
+      setNewTagError("Tag name must be 1–40 characters (letters, numbers, _, ., -).");
+      return;
+    }
+    setNewTagError(null);
+    createTagMutation.mutate({ name: trimmed, color: newTagColor });
+  };
 
   useEffect(() => {
     if (!switcherOpen) {
@@ -216,14 +299,14 @@ export function InboxSidebar({
         <nav aria-label="Mailbox filters" className="mt-4 flex flex-col gap-0.5">
           <button
             type="button"
-            aria-current={filter === "all" ? "page" : undefined}
+            aria-current={filter === "all" && !activeTag ? "page" : undefined}
             onClick={() => {
               onSelectFilter("all");
               onCloseDrawer?.();
             }}
             className={cn(
               "flex h-8 w-full cursor-pointer items-center justify-between rounded-md px-2.5 text-[13px] transition-colors",
-              filter === "all"
+              filter === "all" && !activeTag
                 ? "bg-muted font-medium text-foreground"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
@@ -239,14 +322,14 @@ export function InboxSidebar({
 
           <button
             type="button"
-            aria-current={filter === "unread" ? "page" : undefined}
+            aria-current={filter === "unread" && !activeTag ? "page" : undefined}
             onClick={() => {
               onSelectFilter("unread");
               onCloseDrawer?.();
             }}
             className={cn(
               "flex h-8 w-full cursor-pointer items-center justify-between rounded-md px-2.5 text-[13px] transition-colors",
-              filter === "unread"
+              filter === "unread" && !activeTag
                 ? "bg-muted font-medium text-foreground"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
@@ -262,6 +345,87 @@ export function InboxSidebar({
             )}
           </button>
         </nav>
+
+        <section aria-label="Tags" className="mt-5">
+          <div className="mb-1 flex items-center justify-between px-2.5">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Tags
+            </h2>
+            {canManageTags ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="New tag"
+                title="Create tag"
+                onClick={() => {
+                  setNewTagName("");
+                  setNewTagError(null);
+                  setCreateTagOpen(true);
+                }}
+                className="size-5 text-muted-foreground hover:text-foreground"
+              >
+                <Plus className="size-3.5" aria-hidden="true" />
+              </Button>
+            ) : null}
+          </div>
+
+          {tags.length === 0 ? (
+            <p className="px-2.5 py-1 text-xs text-muted-foreground">No tags yet</p>
+          ) : (
+            <ul className="flex flex-col gap-0.5">
+              {tags.map((tag) => {
+                const isSelected = Boolean(
+                  activeTag && activeTag.toLowerCase() === tag.name.toLowerCase(),
+                );
+                const tagDot = PROJECT_COLOR_DOT_CLASS[tag.color] ?? PROJECT_COLOR_DOT_CLASS.slate;
+                return (
+                  <li key={tag.id} className="group flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      data-testid={`sidebar-tag-${tag.name}`}
+                      aria-current={isSelected ? "page" : undefined}
+                      onClick={() => {
+                        onSelectTag(isSelected ? undefined : tag.name);
+                        onCloseDrawer?.();
+                      }}
+                      className={cn(
+                        "flex h-7 min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 text-xs transition-colors",
+                        isSelected
+                          ? "bg-muted font-medium text-foreground"
+                          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                      )}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span
+                          className={cn("size-2 shrink-0 rounded-full", tagDot)}
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">{tag.name}</span>
+                      </span>
+                      <span
+                        data-testid={`sidebar-tag-count-${tag.name}`}
+                        className="shrink-0 text-[11px] tabular-nums text-muted-foreground"
+                      >
+                        {formatCount(tag.message_count)}
+                      </span>
+                    </button>
+                    {canManageTags ? (
+                      <button
+                        type="button"
+                        aria-label={`Delete tag ${tag.name}`}
+                        title={`Delete tag ${tag.name}`}
+                        onClick={() => setDeletingTag(tag)}
+                        className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+                      >
+                        <Trash2 className="size-3" aria-hidden="true" />
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
 
         <div className="mt-6 border-t border-border pt-3">
           <Link
@@ -346,6 +510,95 @@ export function InboxSidebar({
           </span>
         </div>
       </div>
+
+      <Dialog
+        open={createTagOpen}
+        onOpenChange={setCreateTagOpen}
+        title="New tag"
+        description={`Create a tag for ${project.name}.`}
+      >
+        <form onSubmit={handleCreateTagSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={newTagInputId} className="text-xs font-medium text-foreground">
+              Tag name
+            </label>
+            <Input
+              id={newTagInputId}
+              autoFocus
+              required
+              maxLength={40}
+              placeholder="e.g. invoice, staging, urgent"
+              value={newTagName}
+              onChange={(e) => {
+                setNewTagName(e.target.value);
+                if (newTagError) {
+                  setNewTagError(null);
+                }
+              }}
+            />
+            {newTagError ? <p className="text-xs text-destructive">{newTagError}</p> : null}
+          </div>
+
+          <fieldset className="flex flex-col gap-1.5 border-0 p-0">
+            <legend className="text-xs font-medium text-foreground">Color</legend>
+            <div className="flex flex-wrap gap-2">
+              {PROJECT_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={color}
+                  aria-pressed={newTagColor === color}
+                  onClick={() => setNewTagColor(color)}
+                  className={cn(
+                    "flex size-6 cursor-pointer items-center justify-center rounded-full border transition-transform",
+                    newTagColor === color
+                      ? "scale-110 border-foreground ring-2 ring-accent/40"
+                      : "border-transparent hover:scale-105",
+                  )}
+                >
+                  <span
+                    className={cn("size-4 rounded-full", PROJECT_COLOR_DOT_CLASS[color])}
+                    aria-hidden="true"
+                  />
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCreateTagOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={createTagMutation.isPending}>
+              {createTagMutation.isPending ? "Creating..." : "Create tag"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deletingTag)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeletingTag(null);
+          }
+        }}
+        title={deletingTag ? `Delete tag "${deletingTag.name}"?` : "Delete tag?"}
+        description="This removes the tag from all messages in this project. The messages themselves are kept."
+        confirmLabel="Delete tag"
+        destructive
+        pending={deleteTagMutation.isPending}
+        onConfirm={() => {
+          if (deletingTag) {
+            deleteTagMutation.mutate(deletingTag);
+          }
+        }}
+      />
     </aside>
   );
 }

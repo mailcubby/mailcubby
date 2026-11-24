@@ -13,7 +13,7 @@ import type { MessageSummary } from "@/lib/api";
 import { getSenderLabel } from "@/lib/format";
 import { queryKeys } from "@/lib/queryKeys";
 import { connectSSE, type SSEConnectionStatus } from "@/lib/sse";
-import { applySSEEvent } from "@/lib/sseReducer";
+import { applySSEEvent, isFilteredMessageListKey } from "@/lib/sseReducer";
 
 const ARRIVAL_HIGHLIGHT_MS = 1500;
 const ANNOUNCEMENT_THROTTLE_MS = 5000;
@@ -162,6 +162,17 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         const result = applySSEEvent(queryClient, event);
         if (result.needsProjectsRefetch) {
           void queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+        }
+        if (result.invalidateTagsForProject) {
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.tags(result.invalidateTagsForProject),
+          });
+        }
+        if (result.invalidateFilteredListsForProject) {
+          const slug = result.invalidateFilteredListsForProject;
+          void queryClient.invalidateQueries({
+            predicate: (q) => isFilteredMessageListKey(q.queryKey, slug),
+          });
         }
         if (event.type === "message.created" && result.insertedMessage) {
           const { project, message } = event.payload;

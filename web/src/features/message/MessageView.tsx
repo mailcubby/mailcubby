@@ -56,8 +56,18 @@ export function MessageView() {
   const navigate = useNavigate();
   const { project: projectSlug, messageId } = useParams({ from: "/p/$project/m/$messageId" });
   const search = useSearch({ from: "/p/$project/m/$messageId" });
-  const { project, messages, deleteMessageWithUndo, toggleMessageSeen, isUpdatingSeen } =
-    useInboxContext();
+  const {
+    project,
+    tags,
+    messages,
+    deleteMessageWithUndo,
+    toggleMessageSeen,
+    updateMessageTags,
+    isUpdatingSeen,
+    isUpdatingTags,
+    tagEditorOpen,
+    setTagEditorOpen,
+  } = useInboxContext();
 
   const [markReadDelay] = useMarkReadDelayPreference();
   const [singleKeyEnabled] = useSingleKeyShortcutsPreference();
@@ -157,22 +167,28 @@ export function MessageView() {
       void navigate({
         to: "/p/$project/m/$messageId",
         params: { project: projectSlug, messageId },
-        search: { tab },
+        search: (prev) => ({ ...prev, tab }),
         replace: true,
       });
     },
     [navigate, projectSlug, messageId, setSavedTab],
   );
 
-  // Number keys 1 to 7 switch message tabs (UI 3.5 & 4 item 2).
+  // Number keys 1 to 7 switch message tabs; `t` opens the tag editor (UI 3.5 & 4 item 2).
   const tabShortcutBindings = useMemo<KeyShortcutBinding[]>(
-    () =>
-      NUMBER_KEY_TO_TAB.map(({ key, tab }) => ({
+    () => [
+      ...NUMBER_KEY_TO_TAB.map(({ key, tab }) => ({
         keys: key,
         enabled: availableTabs.some((t) => t.id === tab),
         handler: () => selectTab(tab),
       })),
-    [availableTabs, selectTab],
+      {
+        keys: "t",
+        enabled: project.role !== "viewer",
+        handler: () => setTagEditorOpen(true),
+      },
+    ],
+    [availableTabs, selectTab, project.role, setTagEditorOpen],
   );
 
   useKeyShortcuts(tabShortcutBindings, { singleKeyEnabled });
@@ -239,6 +255,8 @@ export function MessageView() {
     <article aria-label="Message viewer" className="flex h-full min-h-0 flex-col bg-background">
       <MessageHeader
         projectSlug={projectSlug}
+        projectRole={project.role}
+        projectTags={tags}
         message={message}
         hasPrevious={Boolean(previousMessage)}
         hasNext={Boolean(nextMessage)}
@@ -247,6 +265,7 @@ export function MessageView() {
             void navigate({
               to: "/p/$project/m/$messageId",
               params: { project: projectSlug, messageId: previousMessage.id },
+              search: (prev) => prev,
             });
           }
         }}
@@ -255,12 +274,17 @@ export function MessageView() {
             void navigate({
               to: "/p/$project/m/$messageId",
               params: { project: projectSlug, messageId: nextMessage.id },
+              search: (prev) => prev,
             });
           }
         }}
         onToggleSeen={() => toggleMessageSeen(message)}
+        onUpdateTags={(nextTags) => updateMessageTags(message, nextTags)}
         onDelete={() => deleteMessageWithUndo(message)}
         isUpdatingSeen={isUpdatingSeen}
+        isUpdatingTags={isUpdatingTags}
+        tagEditorOpen={tagEditorOpen}
+        onTagEditorOpenChange={setTagEditorOpen}
       />
 
       <div
