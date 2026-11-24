@@ -805,6 +805,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get instance settings overrides, effective defaults, and sources (server mode, admin) */
+        get: operations["adminGetSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update or clear DB overrides for instance name and default retention (server mode, admin) */
+        patch: operations["adminUpdateSettings"];
+        trace?: never;
+    };
+    "/api/v1/admin/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get instance-wide counts, storage sizes, ingest rate, version, and uptime (server mode, admin) */
+        get: operations["adminGetStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -1025,6 +1060,24 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
             settings: components["schemas"]["ProjectSettings"];
+            retention_defaults?: components["schemas"]["RetentionDefaults"];
+        };
+        RetentionDefaults: {
+            /**
+             * Format: int64
+             * @description Effective instance default max message age in seconds (0 disables limit)
+             */
+            retention_max_age: number;
+            /**
+             * Format: int64
+             * @description Effective instance default max messages per project (0 disables limit)
+             */
+            retention_max_messages: number;
+            /**
+             * Format: int64
+             * @description Effective instance default max raw bytes per project (0 disables limit)
+             */
+            retention_max_bytes: number;
         };
         CreateProjectRequest: {
             name: string;
@@ -1298,6 +1351,70 @@ export interface components {
         CreateAPITokenResponse: {
             token_info: components["schemas"]["APITokenInfo"];
             token: string;
+        };
+        /** @enum {string} */
+        SettingSource: "env" | "override";
+        AdminSettingsValues: {
+            instance_name: string | null;
+            /** Format: int64 */
+            retention_max_age: number | null;
+            /** Format: int64 */
+            retention_max_messages: number | null;
+            /** Format: int64 */
+            retention_max_bytes: number | null;
+        };
+        AdminEffectiveSettings: {
+            instance_name: string;
+            /** Format: int64 */
+            retention_max_age: number;
+            /** Format: int64 */
+            retention_max_messages: number;
+            /** Format: int64 */
+            retention_max_bytes: number;
+        };
+        AdminSettingsSource: {
+            instance_name: components["schemas"]["SettingSource"];
+            retention_max_age: components["schemas"]["SettingSource"];
+            retention_max_messages: components["schemas"]["SettingSource"];
+            retention_max_bytes: components["schemas"]["SettingSource"];
+        };
+        AdminSettingsResponse: {
+            settings: components["schemas"]["AdminSettingsValues"];
+            effective: components["schemas"]["AdminEffectiveSettings"];
+            source: components["schemas"]["AdminSettingsSource"];
+        };
+        AdminUpdateSettingsRequest: {
+            instance_name?: string | null;
+            /** Format: int64 */
+            retention_max_age?: number | null;
+            /** Format: int64 */
+            retention_max_messages?: number | null;
+            /** Format: int64 */
+            retention_max_bytes?: number | null;
+        };
+        AdminStatsResponse: {
+            /** Format: int64 */
+            projects: number;
+            /** Format: int64 */
+            users: number;
+            /** Format: int64 */
+            messages: number;
+            /** Format: int64 */
+            stored_bytes: number;
+            /** Format: int64 */
+            db_size_bytes: number;
+            /** Format: int64 */
+            blob_size_bytes: number;
+            /** Format: int64 */
+            ingest_last_hour: number;
+            ingest_rate_per_minute: number;
+            /** Format: int64 */
+            instance_max_bytes: number;
+            version: string;
+            /** Format: int64 */
+            uptime_seconds: number;
+            /** Format: date-time */
+            started_at: string;
         };
     };
     responses: {
@@ -2853,6 +2970,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminProject"][];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    adminGetSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Instance settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSettingsResponse"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    adminUpdateSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdateSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated instance settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSettingsResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+        };
+    };
+    adminGetStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Instance statistics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminStatsResponse"];
                 };
             };
             401: components["responses"]["ErrorResponse"];

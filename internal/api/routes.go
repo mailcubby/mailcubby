@@ -126,6 +126,9 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodDelete, Pattern: "/api/v1/admin/users/{id}", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminDeleteUser},
 		{Method: http.MethodPost, Pattern: "/api/v1/admin/users/{id}/password-reset", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminPasswordReset},
 		{Method: http.MethodGet, Pattern: "/api/v1/admin/projects", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminListProjects},
+		{Method: http.MethodGet, Pattern: "/api/v1/admin/settings", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminGetSettings},
+		{Method: http.MethodPatch, Pattern: "/api/v1/admin/settings", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminUpdateSettings},
+		{Method: http.MethodGet, Pattern: "/api/v1/admin/stats", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminStats},
 
 		// Events & Render (SPEC 8.9)
 		{Method: http.MethodGet, Pattern: "/api/v1/events", Need: PermUser, Handler: s.handleEvents},

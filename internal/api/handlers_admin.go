@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mailcubby/mailcubby/internal/auth"
+	"github.com/mailcubby/mailcubby/internal/retention"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
@@ -594,6 +597,267 @@ func (s *Server) handleAdminListProjects(w http.ResponseWriter, r *http.Request)
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+type adminSettingsValues struct {
+	InstanceName         *string `json:"instance_name"`
+	RetentionMaxAge      *int64  `json:"retention_max_age"`
+	RetentionMaxMessages *int64  `json:"retention_max_messages"`
+	RetentionMaxBytes    *int64  `json:"retention_max_bytes"`
+}
+
+type adminEffectiveSettings struct {
+	InstanceName         string `json:"instance_name"`
+	RetentionMaxAge      int64  `json:"retention_max_age"`
+	RetentionMaxMessages int64  `json:"retention_max_messages"`
+	RetentionMaxBytes    int64  `json:"retention_max_bytes"`
+}
+
+type adminSettingsSource struct {
+	InstanceName         string `json:"instance_name"`
+	RetentionMaxAge      string `json:"retention_max_age"`
+	RetentionMaxMessages string `json:"retention_max_messages"`
+	RetentionMaxBytes    string `json:"retention_max_bytes"`
+}
+
+type adminSettingsResponse struct {
+	Settings  adminSettingsValues    `json:"settings"`
+	Effective adminEffectiveSettings `json:"effective"`
+	Source    adminSettingsSource    `json:"source"`
+}
+
+type adminUpdateSettingsRequest struct {
+	InstanceName         Nullable[string] `json:"instance_name"`
+	RetentionMaxAge      Nullable[int64]  `json:"retention_max_age"`
+	RetentionMaxMessages Nullable[int64]  `json:"retention_max_messages"`
+	RetentionMaxBytes    Nullable[int64]  `json:"retention_max_bytes"`
+}
+
+type adminStatsResponse struct {
+	Projects         int64     `json:"projects"`
+	Users            int64     `json:"users"`
+	Messages         int64     `json:"messages"`
+	StoredBytes      int64     `json:"stored_bytes"`
+	DBSizeBytes      int64     `json:"db_size_bytes"`
+	BlobSizeBytes    int64     `json:"blob_size_bytes"`
+	IngestLastHour   int64     `json:"ingest_last_hour"`
+	IngestRatePerMin float64   `json:"ingest_rate_per_minute"`
+	InstanceMaxBytes int64     `json:"instance_max_bytes"`
+	Version          string    `json:"version"`
+	UptimeSeconds    int64     `json:"uptime_seconds"`
+	StartedAt        Timestamp `json:"started_at"`
+}
+
+func (s *Server) handleAdminGetSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	resolved, err := retention.ResolveInstanceSettings(ctx, s.store, s.cfg)
+	if err != nil {
+		s.log.Error("admin get settings failed", "request_id", RequestIDFromContext(ctx), "error", err)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, toAdminSettingsResponse(resolved))
+}
+
+func (s *Server) handleAdminUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req adminUpdateSettingsRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	details := make(map[string]string)
+	var trimmedInstanceName *string
+	if req.InstanceName.Set && req.InstanceName.Value != nil {
+		trimmed := strings.TrimSpace(*req.InstanceName.Value)
+		if n := utf8.RuneCountInString(trimmed); n < 1 || n > maxUserNameRunes {
+			details["instance_name"] = "must be between 1 and 80 characters"
+		} else {
+			trimmedInstanceName = &trimmed
+		}
+	}
+	if req.RetentionMaxAge.Set && req.RetentionMaxAge.Value != nil && *req.RetentionMaxAge.Value < 0 {
+		details["retention_max_age"] = "must be greater than or equal to 0"
+	}
+	if req.RetentionMaxMessages.Set && req.RetentionMaxMessages.Value != nil && *req.RetentionMaxMessages.Value < 0 {
+		details["retention_max_messages"] = "must be greater than or equal to 0"
+	}
+	if req.RetentionMaxBytes.Set && req.RetentionMaxBytes.Value != nil && *req.RetentionMaxBytes.Value < 0 {
+		details["retention_max_bytes"] = "must be greater than or equal to 0"
+	}
+	if len(details) > 0 {
+		writeValidationError(w, details)
+		return
+	}
+
+	principal := PrincipalFromContext(ctx)
+	now := s.clk.Now().UTC()
+	actorType, actorUserID, actorLabel := auditActorForPrincipal(principal)
+	var ipPtr *string
+	if ip := ClientIPFromContext(ctx); ip != "" {
+		ipPtr = &ip
+	}
+
+	var updatedKeys []string
+	err := s.store.WithTx(ctx, func(tx *store.Tx) error {
+		applyString := func(key string, set bool, val *string) error {
+			if !set {
+				return nil
+			}
+			updatedKeys = append(updatedKeys, key)
+			if val == nil {
+				if err := tx.DeleteSetting(ctx, key); err != nil && !errors.Is(err, store.ErrNotFound) {
+					return err
+				}
+				return nil
+			}
+			encoded, err := json.Marshal(*val)
+			if err != nil {
+				return err
+			}
+			return tx.SetSetting(ctx, key, string(encoded), now)
+		}
+		applyInt64 := func(key string, set bool, val *int64) error {
+			if !set {
+				return nil
+			}
+			updatedKeys = append(updatedKeys, key)
+			if val == nil {
+				if err := tx.DeleteSetting(ctx, key); err != nil && !errors.Is(err, store.ErrNotFound) {
+					return err
+				}
+				return nil
+			}
+			encoded, err := json.Marshal(*val)
+			if err != nil {
+				return err
+			}
+			return tx.SetSetting(ctx, key, string(encoded), now)
+		}
+
+		if err := applyString(retention.SettingInstanceName, req.InstanceName.Set, trimmedInstanceName); err != nil {
+			return err
+		}
+		if err := applyInt64(retention.SettingRetentionMaxAgeSec, req.RetentionMaxAge.Set, req.RetentionMaxAge.Value); err != nil {
+			return err
+		}
+		if err := applyInt64(retention.SettingRetentionMaxMessages, req.RetentionMaxMessages.Set, req.RetentionMaxMessages.Value); err != nil {
+			return err
+		}
+		if err := applyInt64(retention.SettingRetentionMaxBytes, req.RetentionMaxBytes.Set, req.RetentionMaxBytes.Value); err != nil {
+			return err
+		}
+
+		targetType := "settings"
+		targetID := "instance"
+		_, err := tx.InsertAudit(ctx, store.InsertAuditParams{
+			At:          now,
+			ActorType:   actorType,
+			ActorUserID: actorUserID,
+			ActorLabel:  actorLabel,
+			Action:      "settings.update",
+			TargetType:  &targetType,
+			TargetID:    &targetID,
+			IP:          ipPtr,
+			Metadata:    map[string]any{"updated_keys": updatedKeys},
+		})
+		return err
+	})
+	if err != nil {
+		s.log.Error("admin update settings failed", "request_id", RequestIDFromContext(ctx), "error", err)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+
+	resolved, err := retention.ResolveInstanceSettings(ctx, s.store, s.cfg)
+	if err != nil {
+		s.log.Error("admin reload settings failed", "request_id", RequestIDFromContext(ctx), "error", err)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, toAdminSettingsResponse(resolved))
+}
+
+func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	totals, err := s.store.GetInstanceProjectTotals(ctx)
+	if err != nil {
+		s.log.Error("admin stats project totals failed", "request_id", RequestIDFromContext(ctx), "error", err)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+	userCount, err := s.store.CountUsers(ctx)
+	if err != nil {
+		s.log.Error("admin stats user count failed", "request_id", RequestIDFromContext(ctx), "error", err)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+	dbSize, err := s.store.DBSizeBytes()
+	if err != nil {
+		s.log.Error("admin stats db size failed", "request_id", RequestIDFromContext(ctx), "error", err)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+	var blobSize int64
+	if s.blobs != nil {
+		blobSize, err = s.blobs.TotalDiskBytes(ctx)
+		if err != nil {
+			s.log.Error("admin stats blob size failed", "request_id", RequestIDFromContext(ctx), "error", err)
+			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+			return
+		}
+	}
+
+	now := s.clk.Now().UTC()
+	ingestLastHour, err := s.store.CountMessagesSince(ctx, now.Add(-time.Hour))
+	if err != nil {
+		s.log.Error("admin stats ingest last hour failed", "request_id", RequestIDFromContext(ctx), "error", err)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+
+	uptimeSeconds := max(int64(0), int64(now.Sub(s.startedAt).Seconds()))
+	ratePerMin := math.Round((float64(ingestLastHour)/60.0)*100) / 100
+
+	writeJSON(w, http.StatusOK, adminStatsResponse{
+		Projects:         totals.ProjectCount,
+		Users:            userCount,
+		Messages:         totals.TotalMessages,
+		StoredBytes:      totals.TotalBytes,
+		DBSizeBytes:      dbSize,
+		BlobSizeBytes:    blobSize,
+		IngestLastHour:   ingestLastHour,
+		IngestRatePerMin: ratePerMin,
+		InstanceMaxBytes: s.cfg.InstanceMaxBytes,
+		Version:          s.version,
+		UptimeSeconds:    uptimeSeconds,
+		StartedAt:        Timestamp(s.startedAt),
+	})
+}
+
+func toAdminSettingsResponse(r retention.ResolvedInstanceSettings) adminSettingsResponse {
+	return adminSettingsResponse{
+		Settings: adminSettingsValues{
+			InstanceName:         r.Overrides.InstanceName,
+			RetentionMaxAge:      r.Overrides.RetentionMaxAgeSec,
+			RetentionMaxMessages: r.Overrides.RetentionMaxMessages,
+			RetentionMaxBytes:    r.Overrides.RetentionMaxBytes,
+		},
+		Effective: adminEffectiveSettings{
+			InstanceName:         r.Effective.InstanceName,
+			RetentionMaxAge:      r.Effective.RetentionMaxAgeSec,
+			RetentionMaxMessages: r.Effective.RetentionMaxMessages,
+			RetentionMaxBytes:    r.Effective.RetentionMaxBytes,
+		},
+		Source: adminSettingsSource{
+			InstanceName:         r.Source.InstanceName,
+			RetentionMaxAge:      r.Source.RetentionMaxAge,
+			RetentionMaxMessages: r.Source.RetentionMaxMessages,
+			RetentionMaxBytes:    r.Source.RetentionMaxBytes,
+		},
+	}
 }
 
 func toAdminUserResponse(u store.AdminUser) adminUserResponse {

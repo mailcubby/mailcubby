@@ -469,6 +469,26 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                 void navigate({ to: "/admin/projects" });
               },
             },
+            {
+              id: "action:admin-settings",
+              group: "Actions",
+              label: "Admin: Settings",
+              keywords: "admin instance settings defaults retention name",
+              icon: "settings",
+              onSelect: () => {
+                void navigate({ to: "/admin/settings" });
+              },
+            },
+            {
+              id: "action:admin-stats",
+              group: "Actions",
+              label: "Admin: Stats",
+              keywords: "admin stats storage uptime db blobs ingest rate",
+              icon: "prefs",
+              onSelect: () => {
+                void navigate({ to: "/admin/stats" });
+              },
+            },
           ] satisfies PaletteItem[])
         : []),
       ...(meta?.mode === "server"

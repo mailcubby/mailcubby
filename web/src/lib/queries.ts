@@ -153,3 +153,19 @@ export function adminProjectsQueryOptions() {
     staleTime: 10_000,
   });
 }
+
+export function adminSettingsQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.adminSettings(),
+    queryFn: async () => unwrap(await api.GET("/api/v1/admin/settings")),
+    staleTime: 10_000,
+  });
+}
+
+export function adminStatsQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.adminStats(),
+    queryFn: async () => unwrap(await api.GET("/api/v1/admin/stats")),
+    staleTime: 10_000,
+  });
+}

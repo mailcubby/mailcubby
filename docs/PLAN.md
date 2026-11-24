@@ -339,7 +339,7 @@ Tasks:
 - [x] Instance quota `452` (FR-096) and per-project SMTP rate limit `450` (FR-097).
 - [x] Orphan blob GC, tmp cleanup, project directory removal (replaces the Phase 3a synchronous walk), incremental vacuum (FR-098).
 - [x] Housekeeping (FR-099).
-- [ ] Admin instance settings endpoints and UI for defaults (FR-102), admin stats endpoint and page (FR-103).
+- [x] Admin instance settings endpoints and UI for defaults (FR-102), admin stats endpoint and page (FR-103).
 - [ ] Retention settings UI (UI 3.6.4).
 
 Files: `internal/retention/`, `internal/ingest/`, `internal/smtpd/`, `internal/api/`, `internal/app/`, `web/src/features/{settings,admin}/`, `web/e2e/`.

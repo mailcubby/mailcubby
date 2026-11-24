@@ -18,6 +18,8 @@ import { Route as AccountSecurityRouteImport } from './routes/account.security'
 import { Route as AccountTokensRouteImport } from './routes/account.tokens'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminProjectsRouteImport } from './routes/admin.projects'
+import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
+import { Route as AdminStatsRouteImport } from './routes/admin.stats'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as PProjectRouteImport } from './routes/p.$project'
@@ -74,6 +76,16 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const AdminProjectsRoute = AdminProjectsRouteImport.update({
   id: '/admin/projects',
   path: '/admin/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminSettingsRoute = AdminSettingsRouteImport.update({
+  id: '/admin/settings',
+  path: '/admin/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminStatsRoute = AdminStatsRouteImport.update({
+  id: '/admin/stats',
+  path: '/admin/stats',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
@@ -146,6 +158,8 @@ export interface FileRoutesByFullPath {
   '/account/security': typeof AccountSecurityRoute
   '/account/tokens': typeof AccountTokensRoute
   '/admin/projects': typeof AdminProjectsRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/stats': typeof AdminStatsRoute
   '/admin/users': typeof AdminUsersRoute
   '/invite/$token': typeof InviteTokenRoute
   '/p/$project': typeof PProjectRouteWithChildren
@@ -169,6 +183,8 @@ export interface FileRoutesByTo {
   '/account/security': typeof AccountSecurityRoute
   '/account/tokens': typeof AccountTokensRoute
   '/admin/projects': typeof AdminProjectsRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/stats': typeof AdminStatsRoute
   '/admin/users': typeof AdminUsersRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset/$token': typeof ResetTokenRoute
@@ -192,6 +208,8 @@ export interface FileRoutesById {
   '/account/security': typeof AccountSecurityRoute
   '/account/tokens': typeof AccountTokensRoute
   '/admin/projects': typeof AdminProjectsRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/stats': typeof AdminStatsRoute
   '/admin/users': typeof AdminUsersRoute
   '/invite/$token': typeof InviteTokenRoute
   '/p/$project': typeof PProjectRouteWithChildren
@@ -217,6 +235,8 @@ export interface FileRouteTypes {
     | '/account/security'
     | '/account/tokens'
     | '/admin/projects'
+    | '/admin/settings'
+    | '/admin/stats'
     | '/admin/users'
     | '/invite/$token'
     | '/p/$project'
@@ -240,6 +260,8 @@ export interface FileRouteTypes {
     | '/account/security'
     | '/account/tokens'
     | '/admin/projects'
+    | '/admin/settings'
+    | '/admin/stats'
     | '/admin/users'
     | '/invite/$token'
     | '/reset/$token'
@@ -262,6 +284,8 @@ export interface FileRouteTypes {
     | '/account/security'
     | '/account/tokens'
     | '/admin/projects'
+    | '/admin/settings'
+    | '/admin/stats'
     | '/admin/users'
     | '/invite/$token'
     | '/p/$project'
@@ -286,6 +310,8 @@ export interface RootRouteChildren {
   AccountSecurityRoute: typeof AccountSecurityRoute
   AccountTokensRoute: typeof AccountTokensRoute
   AdminProjectsRoute: typeof AdminProjectsRoute
+  AdminSettingsRoute: typeof AdminSettingsRoute
+  AdminStatsRoute: typeof AdminStatsRoute
   AdminUsersRoute: typeof AdminUsersRoute
   InviteTokenRoute: typeof InviteTokenRoute
   PProjectRoute: typeof PProjectRouteWithChildren
@@ -362,6 +388,20 @@ declare module '@tanstack/react-router' {
       path: '/admin/projects'
       fullPath: '/admin/projects'
       preLoaderRoute: typeof AdminProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/settings': {
+      id: '/admin/settings'
+      path: '/admin/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AdminSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/stats': {
+      id: '/admin/stats'
+      path: '/admin/stats'
+      fullPath: '/admin/stats'
+      preLoaderRoute: typeof AdminStatsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/users': {
@@ -474,6 +514,8 @@ const rootRouteChildren: RootRouteChildren = {
   AccountSecurityRoute: AccountSecurityRoute,
   AccountTokensRoute: AccountTokensRoute,
   AdminProjectsRoute: AdminProjectsRoute,
+  AdminSettingsRoute: AdminSettingsRoute,
+  AdminStatsRoute: AdminStatsRoute,
   AdminUsersRoute: AdminUsersRoute,
   InviteTokenRoute: InviteTokenRoute,
   PProjectRoute: PProjectRouteWithChildren,

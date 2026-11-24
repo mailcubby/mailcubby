@@ -68,6 +68,7 @@ type Server struct {
 	hasher         PasswordHasher
 	smtpCipher     *secrets.Cipher
 	clk            clock.Clock
+	startedAt      time.Time
 	log            *slog.Logger
 	version        string
 	webHandler     http.Handler
@@ -158,6 +159,7 @@ func New(cfg config.Config, st *store.Store, blobs *blob.Store, bus *events.Bus,
 		hasher:          hasher,
 		smtpCipher:      smtpCipher,
 		clk:             clk,
+		startedAt:       clk.Now().UTC(),
 		log:             log,
 		version:         ver,
 		webHandler:      opts.WebHandler,

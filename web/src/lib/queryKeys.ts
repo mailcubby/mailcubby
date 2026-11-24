@@ -29,4 +29,6 @@ export const queryKeys = {
     ["projects", slug, "messages", id, "headers"] as const,
   adminUsers: (params?: AdminUsersQueryParams) => ["admin", "users", params ?? {}] as const,
   adminProjects: () => ["admin", "projects"] as const,
+  adminSettings: () => ["admin", "settings"] as const,
+  adminStats: () => ["admin", "stats"] as const,
 } as const;

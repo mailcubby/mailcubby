@@ -1361,6 +1361,68 @@ paths:
         "404":
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/admin/settings:
+    get:
+      operationId: adminGetSettings
+      summary: Get instance settings overrides, effective defaults, and sources (server mode, admin)
+      responses:
+        "200":
+          description: Instance settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSettingsResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+    patch:
+      operationId: adminUpdateSettings
+      summary: Update or clear DB overrides for instance name and default retention (server mode, admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateSettingsRequest"
+      responses:
+        "200":
+          description: Updated instance settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSettingsResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/admin/stats:
+    get:
+      operationId: adminGetStats
+      summary: Get instance-wide counts, storage sizes, ingest rate, version, and uptime (server mode, admin)
+      responses:
+        "200":
+          description: Instance statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStatsResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/events:
     get:
       operationId: streamEvents
@@ -1846,6 +1908,28 @@ components:
           format: date-time
         settings:
           $ref: "#/components/schemas/ProjectSettings"
+        retention_defaults:
+          $ref: "#/components/schemas/RetentionDefaults"
+
+    RetentionDefaults:
+      type: object
+      required:
+        - retention_max_age
+        - retention_max_messages
+        - retention_max_bytes
+      properties:
+        retention_max_age:
+          type: integer
+          format: int64
+          description: Effective instance default max message age in seconds (0 disables limit)
+        retention_max_messages:
+          type: integer
+          format: int64
+          description: Effective instance default max messages per project (0 disables limit)
+        retention_max_bytes:
+          type: integer
+          format: int64
+          description: Effective instance default max raw bytes per project (0 disables limit)
 
     CreateProjectRequest:
       type: object
@@ -2493,3 +2577,146 @@ components:
           $ref: "#/components/schemas/APITokenInfo"
         token:
           type: string
+
+    SettingSource:
+      type: string
+      enum: [env, override]
+
+    AdminSettingsValues:
+      type: object
+      required:
+        - instance_name
+        - retention_max_age
+        - retention_max_messages
+        - retention_max_bytes
+      properties:
+        instance_name:
+          type: ["string", "null"]
+        retention_max_age:
+          type: ["integer", "null"]
+          format: int64
+        retention_max_messages:
+          type: ["integer", "null"]
+          format: int64
+        retention_max_bytes:
+          type: ["integer", "null"]
+          format: int64
+
+    AdminEffectiveSettings:
+      type: object
+      required:
+        - instance_name
+        - retention_max_age
+        - retention_max_messages
+        - retention_max_bytes
+      properties:
+        instance_name:
+          type: string
+        retention_max_age:
+          type: integer
+          format: int64
+        retention_max_messages:
+          type: integer
+          format: int64
+        retention_max_bytes:
+          type: integer
+          format: int64
+
+    AdminSettingsSource:
+      type: object
+      required:
+        - instance_name
+        - retention_max_age
+        - retention_max_messages
+        - retention_max_bytes
+      properties:
+        instance_name:
+          $ref: "#/components/schemas/SettingSource"
+        retention_max_age:
+          $ref: "#/components/schemas/SettingSource"
+        retention_max_messages:
+          $ref: "#/components/schemas/SettingSource"
+        retention_max_bytes:
+          $ref: "#/components/schemas/SettingSource"
+
+    AdminSettingsResponse:
+      type: object
+      required: [settings, effective, source]
+      properties:
+        settings:
+          $ref: "#/components/schemas/AdminSettingsValues"
+        effective:
+          $ref: "#/components/schemas/AdminEffectiveSettings"
+        source:
+          $ref: "#/components/schemas/AdminSettingsSource"
+
+    AdminUpdateSettingsRequest:
+      type: object
+      properties:
+        instance_name:
+          type: ["string", "null"]
+          minLength: 1
+          maxLength: 80
+        retention_max_age:
+          type: ["integer", "null"]
+          format: int64
+          minimum: 0
+        retention_max_messages:
+          type: ["integer", "null"]
+          format: int64
+          minimum: 0
+        retention_max_bytes:
+          type: ["integer", "null"]
+          format: int64
+          minimum: 0
+
+    AdminStatsResponse:
+      type: object
+      required:
+        - projects
+        - users
+        - messages
+        - stored_bytes
+        - db_size_bytes
+        - blob_size_bytes
+        - ingest_last_hour
+        - ingest_rate_per_minute
+        - instance_max_bytes
+        - version
+        - uptime_seconds
+        - started_at
+      properties:
+        projects:
+          type: integer
+          format: int64
+        users:
+          type: integer
+          format: int64
+        messages:
+          type: integer
+          format: int64
+        stored_bytes:
+          type: integer
+          format: int64
+        db_size_bytes:
+          type: integer
+          format: int64
+        blob_size_bytes:
+          type: integer
+          format: int64
+        ingest_last_hour:
+          type: integer
+          format: int64
+        ingest_rate_per_minute:
+          type: number
+        instance_max_bytes:
+          type: integer
+          format: int64
+        version:
+          type: string
+        uptime_seconds:
+          type: integer
+          format: int64
+        started_at:
+          type: string
+          format: date-time

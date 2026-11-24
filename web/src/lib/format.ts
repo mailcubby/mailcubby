@@ -148,6 +148,50 @@ export function formatCount(count: number): string {
   return numberFormatter.format(count);
 }
 
+export function formatRetentionAge(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "Unlimited";
+  }
+  if (seconds % 86_400 === 0) {
+    const days = seconds / 86_400;
+    return `${formatCount(days)} ${days === 1 ? "day" : "days"}`;
+  }
+  if (seconds % 3_600 === 0) {
+    const hours = seconds / 3_600;
+    return `${formatCount(hours)} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  if (seconds % 60 === 0) {
+    const minutes = seconds / 60;
+    return `${formatCount(minutes)} ${minutes === 1 ? "minute" : "minutes"}`;
+  }
+  return `${formatCount(seconds)} ${seconds === 1 ? "second" : "seconds"}`;
+}
+
+export function formatUptime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return "0s";
+  }
+  const total = Math.floor(seconds);
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor((total % 86_400) / 3_600);
+  const minutes = Math.floor((total % 3_600) / 60);
+  const secs = total % 60;
+  const parts: string[] = [];
+  if (days > 0) {
+    parts.push(`${days}d`);
+  }
+  if (hours > 0 || days > 0) {
+    parts.push(`${hours}h`);
+  }
+  if (minutes > 0 || hours > 0 || days > 0) {
+    parts.push(`${minutes}m`);
+  }
+  if (days === 0) {
+    parts.push(`${secs}s`);
+  }
+  return parts.join(" ");
+}
+
 export function formatAddress(addr: Address): string {
   if (addr.name && addr.address) {
     return `${addr.name} <${addr.address}>`;

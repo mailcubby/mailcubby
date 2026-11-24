@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
+	"github.com/mailcubby/mailcubby/internal/retention"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
@@ -67,19 +69,26 @@ type nonOwnerProjectSettingsResponse struct {
 	ViewerHideTechnical bool `json:"viewer_hide_technical"`
 }
 
+type retentionDefaultsResponse struct {
+	RetentionMaxAge      int64 `json:"retention_max_age"`
+	RetentionMaxMessages int64 `json:"retention_max_messages"`
+	RetentionMaxBytes    int64 `json:"retention_max_bytes"`
+}
+
 type projectDetailResponse struct {
-	ID            int64      `json:"id"`
-	Slug          string     `json:"slug"`
-	Name          string     `json:"name"`
-	Color         string     `json:"color"`
-	Role          string     `json:"role"`
-	MessageCount  int64      `json:"message_count"`
-	UnreadCount   int64      `json:"unread_count"`
-	SizeBytes     int64      `json:"size_bytes"`
-	LastMessageAt *Timestamp `json:"last_message_at"`
-	CreatedAt     Timestamp  `json:"created_at"`
-	UpdatedAt     Timestamp  `json:"updated_at"`
-	Settings      any        `json:"settings"`
+	ID                int64                      `json:"id"`
+	Slug              string                     `json:"slug"`
+	Name              string                     `json:"name"`
+	Color             string                     `json:"color"`
+	Role              string                     `json:"role"`
+	MessageCount      int64                      `json:"message_count"`
+	UnreadCount       int64                      `json:"unread_count"`
+	SizeBytes         int64                      `json:"size_bytes"`
+	LastMessageAt     *Timestamp                 `json:"last_message_at"`
+	CreatedAt         Timestamp                  `json:"created_at"`
+	UpdatedAt         Timestamp                  `json:"updated_at"`
+	Settings          any                        `json:"settings"`
+	RetentionDefaults *retentionDefaultsResponse `json:"retention_defaults,omitempty"`
 }
 
 type createProjectRequest struct {
@@ -294,7 +303,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusCreated, buildProjectDetail(proj, string(auth.RoleOwner), true))
+	writeJSON(w, http.StatusCreated, s.buildProjectDetailWithDefaults(ctx, proj, string(auth.RoleOwner), true))
 }
 
 func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
@@ -304,7 +313,7 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	isOwner := pctx.AuthRole == auth.RoleOwner || pctx.AuthRole == auth.RoleAdmin
-	writeJSON(w, http.StatusOK, buildProjectDetail(pctx.Project, pctx.Role, isOwner))
+	writeJSON(w, http.StatusOK, s.buildProjectDetailWithDefaults(r.Context(), pctx.Project, pctx.Role, isOwner))
 }
 
 func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
@@ -467,7 +476,7 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusOK, buildProjectDetail(updated, pctx.Role, true))
+	writeJSON(w, http.StatusOK, s.buildProjectDetailWithDefaults(ctx, updated, pctx.Role, true))
 }
 
 func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
@@ -623,6 +632,28 @@ func (s *Server) handleLeaveProject(w http.ResponseWriter, r *http.Request) {
 
 	s.publishMembershipChanged(principal.UserID, pctx.Project.Slug)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) buildProjectDetailWithDefaults(ctx context.Context, p store.Project, role string, isOwner bool) projectDetailResponse {
+	resp := buildProjectDetail(p, role, isOwner)
+	if isOwner {
+		resolved, err := retention.ResolveInstanceSettings(ctx, s.store, s.cfg)
+		if err != nil {
+			s.log.Warn("failed to resolve retention defaults for project detail", "project_id", p.ID, "error", err)
+			resp.RetentionDefaults = &retentionDefaultsResponse{
+				RetentionMaxAge:      int64(s.cfg.RetentionMaxAge.Seconds()),
+				RetentionMaxMessages: s.cfg.RetentionMaxMessages,
+				RetentionMaxBytes:    s.cfg.RetentionMaxBytes,
+			}
+		} else {
+			resp.RetentionDefaults = &retentionDefaultsResponse{
+				RetentionMaxAge:      resolved.Effective.RetentionMaxAgeSec,
+				RetentionMaxMessages: resolved.Effective.RetentionMaxMessages,
+				RetentionMaxBytes:    resolved.Effective.RetentionMaxBytes,
+			}
+		}
+	}
+	return resp
 }
 
 func buildProjectDetail(p store.Project, role string, isOwner bool) projectDetailResponse {
