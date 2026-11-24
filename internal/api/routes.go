@@ -18,14 +18,20 @@ const (
 	PermUser Permission = "user"
 	// PermProjectCreate requires admin or can_create_projects (or local operator).
 	PermProjectCreate Permission = "project_create"
+	// PermAdmin requires an instance administrator (server mode).
+	PermAdmin Permission = "admin"
 	// PermViewer requires viewer role or higher on the resolved project.
 	PermViewer Permission = "viewer"
 	// PermViewerTech requires viewer role unless viewer_hide_technical is enabled (then member).
 	PermViewerTech Permission = "viewer_tech"
 	// PermMember requires member role or higher on the resolved project.
 	PermMember Permission = "member"
+	// PermListMembers requires member role or higher to list project members (non-token).
+	PermListMembers Permission = "list_members"
 	// PermOwner requires owner role or admin on the resolved project.
 	PermOwner Permission = "owner"
+	// PermLeave requires a session user with project access to leave the project (FR-051).
+	PermLeave Permission = "leave"
 )
 
 // Route declares one HTTP endpoint in the single source-of-truth route table.
@@ -94,7 +100,7 @@ func (s *Server) buildMux() http.Handler {
 	for _, rt := range s.routes {
 		h := rt.Handler
 		if strings.Contains(rt.Pattern, "{project}") {
-			h = s.resolveProjectMiddleware(h)
+			h = s.resolveProjectMiddleware(rt, h)
 		}
 		h = s.authorizeRouteMiddleware(rt, h)
 		apiMux.HandleFunc(rt.Method+" "+rt.Pattern, h)

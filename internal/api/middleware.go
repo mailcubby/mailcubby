@@ -60,8 +60,18 @@ const (
 
 // ProjectContext holds the resolved project and effective role for a project-scoped route.
 type ProjectContext struct {
-	Project store.Project
-	Role    string
+	Project          store.Project
+	Role             string
+	AuthRole         auth.Role
+	IsExplicitMember bool
+}
+
+// AuthSettings extracts the permission-relevant project settings for auth.Allowed.
+func (p ProjectContext) AuthSettings() auth.ProjectSettings {
+	return auth.ProjectSettings{
+		ViewerHideTechnical:  p.Project.Settings.ViewerHideTechnical,
+		MembersCanRevealSMTP: p.Project.Settings.MembersCanRevealSMTP,
+	}
 }
 
 // RequestIDFromContext returns the request ID attached by middleware, if any.
@@ -331,8 +341,12 @@ func (s *Server) authorizeRouteMiddleware(rt Route, next http.HandlerFunc) http.
 			next(w, r)
 			return
 		case PermSession:
-			if principal.Kind != auth.PrincipalUser {
+			if principal.Kind == auth.PrincipalAnonymous {
 				writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "authentication required", nil)
+				return
+			}
+			if principal.Kind != auth.PrincipalUser {
+				writeError(w, http.StatusForbidden, ErrCodeForbidden, "insufficient permissions", nil)
 				return
 			}
 		case PermUser:
@@ -345,11 +359,29 @@ func (s *Server) authorizeRouteMiddleware(rt Route, next http.HandlerFunc) http.
 				writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "authentication required", nil)
 				return
 			}
-			if !principal.IsAdmin && !principal.CanCreateProjects {
+			if principal.Kind == auth.PrincipalToken || (!principal.IsAdmin && !principal.CanCreateProjects) {
 				writeError(w, http.StatusForbidden, ErrCodeForbidden, "insufficient permissions", nil)
 				return
 			}
-		case PermViewer, PermViewerTech, PermMember, PermOwner:
+		case PermAdmin:
+			if !principal.IsAuthenticated() {
+				writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "authentication required", nil)
+				return
+			}
+			if principal.Kind != auth.PrincipalUser || !principal.IsAdmin {
+				writeError(w, http.StatusForbidden, ErrCodeForbidden, "insufficient permissions", nil)
+				return
+			}
+		case PermLeave:
+			if !principal.IsAuthenticated() {
+				writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "authentication required", nil)
+				return
+			}
+			if principal.Kind != auth.PrincipalUser {
+				writeError(w, http.StatusForbidden, ErrCodeForbidden, "insufficient permissions", nil)
+				return
+			}
+		case PermViewer, PermViewerTech, PermMember, PermListMembers, PermOwner:
 			if !principal.IsAuthenticated() {
 				writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "authentication required", nil)
 				return
@@ -359,14 +391,10 @@ func (s *Server) authorizeRouteMiddleware(rt Route, next http.HandlerFunc) http.
 	}
 }
 
-func (s *Server) resolveProjectMiddleware(next http.HandlerFunc) http.HandlerFunc {
+func (s *Server) resolveProjectMiddleware(rt Route, next http.HandlerFunc) http.HandlerFunc {
+	action, hasAction := permissionAction(rt.Need)
 	return func(w http.ResponseWriter, r *http.Request) {
 		principal := PrincipalFromContext(r.Context())
-		// TODO(phase-7a): replace admin-only server-mode gate with per-project membership resolution (FR-050).
-		if s.cfg.Mode == config.ModeServer && !principal.IsAdmin {
-			writeError(w, http.StatusNotFound, ErrCodeNotFound, "project not found", nil)
-			return
-		}
 
 		slug := r.PathValue("project")
 		if slug == "" {
@@ -387,12 +415,84 @@ func (s *Server) resolveProjectMiddleware(next http.HandlerFunc) http.HandlerFun
 			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
 			return
 		}
+
+		var (
+			authRole         auth.Role
+			displayRole      string
+			isExplicitMember bool
+		)
+		if s.cfg.Mode == config.ModeLocal {
+			authRole = auth.RoleOwner
+			displayRole = string(auth.RoleOwner)
+			isExplicitMember = true
+		} else {
+			member, memErr := s.store.GetProjectMember(r.Context(), proj.ID, principal.UserID)
+			switch {
+			case memErr == nil:
+				isExplicitMember = true
+				authRole = auth.Role(member.Role)
+				displayRole = member.Role
+			case errors.Is(memErr, store.ErrNotFound):
+				isExplicitMember = false
+			default:
+				s.log.Error("resolve project membership failed",
+					"request_id", RequestIDFromContext(r.Context()),
+					"project_id", proj.ID,
+					"user_id", principal.UserID,
+					"error", memErr,
+				)
+				writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+				return
+			}
+
+			if principal.IsAdmin {
+				authRole = auth.RoleAdmin
+				displayRole = string(auth.RoleOwner)
+			} else if !isExplicitMember {
+				// SPEC FR-050: inaccessible projects return 404 so project existence is not revealed.
+				writeError(w, http.StatusNotFound, ErrCodeNotFound, "project not found", nil)
+				return
+			}
+
+			if hasAction {
+				settings := auth.ProjectSettings{
+					ViewerHideTechnical:  proj.Settings.ViewerHideTechnical,
+					MembersCanRevealSMTP: proj.Settings.MembersCanRevealSMTP,
+				}
+				if !auth.Allowed(authRole, action, settings) {
+					writeError(w, http.StatusForbidden, ErrCodeForbidden, "insufficient permissions", nil)
+					return
+				}
+			}
+		}
+
 		pctx := ProjectContext{
-			Project: proj,
-			Role:    "owner",
+			Project:          proj,
+			Role:             displayRole,
+			AuthRole:         authRole,
+			IsExplicitMember: isExplicitMember,
 		}
 		ctx := context.WithValue(r.Context(), ctxKeyProject, pctx)
 		next(w, r.WithContext(ctx))
+	}
+}
+
+func permissionAction(p Permission) (auth.Action, bool) {
+	switch p {
+	case PermViewer:
+		return auth.ActionReadMessages, true
+	case PermViewerTech:
+		return auth.ActionReadTechnical, true
+	case PermMember:
+		return auth.ActionWriteMessages, true
+	case PermListMembers:
+		return auth.ActionListMembers, true
+	case PermOwner:
+		return auth.ActionManageProject, true
+	case PermLeave:
+		return auth.ActionLeaveProject, true
+	default:
+		return "", false
 	}
 }
 

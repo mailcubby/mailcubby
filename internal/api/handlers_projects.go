@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
 	"github.com/mailcubby/mailcubby/internal/store"
@@ -55,19 +56,24 @@ type projectSettingsResponse struct {
 	MembersCanRevealSMTP    bool   `json:"members_can_reveal_smtp"`
 }
 
+type nonOwnerProjectSettingsResponse struct {
+	PlusAddressTags     bool `json:"plus_address_tags"`
+	ViewerHideTechnical bool `json:"viewer_hide_technical"`
+}
+
 type projectDetailResponse struct {
-	ID            int64                   `json:"id"`
-	Slug          string                  `json:"slug"`
-	Name          string                  `json:"name"`
-	Color         string                  `json:"color"`
-	Role          string                  `json:"role"`
-	MessageCount  int64                   `json:"message_count"`
-	UnreadCount   int64                   `json:"unread_count"`
-	SizeBytes     int64                   `json:"size_bytes"`
-	LastMessageAt *Timestamp              `json:"last_message_at"`
-	CreatedAt     Timestamp               `json:"created_at"`
-	UpdatedAt     Timestamp               `json:"updated_at"`
-	Settings      projectSettingsResponse `json:"settings"`
+	ID            int64      `json:"id"`
+	Slug          string     `json:"slug"`
+	Name          string     `json:"name"`
+	Color         string     `json:"color"`
+	Role          string     `json:"role"`
+	MessageCount  int64      `json:"message_count"`
+	UnreadCount   int64      `json:"unread_count"`
+	SizeBytes     int64      `json:"size_bytes"`
+	LastMessageAt *Timestamp `json:"last_message_at"`
+	CreatedAt     Timestamp  `json:"created_at"`
+	UpdatedAt     Timestamp  `json:"updated_at"`
+	Settings      any        `json:"settings"`
 }
 
 type createProjectRequest struct {
@@ -99,24 +105,42 @@ type deleteProjectRequest struct {
 
 func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	principal := PrincipalFromContext(r.Context())
-	// TODO(phase-7a): list projects where user is a member instead of admin-only.
-	if s.cfg.Mode == config.ModeServer && !principal.IsAdmin {
-		writeJSON(w, http.StatusOK, []projectSummaryResponse{})
-		return
+
+	var list []store.ProjectWithRole
+	if s.cfg.Mode == config.ModeLocal || principal.IsAdmin {
+		projects, err := s.store.ListProjects(r.Context())
+		if err != nil {
+			s.log.Error("list projects failed",
+				"request_id", RequestIDFromContext(r.Context()),
+				"error", err,
+			)
+			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+			return
+		}
+		list = make([]store.ProjectWithRole, 0, len(projects))
+		for _, p := range projects {
+			list = append(list, store.ProjectWithRole{
+				Project: p,
+				Role:    string(auth.RoleOwner),
+			})
+		}
+	} else {
+		var err error
+		list, err = s.store.ListProjectsForUser(r.Context(), principal.UserID)
+		if err != nil {
+			s.log.Error("list projects for user failed",
+				"request_id", RequestIDFromContext(r.Context()),
+				"user_id", principal.UserID,
+				"error", err,
+			)
+			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+			return
+		}
 	}
 
-	projects, err := s.store.ListProjects(r.Context())
-	if err != nil {
-		s.log.Error("list projects failed",
-			"request_id", RequestIDFromContext(r.Context()),
-			"error", err,
-		)
-		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
-		return
-	}
-
-	out := make([]projectSummaryResponse, 0, len(projects))
-	for _, p := range projects {
+	out := make([]projectSummaryResponse, 0, len(list))
+	for _, item := range list {
+		p := item.Project
 		spark, err := s.getSparkline(r.Context(), p.ID)
 		if err != nil {
 			s.log.Error("compute project sparkline failed",
@@ -134,7 +158,7 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 			Slug:          p.Slug,
 			Name:          p.Name,
 			Color:         p.Color,
-			Role:          "owner",
+			Role:          item.Role,
 			MessageCount:  p.MessageCount,
 			UnreadCount:   p.UnreadCount,
 			SizeBytes:     p.SizeBytes,
@@ -211,7 +235,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusCreated, buildProjectDetail(proj, "owner"))
+	writeJSON(w, http.StatusCreated, buildProjectDetail(proj, string(auth.RoleOwner), true))
 }
 
 func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
@@ -220,7 +244,8 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, ErrCodeNotFound, "project not found", nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, buildProjectDetail(pctx.Project, pctx.Role))
+	isOwner := pctx.AuthRole == auth.RoleOwner || pctx.AuthRole == auth.RoleAdmin
+	writeJSON(w, http.StatusOK, buildProjectDetail(pctx.Project, pctx.Role, isOwner))
 }
 
 func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
@@ -350,7 +375,7 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusOK, buildProjectDetail(updated, pctx.Role))
+	writeJSON(w, http.StatusOK, buildProjectDetail(updated, pctx.Role, true))
 }
 
 func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
@@ -411,7 +436,24 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func buildProjectDetail(p store.Project, role string) projectDetailResponse {
+func buildProjectDetail(p store.Project, role string, isOwner bool) projectDetailResponse {
+	var settings any
+	if isOwner {
+		settings = projectSettingsResponse{
+			RetentionMaxAge:         p.Settings.RetentionMaxAgeSec,
+			RetentionMaxMessages:    p.Settings.RetentionMaxMessages,
+			RetentionMaxBytes:       p.Settings.RetentionMaxBytes,
+			RecipientRoutingEnabled: p.Settings.RecipientRoutingEnabled,
+			PlusAddressTags:         p.Settings.PlusAddressTags,
+			ViewerHideTechnical:     p.Settings.ViewerHideTechnical,
+			MembersCanRevealSMTP:    p.Settings.MembersCanRevealSMTP,
+		}
+	} else {
+		settings = nonOwnerProjectSettingsResponse{
+			PlusAddressTags:     p.Settings.PlusAddressTags,
+			ViewerHideTechnical: p.Settings.ViewerHideTechnical,
+		}
+	}
 	return projectDetailResponse{
 		ID:            p.ID,
 		Slug:          p.Slug,
@@ -424,14 +466,6 @@ func buildProjectDetail(p store.Project, role string) projectDetailResponse {
 		LastMessageAt: formatTimestampPtr(p.LastMessageAt),
 		CreatedAt:     Timestamp(p.CreatedAt),
 		UpdatedAt:     Timestamp(p.UpdatedAt),
-		Settings: projectSettingsResponse{
-			RetentionMaxAge:         p.Settings.RetentionMaxAgeSec,
-			RetentionMaxMessages:    p.Settings.RetentionMaxMessages,
-			RetentionMaxBytes:       p.Settings.RetentionMaxBytes,
-			RecipientRoutingEnabled: p.Settings.RecipientRoutingEnabled,
-			PlusAddressTags:         p.Settings.PlusAddressTags,
-			ViewerHideTechnical:     p.Settings.ViewerHideTechnical,
-			MembersCanRevealSMTP:    p.Settings.MembersCanRevealSMTP,
-		},
+		Settings:      settings,
 	}
 }

@@ -105,7 +105,7 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 	principal := PrincipalFromContext(r.Context())
 
-	memberships := make([]authMembershipResponse, 0)
+	var memberships []authMembershipResponse
 	if s.cfg.Mode == config.ModeLocal || principal.IsAdmin {
 		projects, err := s.store.ListProjects(r.Context())
 		if err != nil {
@@ -121,6 +121,24 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 			memberships = append(memberships, authMembershipResponse{
 				Project: p.Slug,
 				Role:    "owner",
+			})
+		}
+	} else {
+		rows, err := s.store.ListMembershipsByUser(r.Context(), principal.UserID)
+		if err != nil {
+			s.log.Error("list memberships for auth/me failed",
+				"request_id", RequestIDFromContext(r.Context()),
+				"user_id", principal.UserID,
+				"error", err,
+			)
+			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+			return
+		}
+		memberships = make([]authMembershipResponse, 0, len(rows))
+		for _, m := range rows {
+			memberships = append(memberships, authMembershipResponse{
+				Project: m.ProjectSlug,
+				Role:    m.Role,
 			})
 		}
 	}

@@ -1076,13 +1076,8 @@ components:
     ProjectSettings:
       type: object
       required:
-        - retention_max_age
-        - retention_max_messages
-        - retention_max_bytes
-        - recipient_routing_enabled
         - plus_address_tags
         - viewer_hide_technical
-        - members_can_reveal_smtp
       properties:
         retention_max_age:
           type: ["integer", "null"]
