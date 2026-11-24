@@ -113,8 +113,10 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
       if (err instanceof ApiError) {
         if (err.status === 409 && err.code === "login_required") {
           setLoginRequired(true);
+          // FR-056: also returned for admin-created accounts without a password,
+          // which must finish setup via their account invite before signing in.
           setErrorMessage(
-            "An account with this email already exists. Sign in to accept this invitation.",
+            "An account with this email already exists. Sign in to accept this invitation. If you have not set a password yet, first finish account setup with the link an administrator sent you (or ask an administrator for a password reset link), then sign in.",
           );
           return;
         }
