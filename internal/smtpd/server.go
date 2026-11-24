@@ -4,6 +4,7 @@ package smtpd
 
 import (
 	"context"
+	"crypto/subtle"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
@@ -19,14 +21,28 @@ import (
 	"github.com/mailcubby/mailcubby/internal/clock"
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/ingest"
+	"github.com/mailcubby/mailcubby/internal/ratelimit"
+	"github.com/mailcubby/mailcubby/internal/secrets"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
-const smtpMaxLineLength = 2000
+const (
+	smtpMaxLineLength     = 2000
+	authFailureDelay      = time.Second
+	lastUsedTouchInterval = time.Minute
+)
 
 // Ingestor is the consumer-declared interface used by SMTP sessions on DATA.
 type Ingestor interface {
 	Ingest(ctx context.Context, env ingest.Envelope, targets []ingest.Target, r io.Reader) ([]ingest.MessageRef, error)
+}
+
+// CredentialStore is the consumer-declared interface used by server-mode SMTP AUTH
+// to verify credentials, throttle last_used_at updates, and audit lockouts.
+type CredentialStore interface {
+	LookupSMTPCredentialByUsername(ctx context.Context, username string) (store.SMTPCredentialAuthLookup, error)
+	TouchSMTPCredentialLastUsed(ctx context.Context, projectID, id int64, now time.Time) error
+	InsertAudit(ctx context.Context, p store.InsertAuditParams) (store.AuditEntry, error)
 }
 
 // ErrQuotaExceeded is returned by ingest hooks when instance storage quota is hit (Phase 10).
@@ -37,10 +53,12 @@ var ErrRateLimited = errors.New("smtpd: project rate limit exceeded")
 
 // Server runs Mailcubby's SMTP listener with connection limits and graceful shutdown.
 type Server struct {
-	cfg    config.Config
-	smtp   *smtp.Server
-	log    *slog.Logger
-	lookup ProjectLookup
+	cfg        config.Config
+	smtp       *smtp.Server
+	log        *slog.Logger
+	lookup     ProjectLookup
+	shutdownCh chan struct{}
+	shutOnce   sync.Once
 
 	mu        sync.Mutex
 	closed    bool
@@ -55,20 +73,56 @@ func New(cfg config.Config, st *store.Store, ing Ingestor, clk clock.Clock, log 
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return NewWithLookup(cfg, &storeProjectLookup{store: st, clk: clk}, ing, log)
+	var credStore CredentialStore
+	if st != nil {
+		credStore = st
+	}
+	var cipher *secrets.Cipher
+	if len(cfg.AppKey) == secrets.KeySize {
+		c, err := secrets.NewSMTPCredentialCipher(cfg.AppKey)
+		if err != nil {
+			log.Error("failed to initialize smtp credential cipher", "error", err)
+		} else {
+			cipher = c
+		}
+	}
+	return newServer(cfg, &storeProjectLookup{store: st, clk: clk}, credStore, cipher, ing, clk, log)
 }
 
 // NewWithLookup constructs an SMTP Server with a custom ProjectLookup (used in tests).
 func NewWithLookup(cfg config.Config, lookup ProjectLookup, ing Ingestor, log *slog.Logger) *Server {
+	return newServer(cfg, lookup, nil, nil, ing, clock.NewReal(), log)
+}
+
+func newServer(
+	cfg config.Config,
+	lookup ProjectLookup,
+	creds CredentialStore,
+	cipher *secrets.Cipher,
+	ing Ingestor,
+	clk clock.Clock,
+	log *slog.Logger,
+) *Server {
+	if clk == nil {
+		clk = clock.NewReal()
+	}
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
 
+	shutdownCh := make(chan struct{})
 	be := &backend{
-		cfg:    cfg,
-		lookup: lookup,
-		ingest: ing,
-		log:    log,
+		cfg:              cfg,
+		lookup:           lookup,
+		creds:            creds,
+		cipher:           cipher,
+		ingest:           ing,
+		clk:              clk,
+		log:              log,
+		authLimiter:      ratelimit.NewSMTPAuthLimiter(cfg.SMTPAuthMaxFailures, cfg.SMTPAuthLockout, clk),
+		authFailureDelay: authFailureDelay,
+		shutdownCh:       shutdownCh,
+		lastTouched:      make(map[int64]time.Time),
 	}
 
 	s := smtp.NewServer(be)
@@ -83,10 +137,11 @@ func NewWithLookup(cfg config.Config, lookup ProjectLookup, ing Ingestor, log *s
 	s.ErrorLog = slogSMTPLogger{log: log}
 
 	return &Server{
-		cfg:    cfg,
-		smtp:   s,
-		log:    log,
-		lookup: lookup,
+		cfg:        cfg,
+		smtp:       s,
+		log:        log,
+		lookup:     lookup,
+		shutdownCh: shutdownCh,
 	}
 }
 
@@ -119,6 +174,7 @@ func (s *Server) Serve(ln net.Listener) error {
 // Shutdown gracefully stops accepting new connections and waits for active SMTP
 // transactions until ctx expires.
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.signalShutdown()
 	s.closeListeners()
 	if err := s.smtp.Shutdown(ctx); err != nil {
 		return fmt.Errorf("smtpd: shutdown: %w", err)
@@ -128,11 +184,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 // Close immediately closes listeners and active connections.
 func (s *Server) Close() error {
+	s.signalShutdown()
 	s.closeListeners()
 	if err := s.smtp.Close(); err != nil {
 		return fmt.Errorf("smtpd: close: %w", err)
 	}
 	return nil
+}
+
+func (s *Server) signalShutdown() {
+	s.shutOnce.Do(func() {
+		close(s.shutdownCh)
+	})
 }
 
 func (s *Server) closeListeners() {
@@ -148,10 +211,19 @@ func (s *Server) closeListeners() {
 }
 
 type backend struct {
-	cfg    config.Config
-	lookup ProjectLookup
-	ingest Ingestor
-	log    *slog.Logger
+	cfg              config.Config
+	lookup           ProjectLookup
+	creds            CredentialStore
+	cipher           *secrets.Cipher
+	ingest           Ingestor
+	clk              clock.Clock
+	log              *slog.Logger
+	authLimiter      *ratelimit.SMTPAuthLimiter
+	authFailureDelay time.Duration
+	shutdownCh       <-chan struct{}
+
+	touchMu     sync.Mutex
+	lastTouched map[int64]time.Time
 }
 
 func (b *backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
@@ -171,6 +243,22 @@ func (b *backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 		helo:     c.Hostname(),
 		tls:      isTLS,
 	}, nil
+}
+
+func (b *backend) shouldTouchLastUsed(credID int64, dbLastUsed *time.Time, now time.Time) bool {
+	if dbLastUsed != nil && now.Sub(*dbLastUsed) < lastUsedTouchInterval {
+		return false
+	}
+	b.touchMu.Lock()
+	defer b.touchMu.Unlock()
+	if b.lastTouched == nil {
+		b.lastTouched = make(map[int64]time.Time)
+	}
+	if prev, ok := b.lastTouched[credID]; ok && now.Sub(prev) < lastUsedTouchInterval {
+		return false
+	}
+	b.lastTouched[credID] = now
+	return true
 }
 
 type session struct {
@@ -212,7 +300,7 @@ func (s *session) Auth(mech string) (sasl.Server, error) {
 	}
 }
 
-func (s *session) authenticate(username, _ string) error {
+func (s *session) authenticate(username, password string) error {
 	if s.be.cfg.Mode == config.ModeLocal {
 		s.auth = AuthResult{
 			Authenticated: true,
@@ -220,16 +308,164 @@ func (s *session) authenticate(username, _ string) error {
 		}
 		return nil
 	}
-	// Server mode credential authentication is implemented in Phase 8.
-	return smtp.ErrAuthFailed
+
+	// SPEC 12.4: check brute-force lockout before any credential lookup.
+	if s.be.authLimiter != nil && s.be.authLimiter.IsLocked(s.remoteIP, username) {
+		return errAuthLocked
+	}
+
+	if s.be.creds == nil || s.be.cipher == nil {
+		return s.failAuth(username, nil)
+	}
+
+	ctx := context.Background()
+	lookup, err := s.be.creds.LookupSMTPCredentialByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return s.failAuth(username, nil)
+		}
+		if s.be.log != nil {
+			s.be.log.Error("smtp credential lookup failed",
+				"remote_ip", s.remoteIP,
+				"auth_user", username,
+				"error", err,
+			)
+		}
+		return errTempFailure
+	}
+
+	projID := lookup.Credential.ProjectID
+	if lookup.Credential.DisabledAt != nil {
+		return s.failAuth(username, &projID)
+	}
+
+	plain, err := s.be.cipher.Open(lookup.Credential.PasswordEnc, []byte(lookup.Credential.Username))
+	if err != nil {
+		if s.be.log != nil {
+			s.be.log.Error("smtp credential decrypt failed",
+				"remote_ip", s.remoteIP,
+				"project_id", lookup.Credential.ProjectID,
+				"credential_id", lookup.Credential.ID,
+				"error", err,
+			)
+		}
+		return s.failAuth(username, &projID)
+	}
+
+	if subtle.ConstantTimeCompare(plain, []byte(password)) != 1 {
+		return s.failAuth(username, &projID)
+	}
+
+	credID := lookup.Credential.ID
+	s.auth = AuthResult{
+		Authenticated:   true,
+		Username:        lookup.Credential.Username,
+		ProjectID:       lookup.Credential.ProjectID,
+		ProjectSlug:     lookup.ProjectSlug,
+		CredentialID:    &credID,
+		CredentialLabel: lookup.Credential.Label,
+		PlusAddressTags: lookup.ProjectPlusAddressTags,
+	}
+
+	// FR-062: update last_used_at at most once per minute.
+	if s.be.clk != nil {
+		now := s.be.clk.Now().UTC()
+		if s.be.shouldTouchLastUsed(credID, lookup.Credential.LastUsedAt, now) {
+			if touchErr := s.be.creds.TouchSMTPCredentialLastUsed(ctx, lookup.Credential.ProjectID, credID, now); touchErr != nil && s.be.log != nil {
+				s.be.log.Warn("failed to update smtp credential last_used_at",
+					"project_id", lookup.Credential.ProjectID,
+					"credential_id", credID,
+					"error", touchErr,
+				)
+			}
+		}
+	}
+
+	return nil
+}
+
+// failAuth records a failed AUTH attempt, emits a one-time smtp.auth_lockout
+// audit entry if the lockout threshold is crossed, waits 1 s through the
+// injected clock, and returns bare errAuthFailed (535 5.7.8) (SPEC 7.4, 12.4).
+func (s *session) failAuth(username string, projectID *int64) *smtp.SMTPError {
+	if s.be.authLimiter != nil {
+		if newlyLocked, reason := s.be.authLimiter.RecordFailure(s.remoteIP, username); newlyLocked {
+			s.auditAuthLockout(username, projectID, reason)
+		}
+	}
+	s.waitAuthFailureDelay()
+	return errAuthFailed
+}
+
+func (s *session) auditAuthLockout(username string, projectID *int64, reason string) {
+	if s.be.creds == nil {
+		return
+	}
+	now := time.Now().UTC()
+	if s.be.clk != nil {
+		now = s.be.clk.Now().UTC()
+	}
+	targetType := "smtp_auth"
+	targetID := username
+	if targetID == "" {
+		targetID = s.remoteIP
+	}
+	var ipPtr *string
+	if s.remoteIP != "" {
+		ip := s.remoteIP
+		ipPtr = &ip
+	}
+	var actorLabel *string
+	if username != "" {
+		u := username
+		actorLabel = &u
+	}
+	if _, err := s.be.creds.InsertAudit(context.Background(), store.InsertAuditParams{
+		At:         now,
+		ActorType:  store.AuditActorSMTP,
+		ActorLabel: actorLabel,
+		ProjectID:  projectID,
+		Action:     "smtp.auth_lockout",
+		TargetType: &targetType,
+		TargetID:   &targetID,
+		IP:         ipPtr,
+		Metadata: map[string]any{
+			"reason":    reason,
+			"username":  username,
+			"remote_ip": s.remoteIP,
+		},
+	}); err != nil && s.be.log != nil {
+		s.be.log.Warn("failed to write smtp.auth_lockout audit entry",
+			"remote_ip", s.remoteIP,
+			"auth_user", username,
+			"error", err,
+		)
+	}
+}
+
+func (s *session) waitAuthFailureDelay() {
+	if s.be.clk == nil || s.be.authFailureDelay <= 0 {
+		return
+	}
+	timer := s.be.clk.NewTimer(s.be.authFailureDelay)
+	defer timer.Stop()
+
+	if s.be.shutdownCh != nil {
+		select {
+		case <-timer.C():
+		case <-s.be.shutdownCh:
+		}
+		return
+	}
+	<-timer.C()
 }
 
 func (s *session) Mail(from string, opts *smtp.MailOptions) error {
 	if opts != nil && s.be.cfg.SMTPMaxMessageBytes > 0 && opts.Size > s.be.cfg.SMTPMaxMessageBytes {
 		return smtp.ErrDataTooLarge
 	}
-	if s.be.cfg.Mode == config.ModeServer && !s.auth.Authenticated {
-		// TODO(phase-8): allow unauthenticated MAIL FROM when InboxDomain is set for server-mode recipient routing.
+	// SPEC 7.2 rule 4: server mode without AUTH and without INBOX_DOMAIN rejects MAIL FROM with 530 5.7.0.
+	if s.be.cfg.Mode == config.ModeServer && !s.auth.Authenticated && strings.TrimSpace(s.be.cfg.InboxDomain) == "" {
 		return errAuthRequired
 	}
 	s.mailFrom = from
@@ -250,7 +486,7 @@ func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
 		s.be.lookup,
 	)
 	if smtpErr != nil {
-		if smtpErr.Code == 451 {
+		if smtpErr.Code == 451 && s.be.log != nil {
 			s.be.log.Error("smtp routing lookup failed", "remote_ip", s.remoteIP, "auth_user", s.auth.Username)
 		}
 		return smtpErr
@@ -288,39 +524,43 @@ func (s *session) Data(r io.Reader) error {
 	refs, err := s.be.ingest.Ingest(context.Background(), env, s.targets, r)
 	if err != nil {
 		smtpErr := mapDataError(err)
-		if smtpErr.Code == 451 {
-			s.be.log.Error(
-				"smtp ingest failed",
-				"remote_ip", s.remoteIP,
-				"auth_user", s.auth.Username,
-				"rcpt_count", len(s.rcpts),
-				"result_code", smtpErr.Code,
-				"error", err,
-			)
-		} else {
-			s.be.log.Warn(
-				"smtp message rejected",
-				"remote_ip", s.remoteIP,
-				"auth_user", s.auth.Username,
-				"rcpt_count", len(s.rcpts),
-				"result_code", smtpErr.Code,
-			)
+		if s.be.log != nil {
+			if smtpErr.Code == 451 {
+				s.be.log.Error(
+					"smtp ingest failed",
+					"remote_ip", s.remoteIP,
+					"auth_user", s.auth.Username,
+					"rcpt_count", len(s.rcpts),
+					"result_code", smtpErr.Code,
+					"error", err,
+				)
+			} else {
+				s.be.log.Warn(
+					"smtp message rejected",
+					"remote_ip", s.remoteIP,
+					"auth_user", s.auth.Username,
+					"rcpt_count", len(s.rcpts),
+					"result_code", smtpErr.Code,
+				)
+			}
 		}
 		return smtpErr
 	}
 
-	msgIDs := make([]string, 0, len(refs))
-	for _, ref := range refs {
-		msgIDs = append(msgIDs, ref.ID.String())
+	if s.be.log != nil {
+		msgIDs := make([]string, 0, len(refs))
+		for _, ref := range refs {
+			msgIDs = append(msgIDs, ref.ID.String())
+		}
+		s.be.log.Info(
+			"smtp message accepted",
+			"remote_ip", s.remoteIP,
+			"auth_user", s.auth.Username,
+			"rcpt_count", len(s.rcpts),
+			"result_code", 250,
+			"message_ids", msgIDs,
+		)
 	}
-	s.be.log.Info(
-		"smtp message accepted",
-		"remote_ip", s.remoteIP,
-		"auth_user", s.auth.Username,
-		"rcpt_count", len(s.rcpts),
-		"result_code", 250,
-		"message_ids", msgIDs,
-	)
 	return nil
 }
 

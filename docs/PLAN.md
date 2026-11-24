@@ -291,11 +291,11 @@ Acceptance:
 
 Tasks:
 - [x] SMTP credentials store and endpoints: create, list (with connection info), reveal (audited), rotate, update (label, disable), delete (FR-060, FR-061, FR-062, FR-063).
-- [ ] smtpd server-mode routing (SPEC 7.2 server column), credential verification with decrypt + constant-time compare, `smtp_credential_id` on messages (FR-021), `last_used_at` throttled updates.
-- [ ] Recipient routing in server mode with `recipient_routing_enabled`; multi-project delivery (FR-011) in both modes.
-- [ ] AUTH over TLS only in server mode (FR-004) using a runtime-generated test certificate in tests.
-- [ ] Brute-force lockout per IP and username, 1 s failure delay through the clock, `smtp.auth_lockout` audit (SPEC 12.4).
-- [ ] Error replies exactly as SPEC 7.4 (codes; texts for Mailcubby-generated replies).
+- [x] smtpd server-mode routing (SPEC 7.2 server column), credential verification with decrypt + constant-time compare, `smtp_credential_id` on messages (FR-021), `last_used_at` throttled updates.
+- [x] Recipient routing in server mode with `recipient_routing_enabled`; multi-project delivery (FR-011) in both modes.
+- [x] AUTH over TLS only in server mode (FR-004) using a runtime-generated test certificate in tests.
+- [x] Brute-force lockout per IP and username, 1 s failure delay through the clock, `smtp.auth_lockout` audit (SPEC 12.4).
+- [x] Error replies exactly as SPEC 7.4 (codes; texts for Mailcubby-generated replies).
 - [ ] `credential:` search operator and `credential` filter in the list API; credentials in the inbox sidebar (UI 3.4).
 
 Files: `internal/smtpd/`, `internal/store/queries/`, `internal/api/`, `internal/ratelimit/`, `internal/search/`, `web/src/features/inbox/`.

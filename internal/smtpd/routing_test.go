@@ -171,3 +171,126 @@ func TestResolveLocalMode(t *testing.T) {
 		}
 	})
 }
+
+func TestResolveServerMode(t *testing.T) {
+	t.Parallel()
+
+	// FR-020: SPEC 7.2 server mode routing column.
+	credID := int64(42)
+	setupLookup := func() *fakeLookup {
+		fl := newFakeLookup()
+		sEnabled := store.DefaultProjectSettings()
+		sEnabled.RecipientRoutingEnabled = true
+		sDisabled := store.DefaultProjectSettings()
+		sDisabled.RecipientRoutingEnabled = false
+		fl.projects["routed"] = store.Project{ID: 10, Slug: "routed", Name: "Routed", Settings: sEnabled}
+		fl.projects["closed"] = store.Project{ID: 11, Slug: "closed", Name: "Closed", Settings: sDisabled}
+		return fl
+	}
+
+	cases := []struct {
+		name        string
+		auth        AuthResult
+		rcpt        string
+		inboxDomain string
+		wantSlug    string
+		wantCredID  *int64
+		wantTag     string
+		wantCode    int
+		wantEnh     [3]int
+		wantMsg     string
+	}{
+		{
+			name: "rule 1: AUTH overrides recipient routing completely",
+			auth: AuthResult{
+				Authenticated:   true,
+				Username:        "authproj-abcd1234",
+				ProjectID:       99,
+				ProjectSlug:     "authproj",
+				CredentialID:    &credID,
+				CredentialLabel: "staging",
+				PlusAddressTags: true,
+			},
+			rcpt:        "routed+vip@inbox.test",
+			inboxDomain: "inbox.test",
+			wantSlug:    "authproj",
+			wantCredID:  &credID,
+			wantTag:     "vip",
+		},
+		{
+			name:        "rule 2: subdomain routing accepted when recipient_routing_enabled=true",
+			rcpt:        "orders+urgent@routed.inbox.test",
+			inboxDomain: "inbox.test",
+			wantSlug:    "routed",
+			wantTag:     "urgent",
+		},
+		{
+			name:        "rule 2: local-part routing accepted when recipient_routing_enabled=true",
+			rcpt:        "routed+invoice@inbox.test",
+			inboxDomain: "inbox.test",
+			wantSlug:    "routed",
+			wantTag:     "invoice",
+		},
+		{
+			name:        "rule 2: routed project with recipient_routing_enabled=false rejected 550 5.1.1",
+			rcpt:        "closed@inbox.test",
+			inboxDomain: "inbox.test",
+			wantCode:    550,
+			wantEnh:     [3]int{5, 1, 1},
+			wantMsg:     "Mailbox unavailable",
+		},
+		{
+			name:        "rule 2: unknown routed project rejected 550 5.1.1",
+			rcpt:        "missing@inbox.test",
+			inboxDomain: "inbox.test",
+			wantCode:    550,
+			wantEnh:     [3]int{5, 1, 1},
+			wantMsg:     "Mailbox unavailable",
+		},
+		{
+			name:        "rule 3: non-routed recipient rejected 550 5.1.1",
+			rcpt:        "alice@external.test",
+			inboxDomain: "inbox.test",
+			wantCode:    550,
+			wantEnh:     [3]int{5, 1, 1},
+			wantMsg:     "Mailbox unavailable",
+		},
+		{
+			name:        "rule 4: no AUTH and empty inbox domain rejected 550 5.1.1 at Resolve",
+			rcpt:        "alice@external.test",
+			inboxDomain: "",
+			wantCode:    550,
+			wantEnh:     [3]int{5, 1, 1},
+			wantMsg:     "Mailbox unavailable",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			lookup := setupLookup()
+			target, smtpErr := Resolve(context.Background(), config.ModeServer, tc.auth, tc.rcpt, tc.inboxDomain, "default", lookup)
+			if tc.wantCode != 0 {
+				if smtpErr == nil {
+					t.Fatalf("expected SMTP error %d, got nil", tc.wantCode)
+				}
+				if smtpErr.Code != tc.wantCode || smtpErr.EnhancedCode != tc.wantEnh || smtpErr.Message != tc.wantMsg {
+					t.Fatalf("got %d %v %q, want %d %v %q", smtpErr.Code, smtpErr.EnhancedCode, smtpErr.Message, tc.wantCode, tc.wantEnh, tc.wantMsg)
+				}
+				return
+			}
+			if smtpErr != nil {
+				t.Fatalf("unexpected error: %v", smtpErr)
+			}
+			if target.ProjectSlug != tc.wantSlug {
+				t.Fatalf("ProjectSlug = %q, want %q", target.ProjectSlug, tc.wantSlug)
+			}
+			if tc.wantCredID != nil && (target.CredentialID == nil || *target.CredentialID != *tc.wantCredID) {
+				t.Fatalf("CredentialID = %v, want %d", target.CredentialID, *tc.wantCredID)
+			}
+			if tc.wantTag != "" && (len(target.PlusTags) != 1 || target.PlusTags[0] != tc.wantTag) {
+				t.Fatalf("PlusTags = %v, want [%q]", target.PlusTags, tc.wantTag)
+			}
+		})
+	}
+}

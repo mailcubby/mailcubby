@@ -91,7 +91,7 @@ func TestSession_BareSMTPErrors(t *testing.T) {
 
 	// ARCHITECTURE 3.3 / SPEC 7.4: every Session error path returns a bare
 	// *smtp.SMTPError (type assertion succeeds directly, never wrapped, never 554 5.0.0).
-	assertBareSMTP := func(t *testing.T, name string, err error, wantCode int, wantEnh smtp.EnhancedCode) {
+	assertBareSMTP := func(t *testing.T, name string, err error, wantCode int, wantEnh smtp.EnhancedCode, wantMsg string) {
 		t.Helper()
 		if err == nil {
 			t.Fatalf("%s: expected error, got nil", name)
@@ -104,6 +104,9 @@ func TestSession_BareSMTPErrors(t *testing.T) {
 		if se.Code != wantCode || se.EnhancedCode != wantEnh {
 			t.Fatalf("%s: got %d %v (%q), want %d %v", name, se.Code, se.EnhancedCode, se.Message, wantCode, wantEnh)
 		}
+		if wantMsg != "" && se.Message != wantMsg {
+			t.Fatalf("%s: message = %q, want %q", name, se.Message, wantMsg)
+		}
 	}
 
 	cfg := defaultLocalConfig(t)
@@ -113,23 +116,23 @@ func TestSession_BareSMTPErrors(t *testing.T) {
 		t.Parallel()
 		s := &session{be: &backend{cfg: cfg, lookup: lookup, ingest: stubIngestor{}}}
 		_, err := s.Auth("CRAM-MD5")
-		assertBareSMTP(t, "Auth(CRAM-MD5)", err, 504, smtp.EnhancedCode{5, 7, 4})
+		assertBareSMTP(t, "Auth(CRAM-MD5)", err, 504, smtp.EnhancedCode{5, 7, 4}, "")
 	})
 
-	t.Run("Server AUTH failure returns 535 5.7.8", func(t *testing.T) {
+	t.Run("Server AUTH failure returns 535 5.7.8 Authentication credentials invalid", func(t *testing.T) {
 		t.Parallel()
 		scfg := cfg
 		scfg.Mode = config.ModeServer
 		s := &session{be: &backend{cfg: scfg, lookup: lookup, ingest: stubIngestor{}}}
 		err := s.authenticate("user", "bad")
-		assertBareSMTP(t, "authenticate(server)", err, 535, smtp.EnhancedCode{5, 7, 8})
+		assertBareSMTP(t, "authenticate(server)", err, 535, smtp.EnhancedCode{5, 7, 8}, "Authentication credentials invalid")
 	})
 
 	t.Run("MAIL FROM oversized SIZE returns 552 5.3.4", func(t *testing.T) {
 		t.Parallel()
 		s := &session{be: &backend{cfg: cfg, lookup: lookup, ingest: stubIngestor{}}}
 		err := s.Mail("a@b.test", &smtp.MailOptions{Size: cfg.SMTPMaxMessageBytes + 1})
-		assertBareSMTP(t, "Mail(oversize)", err, 552, smtp.EnhancedCode{5, 3, 4})
+		assertBareSMTP(t, "Mail(oversize)", err, 552, smtp.EnhancedCode{5, 3, 4}, "")
 	})
 
 	t.Run("Server MAIL FROM without AUTH or inbox domain returns 530 5.7.0", func(t *testing.T) {
@@ -139,7 +142,7 @@ func TestSession_BareSMTPErrors(t *testing.T) {
 		scfg.InboxDomain = ""
 		s := &session{be: &backend{cfg: scfg, lookup: lookup, ingest: stubIngestor{}}}
 		err := s.Mail("a@b.test", nil)
-		assertBareSMTP(t, "Mail(server no auth)", err, 530, smtp.EnhancedCode{5, 7, 0})
+		assertBareSMTP(t, "Mail(server no auth)", err, 530, smtp.EnhancedCode{5, 7, 0}, "Authentication required")
 	})
 
 	t.Run("Server RCPT unroutable returns 550 5.1.1", func(t *testing.T) {
@@ -149,7 +152,7 @@ func TestSession_BareSMTPErrors(t *testing.T) {
 		scfg.InboxDomain = "inbox.test"
 		s := &session{be: &backend{cfg: scfg, lookup: lookup, ingest: stubIngestor{}}}
 		err := s.Rcpt("nobody@other.test", nil)
-		assertBareSMTP(t, "Rcpt(unroutable)", err, 550, smtp.EnhancedCode{5, 1, 1})
+		assertBareSMTP(t, "Rcpt(unroutable)", err, 550, smtp.EnhancedCode{5, 1, 1}, "Mailbox unavailable")
 	})
 
 	t.Run("RCPT lookup error returns 451 4.3.0", func(t *testing.T) {
@@ -158,14 +161,14 @@ func TestSession_BareSMTPErrors(t *testing.T) {
 		fl.err = errors.New("db offline")
 		s := &session{be: &backend{cfg: cfg, lookup: fl, ingest: stubIngestor{}, log: New(cfg, nil, stubIngestor{}, nil, nil).log}}
 		err := s.Rcpt("a@b.test", nil)
-		assertBareSMTP(t, "Rcpt(db error)", err, 451, smtp.EnhancedCode{4, 3, 0})
+		assertBareSMTP(t, "Rcpt(db error)", err, 451, smtp.EnhancedCode{4, 3, 0}, "Temporary failure, try again later")
 	})
 
 	t.Run("DATA with no valid recipients returns 554 5.5.1", func(t *testing.T) {
 		t.Parallel()
 		s := &session{be: &backend{cfg: cfg, lookup: lookup, ingest: stubIngestor{}}}
 		err := s.Data(strings.NewReader("Subject: x\r\n\r\nhi\r\n"))
-		assertBareSMTP(t, "Data(no rcpts)", err, 554, smtp.EnhancedCode{5, 5, 1})
+		assertBareSMTP(t, "Data(no rcpts)", err, 554, smtp.EnhancedCode{5, 5, 1}, "No valid recipients")
 	})
 
 	t.Run("DATA maps internal, quota, rate limit, and too-large errors", func(t *testing.T) {
@@ -175,11 +178,12 @@ func TestSession_BareSMTPErrors(t *testing.T) {
 			ingErr  error
 			code    int
 			enhCode smtp.EnhancedCode
+			msg     string
 		}{
-			{"ErrDataTooLarge", fmt.Errorf("wrapped: %w", smtp.ErrDataTooLarge), 552, smtp.EnhancedCode{5, 3, 4}},
-			{"ErrQuotaExceeded", fmt.Errorf("wrapped: %w", ErrQuotaExceeded), 452, smtp.EnhancedCode{4, 3, 1}},
-			{"ErrRateLimited", fmt.Errorf("wrapped: %w", ErrRateLimited), 450, smtp.EnhancedCode{4, 7, 1}},
-			{"DBFailure", errors.New("sqlite disk full"), 451, smtp.EnhancedCode{4, 3, 0}},
+			{"ErrDataTooLarge", fmt.Errorf("wrapped: %w", smtp.ErrDataTooLarge), 552, smtp.EnhancedCode{5, 3, 4}, ""},
+			{"ErrQuotaExceeded", fmt.Errorf("wrapped: %w", ErrQuotaExceeded), 452, smtp.EnhancedCode{4, 3, 1}, "Insufficient system storage"},
+			{"ErrRateLimited", fmt.Errorf("wrapped: %w", ErrRateLimited), 450, smtp.EnhancedCode{4, 7, 1}, "Rate limit exceeded, try again later"},
+			{"DBFailure", errors.New("sqlite disk full"), 451, smtp.EnhancedCode{4, 3, 0}, "Temporary failure, try again later"},
 		}
 		for _, tc := range cases {
 			s := &session{
@@ -187,7 +191,7 @@ func TestSession_BareSMTPErrors(t *testing.T) {
 				targets: []ingest.Target{{ProjectID: 1, ProjectSlug: "default"}},
 			}
 			err := s.Data(strings.NewReader("Subject: x\r\n\r\nhi\r\n"))
-			assertBareSMTP(t, tc.name, err, tc.code, tc.enhCode)
+			assertBareSMTP(t, tc.name, err, tc.code, tc.enhCode, tc.msg)
 		}
 	})
 }
