@@ -252,7 +252,7 @@ Tasks:
 - [x] Members endpoints; invites create/list/revoke/preview/accept with single-use guard (FR-055 to FR-057), including instance invites and admin-created users without password.
 - [x] Admin endpoints: users CRUD (FR-100), disable (revokes sessions and tokens), password reset link, all projects list (FR-101); `mailcubby admin create-user`.
 - [x] SSE membership filtering and `membership.changed` refresh (FR-091).
-- [ ] Viewer restrictions: no seen marking, `viewer_hide_technical` enforcement on raw/eml/html/headers endpoints and on the technical fields of message detail (FR-071).
+- [x] Viewer restrictions: no seen marking, `viewer_hide_technical` enforcement on raw/eml/html/headers endpoints and on the technical fields of message detail (FR-071).
 - [ ] Tests: authorisation matrix over the route table (FR-050), two-tenant isolation integration test (ARCHITECTURE section 7 item 4), concurrent invite accept test.
 
 Files: `internal/auth/`, `internal/api/`, `internal/store/queries/`, `internal/events/`, `internal/cli/`.

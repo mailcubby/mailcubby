@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/ingest"
 	"github.com/mailcubby/mailcubby/internal/render"
 	"github.com/mailcubby/mailcubby/internal/search"
@@ -105,8 +106,8 @@ type messageDetailResponse struct {
 	Attachments         []attachmentResponse     `json:"attachments"`
 	RenderURL           *string                  `json:"render_url"`
 	RemoteResourceCount int                      `json:"remote_resource_count"`
-	ParseWarnings       []string                 `json:"parse_warnings,omitempty"`
-	Headers             []ingest.Header          `json:"headers,omitempty"`
+	ParseWarnings       *[]string                `json:"parse_warnings,omitempty"`
+	Headers             *[]ingest.Header         `json:"headers,omitempty"`
 }
 
 func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
@@ -278,19 +279,6 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	warnings := msg.ParseWarnings
-	if warnings == nil {
-		warnings = []string{}
-	}
-	headers := content.Headers
-	if headers == nil {
-		headers = []ingest.Header{}
-	}
-	rcptTo := msg.EnvelopeTo
-	if rcptTo == nil {
-		rcptTo = []string{}
-	}
-
 	tags, err := s.store.ListTagsByMessagePK(r.Context(), pctx.Project.ID, msg.PK)
 	if err != nil {
 		s.log.Error("list tags for message detail failed",
@@ -307,25 +295,42 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		messageSummaryResponse: toMessageSummary(msg, tags),
 		ReplyTo:                toAddressResponses(msg.ReplyTo),
 		Bcc:                    toAddressResponses(msg.Bcc),
-		Envelope: &messageEnvelopeResponse{
+		MessageIDHeader:        msg.MessageIDHeader,
+		DateHeader:             formatTimestampPtr(msg.DateHeader),
+		Text:                   content.Text,
+		TextGenerated:          msg.TextGenerated,
+		TextTruncated:          content.TextTruncated,
+		Attachments:            attResp,
+		RenderURL:              renderURL,
+		RemoteResourceCount:    remoteResourceCount,
+	}
+
+	// FR-071: omit envelope, parse_warnings, and headers for viewers when viewer_hide_technical is enabled.
+	if auth.Allowed(pctx.AuthRole, auth.ActionReadTechnical, pctx.AuthSettings()) {
+		warnings := msg.ParseWarnings
+		if warnings == nil {
+			warnings = []string{}
+		}
+		headers := content.Headers
+		if headers == nil {
+			headers = []ingest.Header{}
+		}
+		rcptTo := msg.EnvelopeTo
+		if rcptTo == nil {
+			rcptTo = []string{}
+		}
+		resp.Envelope = &messageEnvelopeResponse{
 			MailFrom: msg.EnvelopeFrom,
 			RcptTo:   rcptTo,
 			RemoteIP: msg.RemoteIP,
 			HELO:     msg.HELO,
 			TLS:      msg.TLS,
 			AuthUser: msg.AuthUser,
-		},
-		MessageIDHeader:     msg.MessageIDHeader,
-		DateHeader:          formatTimestampPtr(msg.DateHeader),
-		Text:                content.Text,
-		TextGenerated:       msg.TextGenerated,
-		TextTruncated:       content.TextTruncated,
-		Attachments:         attResp,
-		RenderURL:           renderURL,
-		RemoteResourceCount: remoteResourceCount,
-		ParseWarnings:       warnings,
-		Headers:             headers,
+		}
+		resp.ParseWarnings = &warnings
+		resp.Headers = &headers
 	}
+
 	writeJSON(w, http.StatusOK, resp)
 }
 
