@@ -64,6 +64,18 @@ jobs:
       - name: Fuzz search parser and SQL builder (60s)
         run: go test -fuzz=FuzzParseAndBuild -fuzztime=60s ./internal/search
 
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
   docker:
     runs-on: ubuntu-latest
     steps:

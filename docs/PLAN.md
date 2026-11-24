@@ -363,7 +363,7 @@ Tasks:
 - [x] Rate limits for API, invite and reset endpoints (SPEC 12.4).
 - [x] Audit log: all FR-105 actions written; owner project audit endpoint and UI; admin audit endpoint and UI with filters.
 - [x] Log redaction test (no secrets in captured logs during the full integration suite).
-- [ ] `gosec` clean; `govulncheck` job added to CI (run via `go run golang.org/x/vuln/cmd/govulncheck@<pinned>` in CI only; pin the version in the workflow, it is not a Go module dependency).
+- [x] `gosec` clean; `govulncheck` job added to CI (run via `go run golang.org/x/vuln/cmd/govulncheck@<pinned>` in CI only; pin the version in the workflow, it is not a Go module dependency).
 - [ ] Threat model section appended to `docs/ARCHITECTURE.md` (assets, actors, mitigations).
 
 Files: `internal/render/`, `internal/api/`, `internal/ratelimit/`, `internal/store/queries/`, `testdata/hostile/`, `web/src/features/{settings,admin}/`, `web/e2e/`, `.github/workflows/ci.yml`, `docs/ARCHITECTURE.md`.
