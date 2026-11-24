@@ -2,14 +2,43 @@ import createClient from "openapi-fetch";
 import { toast } from "sonner";
 import type { components, paths } from "@/api/schema";
 
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+// Stored strictly in memory, never localStorage (SPEC 12.3, AGENTS.md 6).
+let csrfToken = "";
+
+export function getCsrfToken(): string {
+  return csrfToken;
+}
+
+export function setCsrfToken(token: string): void {
+  csrfToken = token;
+}
+
 export const api = createClient<paths>({
   baseUrl: "",
+  credentials: "same-origin",
+});
+
+api.use({
+  onRequest({ request }) {
+    if (UNSAFE_METHODS.has(request.method.toUpperCase()) && csrfToken) {
+      request.headers.set("X-CSRF-Token", csrfToken);
+    }
+    return request;
+  },
 });
 
 export type ProjectColor = components["schemas"]["ProjectColor"];
 export type ProjectRole = components["schemas"]["ProjectRole"];
 export type MetaResponse = components["schemas"]["MetaResponse"];
+export type AuthUser = components["schemas"]["AuthUser"];
 export type AuthMeResponse = components["schemas"]["AuthMeResponse"];
+export type SetupRequest = components["schemas"]["SetupRequest"];
+export type LoginRequest = components["schemas"]["LoginRequest"];
+export type PatchAuthMeRequest = components["schemas"]["PatchAuthMeRequest"];
+export type SessionSummary = components["schemas"]["SessionSummary"];
+export type PasswordResetRequest = components["schemas"]["PasswordResetRequest"];
 export type ProjectSummary = components["schemas"]["ProjectSummary"];
 export type ProjectDetail = components["schemas"]["ProjectDetail"];
 export type ProjectSettings = components["schemas"]["ProjectSettings"];
@@ -32,14 +61,35 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details: Record<string, string> | undefined;
+  readonly retryAfterSeconds: number | undefined;
 
-  constructor(status: number, code: string, message: string, details?: Record<string, string>) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details?: Record<string, string>,
+    retryAfterSeconds?: number,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.details = details;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+function parseRetryAfterSeconds(
+  response: Response,
+  details?: Record<string, string>,
+): number | undefined {
+  const fromHeader = response.headers.get("Retry-After");
+  const candidate = fromHeader ?? details?.retry_after;
+  if (!candidate) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(candidate, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function toApiError(response: Response, error: unknown): ApiError {
@@ -64,12 +114,20 @@ function toApiError(response: Response, error: unknown): ApiError {
       body.details && typeof body.details === "object"
         ? (body.details as Record<string, string>)
         : undefined;
-    return new ApiError(response.status, code, message, details);
+    return new ApiError(
+      response.status,
+      code,
+      message,
+      details,
+      parseRetryAfterSeconds(response, details),
+    );
   }
   return new ApiError(
     response.status,
     "http_error",
     response.statusText || `Request failed (${response.status})`,
+    undefined,
+    parseRetryAfterSeconds(response),
   );
 }
 
@@ -96,10 +154,38 @@ export function getApiErrorMessage(error: unknown, fallback = "Something went wr
   return fallback;
 }
 
+/**
+ * Ensures post-login redirects only target safe same-origin relative paths.
+ */
+export function sanitizeReturnTo(raw: string | undefined): string {
+  if (!raw) {
+    return "/";
+  }
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.startsWith("/\\")) {
+    return "/";
+  }
+  if (
+    trimmed === "/login" ||
+    trimmed.startsWith("/login?") ||
+    trimmed === "/setup" ||
+    trimmed.startsWith("/setup?")
+  ) {
+    return "/";
+  }
+  return trimmed;
+}
+
 export function handleUnauthorizedRedirect(error: unknown): boolean {
   if (error instanceof ApiError && error.status === 401 && typeof window !== "undefined") {
-    const returnTo = `${window.location.pathname}${window.location.search}`;
-    if (!window.location.pathname.startsWith("/login")) {
+    setCsrfToken("");
+    const pathname = window.location.pathname;
+    if (
+      !pathname.startsWith("/login") &&
+      !pathname.startsWith("/setup") &&
+      !pathname.startsWith("/reset/")
+    ) {
+      const returnTo = `${pathname}${window.location.search}`;
       window.location.assign(`/login?returnTo=${encodeURIComponent(returnTo)}`);
     }
     return true;

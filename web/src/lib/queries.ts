@@ -1,5 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import { ApiError, api, unwrap } from "@/lib/api";
+import { ApiError, api, setCsrfToken, unwrap } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function metaQueryOptions() {
@@ -13,8 +13,21 @@ export function metaQueryOptions() {
 export function authMeQueryOptions() {
   return queryOptions({
     queryKey: queryKeys.authMe(),
-    queryFn: async () => unwrap(await api.GET("/api/v1/auth/me")),
+    queryFn: async () => {
+      const data = unwrap(await api.GET("/api/v1/auth/me"));
+      setCsrfToken(data.csrf_token);
+      return data;
+    },
     staleTime: 60_000,
+    retry: false,
+  });
+}
+
+export function authSessionsQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.authSessions(),
+    queryFn: async () => unwrap(await api.GET("/api/v1/auth/sessions")),
+    staleTime: 10_000,
   });
 }
 

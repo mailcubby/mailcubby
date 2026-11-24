@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { ArrowLeft, Monitor, Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Sun } from "lucide-react";
 import { useEffect, useId } from "react";
+import { AccountLayout } from "@/features/account/AccountLayout";
 import {
   type DensityPreference,
   type MarkReadDelayPreference,
@@ -63,170 +63,156 @@ export function PreferencesPage() {
   }, [meta?.instance_name]);
 
   return (
-    <main className="h-full overflow-y-auto px-4 py-6 sm:px-6">
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
-        <div className="flex flex-col gap-2">
-          <Link
-            to="/"
-            className="inline-flex w-fit items-center gap-1.5 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" aria-hidden="true" />
-            <span>Back to projects</span>
-          </Link>
+    <AccountLayout
+      section="preferences"
+      title="Preferences"
+      description="Saved locally in this browser. Changes apply immediately across open views."
+    >
+      <div className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
+        <section aria-label="Appearance" className="flex flex-col gap-3 p-5">
           <div>
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">Preferences</h1>
-            <p className="text-[13px] text-muted-foreground">
-              Saved locally in this browser. Changes apply immediately across open views.
+            <h2 className="text-sm font-medium text-foreground">Theme</h2>
+            <p className="text-xs text-muted-foreground">
+              Choose light, dark, or match your operating system appearance.
             </p>
           </div>
-        </div>
+          <fieldset aria-label="Theme" className="grid grid-cols-3 gap-2">
+            <legend className="sr-only">Theme</legend>
+            {THEME_OPTIONS.map(({ value, label, Icon }) => {
+              const active = theme === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setTheme(value)}
+                  className={cn(
+                    "flex cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-[13px] font-medium transition-colors",
+                    active
+                      ? "border-accent bg-accent/10 text-foreground"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Icon className="size-4" aria-hidden="true" />
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </fieldset>
+        </section>
 
-        <div className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
-          <section aria-label="Appearance" className="flex flex-col gap-3 p-5">
+        <section aria-label="Message list density" className="flex flex-col gap-3 p-5">
+          <div>
+            <h2 className="text-sm font-medium text-foreground">Message list density</h2>
+            <p className="text-xs text-muted-foreground">
+              Adjust row spacing in the project inbox list.
+            </p>
+          </div>
+          <fieldset aria-label="Message list density" className="grid gap-2 sm:grid-cols-2">
+            <legend className="sr-only">Message list density</legend>
+            {DENSITY_OPTIONS.map((opt) => {
+              const active = density === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setDensity(opt.value)}
+                  className={cn(
+                    "flex cursor-pointer flex-col items-start gap-0.5 rounded-md border px-3.5 py-2.5 text-left transition-colors",
+                    active
+                      ? "border-accent bg-accent/10 text-foreground"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <span className="text-[13px] font-medium text-foreground">{opt.label}</span>
+                  <span className="text-xs text-muted-foreground">{opt.description}</span>
+                </button>
+              );
+            })}
+          </fieldset>
+        </section>
+
+        <section aria-label="Reading behaviour" className="flex flex-col gap-3 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-medium text-foreground">Theme</h2>
+              <label htmlFor={readDelayId} className="text-sm font-medium text-foreground">
+                Mark as read delay
+              </label>
               <p className="text-xs text-muted-foreground">
-                Choose light, dark, or match your operating system appearance.
+                Wait before marking an opened message as seen.
               </p>
             </div>
-            <fieldset aria-label="Theme" className="grid grid-cols-3 gap-2">
-              <legend className="sr-only">Theme</legend>
-              {THEME_OPTIONS.map(({ value, label, Icon }) => {
-                const active = theme === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setTheme(value)}
-                    className={cn(
-                      "flex cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-[13px] font-medium transition-colors",
-                      active
-                        ? "border-accent bg-accent/10 text-foreground"
-                        : "border-border bg-background text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <Icon className="size-4" aria-hidden="true" />
-                    <span>{label}</span>
-                  </button>
-                );
-              })}
-            </fieldset>
-          </section>
-
-          <section aria-label="Message list density" className="flex flex-col gap-3 p-5">
-            <div>
-              <h2 className="text-sm font-medium text-foreground">Message list density</h2>
-              <p className="text-xs text-muted-foreground">
-                Adjust row spacing in the project inbox list.
-              </p>
-            </div>
-            <fieldset aria-label="Message list density" className="grid gap-2 sm:grid-cols-2">
-              <legend className="sr-only">Message list density</legend>
-              {DENSITY_OPTIONS.map((opt) => {
-                const active = density === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setDensity(opt.value)}
-                    className={cn(
-                      "flex cursor-pointer flex-col items-start gap-0.5 rounded-md border px-3.5 py-2.5 text-left transition-colors",
-                      active
-                        ? "border-accent bg-accent/10 text-foreground"
-                        : "border-border bg-background text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <span className="text-[13px] font-medium text-foreground">{opt.label}</span>
-                    <span className="text-xs text-muted-foreground">{opt.description}</span>
-                  </button>
-                );
-              })}
-            </fieldset>
-          </section>
-
-          <section aria-label="Reading behaviour" className="flex flex-col gap-3 p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <label htmlFor={readDelayId} className="text-sm font-medium text-foreground">
-                  Mark as read delay
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  Wait before marking an opened message as seen.
-                </p>
-              </div>
-              <select
-                id={readDelayId}
-                value={String(markReadDelay)}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  if (raw === "never") {
-                    setMarkReadDelay("never");
-                  } else {
-                    const num = Number(raw);
-                    if (num === 0 || num === 1000 || num === 3000) {
-                      setMarkReadDelay(num);
-                    }
+            <select
+              id={readDelayId}
+              value={String(markReadDelay)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === "never") {
+                  setMarkReadDelay("never");
+                } else {
+                  const num = Number(raw);
+                  if (num === 0 || num === 1000 || num === 3000) {
+                    setMarkReadDelay(num);
                   }
-                }}
-                className="h-8 cursor-pointer rounded-md border border-border bg-background px-2.5 text-[13px] text-foreground"
-              >
-                {MARK_READ_OPTIONS.map((opt) => (
-                  <option key={String(opt.value)} value={String(opt.value)}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </section>
+                }
+              }}
+              className="h-8 cursor-pointer rounded-md border border-border bg-background px-2.5 text-[13px] text-foreground"
+            >
+              {MARK_READ_OPTIONS.map((opt) => (
+                <option key={String(opt.value)} value={String(opt.value)}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </section>
 
-          <section aria-label="Keyboard shortcuts" className="flex flex-col gap-4 p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <label htmlFor={shortcutsId} className="text-sm font-medium text-foreground">
-                  Single-key keyboard shortcuts
-                </label>
-                <p id={shortcutsDescId} className="text-xs text-muted-foreground">
-                  Enable single-character shortcuts such as j/k, e, u, and 1–7. Modifier shortcuts
-                  (Cmd/Ctrl+K) stay active either way.
-                </p>
-              </div>
-              <input
-                id={shortcutsId}
-                type="checkbox"
-                role="switch"
-                aria-checked={singleKeyShortcuts}
-                aria-describedby={shortcutsDescId}
-                checked={singleKeyShortcuts}
-                onChange={(e) => setSingleKeyShortcuts(e.target.checked)}
-                className="mt-1 size-4 shrink-0 cursor-pointer rounded-sm border border-border accent-accent"
-              />
+        <section aria-label="Keyboard shortcuts" className="flex flex-col gap-4 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <label htmlFor={shortcutsId} className="text-sm font-medium text-foreground">
+                Single-key keyboard shortcuts
+              </label>
+              <p id={shortcutsDescId} className="text-xs text-muted-foreground">
+                Enable single-character shortcuts such as j/k, e, u, and 1–7. Modifier shortcuts
+                (Cmd/Ctrl+K) stay active either way.
+              </p>
             </div>
+            <input
+              id={shortcutsId}
+              type="checkbox"
+              role="switch"
+              aria-checked={singleKeyShortcuts}
+              aria-describedby={shortcutsDescId}
+              checked={singleKeyShortcuts}
+              onChange={(e) => setSingleKeyShortcuts(e.target.checked)}
+              className="mt-1 size-4 shrink-0 cursor-pointer rounded-sm border border-border accent-accent"
+            />
+          </div>
 
-            <div className="flex items-start justify-between gap-4 border-t border-border/70 pt-4">
-              <div>
-                <label htmlFor={clockId} className="text-sm font-medium text-foreground">
-                  24-hour clock
-                </label>
-                <p id={clockDescId} className="text-xs text-muted-foreground">
-                  Display message times in 24-hour format (e.g. 14:03 instead of 2:03 PM).
-                </p>
-              </div>
-              <input
-                id={clockId}
-                type="checkbox"
-                role="switch"
-                aria-checked={clock24h}
-                aria-describedby={clockDescId}
-                checked={clock24h}
-                onChange={(e) => setClock24h(e.target.checked)}
-                className="mt-1 size-4 shrink-0 cursor-pointer rounded-sm border border-border accent-accent"
-              />
+          <div className="flex items-start justify-between gap-4 border-t border-border/70 pt-4">
+            <div>
+              <label htmlFor={clockId} className="text-sm font-medium text-foreground">
+                24-hour clock
+              </label>
+              <p id={clockDescId} className="text-xs text-muted-foreground">
+                Display message times in 24-hour format (e.g. 14:03 instead of 2:03 PM).
+              </p>
             </div>
-          </section>
-        </div>
+            <input
+              id={clockId}
+              type="checkbox"
+              role="switch"
+              aria-checked={clock24h}
+              aria-describedby={clockDescId}
+              checked={clock24h}
+              onChange={(e) => setClock24h(e.target.checked)}
+              className="mt-1 size-4 shrink-0 cursor-pointer rounded-sm border border-border accent-accent"
+            />
+          </div>
+        </section>
       </div>
-    </main>
+    </AccountLayout>
   );
 }

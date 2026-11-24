@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import {
   ApiError,
   api,
+  getCsrfToken,
   handleApiError,
   type MessageSummary,
   type ProjectDetail,
@@ -120,10 +121,12 @@ function ensurePagehideFlush(): void {
       window.clearTimeout(entry.timerId);
       pendingDeletes.delete(id);
       try {
+        const csrf = getCsrfToken();
         void fetch(deleteEndpoint(entry.projectSlug, id), {
           method: "DELETE",
           keepalive: true,
           credentials: "same-origin",
+          ...(csrf ? { headers: { "X-CSRF-Token": csrf } } : {}),
         });
       } catch {
         // Ignore network errors during unload.

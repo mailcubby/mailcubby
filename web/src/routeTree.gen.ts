@@ -10,8 +10,13 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AccountPreferencesRouteImport } from './routes/account.preferences'
+import { Route as AccountProfileRouteImport } from './routes/account.profile'
+import { Route as AccountSecurityRouteImport } from './routes/account.security'
 import { Route as PProjectRouteImport } from './routes/p.$project'
+import { Route as ResetTokenRouteImport } from './routes/reset.$token'
 import { Route as PProjectIndexRouteImport } from './routes/p.$project.index'
 import { Route as PProjectMMessageIdRouteImport } from './routes/p.$project.m.$messageId'
 
@@ -20,14 +25,39 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetupRoute = SetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AccountPreferencesRoute = AccountPreferencesRouteImport.update({
   id: '/account/preferences',
   path: '/account/preferences',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AccountProfileRoute = AccountProfileRouteImport.update({
+  id: '/account/profile',
+  path: '/account/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountSecurityRoute = AccountSecurityRouteImport.update({
+  id: '/account/security',
+  path: '/account/security',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PProjectRoute = PProjectRouteImport.update({
   id: '/p/$project',
   path: '/p/$project',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetTokenRoute = ResetTokenRouteImport.update({
+  id: '/reset/$token',
+  path: '/reset/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PProjectIndexRoute = PProjectIndexRouteImport.update({
@@ -43,22 +73,37 @@ const PProjectMMessageIdRoute = PProjectMMessageIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/setup': typeof SetupRoute
   '/account/preferences': typeof AccountPreferencesRoute
+  '/account/profile': typeof AccountProfileRoute
+  '/account/security': typeof AccountSecurityRoute
   '/p/$project': typeof PProjectRouteWithChildren
+  '/reset/$token': typeof ResetTokenRoute
   '/p/$project/': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/setup': typeof SetupRoute
   '/account/preferences': typeof AccountPreferencesRoute
+  '/account/profile': typeof AccountProfileRoute
+  '/account/security': typeof AccountSecurityRoute
+  '/reset/$token': typeof ResetTokenRoute
   '/p/$project': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/setup': typeof SetupRoute
   '/account/preferences': typeof AccountPreferencesRoute
+  '/account/profile': typeof AccountProfileRoute
+  '/account/security': typeof AccountSecurityRoute
   '/p/$project': typeof PProjectRouteWithChildren
+  '/reset/$token': typeof ResetTokenRoute
   '/p/$project/': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
 }
@@ -66,25 +111,49 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/login'
+    | '/setup'
     | '/account/preferences'
+    | '/account/profile'
+    | '/account/security'
     | '/p/$project'
+    | '/reset/$token'
     | '/p/$project/'
     | '/p/$project/m/$messageId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/account/preferences' | '/p/$project' | '/p/$project/m/$messageId'
+  to:
+    | '/'
+    | '/login'
+    | '/setup'
+    | '/account/preferences'
+    | '/account/profile'
+    | '/account/security'
+    | '/reset/$token'
+    | '/p/$project'
+    | '/p/$project/m/$messageId'
   id:
     | '__root__'
     | '/'
+    | '/login'
+    | '/setup'
     | '/account/preferences'
+    | '/account/profile'
+    | '/account/security'
     | '/p/$project'
+    | '/reset/$token'
     | '/p/$project/'
     | '/p/$project/m/$messageId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
+  SetupRoute: typeof SetupRoute
   AccountPreferencesRoute: typeof AccountPreferencesRoute
+  AccountProfileRoute: typeof AccountProfileRoute
+  AccountSecurityRoute: typeof AccountSecurityRoute
   PProjectRoute: typeof PProjectRouteWithChildren
+  ResetTokenRoute: typeof ResetTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -96,6 +165,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/setup': {
+      id: '/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof SetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/account/preferences': {
       id: '/account/preferences'
       path: '/account/preferences'
@@ -103,11 +186,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountPreferencesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/account/profile': {
+      id: '/account/profile'
+      path: '/account/profile'
+      fullPath: '/account/profile'
+      preLoaderRoute: typeof AccountProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account/security': {
+      id: '/account/security'
+      path: '/account/security'
+      fullPath: '/account/security'
+      preLoaderRoute: typeof AccountSecurityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/p/$project': {
       id: '/p/$project'
       path: '/p/$project'
       fullPath: '/p/$project'
       preLoaderRoute: typeof PProjectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset/$token': {
+      id: '/reset/$token'
+      path: '/reset/$token'
+      fullPath: '/reset/$token'
+      preLoaderRoute: typeof ResetTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/p/$project/': {
@@ -143,8 +247,13 @@ const PProjectRouteWithChildren = PProjectRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
+  SetupRoute: SetupRoute,
   AccountPreferencesRoute: AccountPreferencesRoute,
+  AccountProfileRoute: AccountProfileRoute,
+  AccountSecurityRoute: AccountSecurityRoute,
   PProjectRoute: PProjectRouteWithChildren,
+  ResetTokenRoute: ResetTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

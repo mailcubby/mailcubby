@@ -1,18 +1,26 @@
-import { createRootRoute, Outlet, useNavigate } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useEffect, useMemo } from "react";
 import { AppCommandProvider, useAppCommands } from "@/components/AppCommandContext";
-import { AppHeader } from "@/components/AppHeader";
+import { AppHeader, ThemeToggle } from "@/components/AppHeader";
 import { CommandPalette } from "@/components/CommandPalette";
 import { RealtimeProvider } from "@/components/RealtimeProvider";
 import { ShortcutsHelpDialog } from "@/components/ShortcutsHelpDialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/toaster";
 import { CreateProjectDialog } from "@/features/projects/CreateProjectDialog";
+import { ApiError } from "@/lib/api";
 import { useSingleKeyShortcutsPreference } from "@/lib/preferences";
+import { authMeQueryOptions, metaQueryOptions } from "@/lib/queries";
 import { type KeyShortcutBinding, useKeyShortcuts } from "@/lib/shortcuts";
 
 export const Route = createRootRoute({
   component: RootLayout,
 });
+
+function isPublicAuthPath(pathname: string): boolean {
+  return pathname === "/login" || pathname === "/setup" || pathname.startsWith("/reset/");
+}
 
 function RootShell() {
   const navigate = useNavigate();
@@ -76,7 +84,21 @@ function RootShell() {
   );
 }
 
-function RootLayout() {
+function AuthPublicShell() {
+  return (
+    <div className="flex min-h-dvh flex-col bg-background text-foreground">
+      <header className="flex h-11 shrink-0 items-center justify-end px-4">
+        <ThemeToggle />
+      </header>
+      <div className="flex-1">
+        <Outlet />
+      </div>
+      <Toaster />
+    </div>
+  );
+}
+
+function AuthenticatedApp() {
   return (
     <RealtimeProvider>
       <AppCommandProvider>
@@ -84,4 +106,97 @@ function RootLayout() {
       </AppCommandProvider>
     </RealtimeProvider>
   );
+}
+
+function ServerProtectedGate({ pathname, searchStr }: { pathname: string; searchStr: string }) {
+  const navigate = useNavigate();
+  const authQuery = useQuery(authMeQueryOptions());
+
+  const isUnauthorized = authQuery.error instanceof ApiError && authQuery.error.status === 401;
+
+  useEffect(() => {
+    if (isUnauthorized) {
+      const returnTo = `${pathname}${searchStr}`;
+      void navigate({
+        to: "/login",
+        search: { returnTo: returnTo === "/" ? undefined : returnTo },
+        replace: true,
+      });
+    }
+  }, [isUnauthorized, navigate, pathname, searchStr]);
+
+  if (authQuery.isPending || isUnauthorized) {
+    return (
+      <div className="flex h-dvh flex-col bg-background text-foreground">
+        <div className="flex h-11 items-center border-b border-border bg-surface px-4">
+          <Skeleton className="h-5 w-28" />
+        </div>
+        <div className="flex flex-1 items-center justify-center p-6">
+          <Skeleton className="h-32 w-full max-w-md" />
+        </div>
+        <Toaster />
+      </div>
+    );
+  }
+
+  return <AuthenticatedApp />;
+}
+
+function RootLayout() {
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
+  const metaQuery = useQuery(metaQueryOptions());
+  const meta = metaQuery.data;
+
+  const isPublicRoute = isPublicAuthPath(pathname);
+
+  useEffect(() => {
+    if (!meta) {
+      return;
+    }
+    if (meta.mode === "local") {
+      if (pathname === "/login" || pathname === "/setup") {
+        void navigate({ to: "/", replace: true });
+      }
+      return;
+    }
+    if (meta.setup_required && pathname !== "/setup") {
+      void navigate({ to: "/setup", replace: true });
+      return;
+    }
+    if (!meta.setup_required && pathname === "/setup") {
+      void navigate({ to: "/", replace: true });
+    }
+  }, [meta, navigate, pathname]);
+
+  if (metaQuery.isPending) {
+    return (
+      <div className="flex h-dvh flex-col bg-background text-foreground">
+        <div className="flex h-11 items-center border-b border-border bg-surface px-4">
+          <Skeleton className="h-5 w-28" />
+        </div>
+        <Toaster />
+      </div>
+    );
+  }
+
+  if (meta?.mode === "server") {
+    if (meta.setup_required && pathname !== "/setup") {
+      return null;
+    }
+    if (!meta.setup_required && pathname === "/setup") {
+      return null;
+    }
+    if (isPublicRoute) {
+      return <AuthPublicShell />;
+    }
+    return <ServerProtectedGate pathname={pathname} searchStr={searchStr} />;
+  }
+
+  if (isPublicRoute && pathname.startsWith("/reset/")) {
+    return <AuthPublicShell />;
+  }
+
+  return <AuthenticatedApp />;
 }

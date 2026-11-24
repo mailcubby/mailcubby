@@ -1,9 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Folder,
   Inbox,
   Keyboard,
+  LogOut,
   Mail,
   Monitor,
   Moon,
@@ -11,16 +12,19 @@ import {
   Plus,
   Search,
   Send,
+  Shield,
   SlidersHorizontal,
   Sun,
   Tag,
   Trash2,
+  User,
 } from "lucide-react";
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useAppCommands } from "@/components/AppCommandContext";
 import { Badge } from "@/components/ui/badge";
+import { api, handleApiError, setCsrfToken, unwrapVoid } from "@/lib/api";
 import { formatCount, getSenderLabel, PROJECT_COLOR_DOT_CLASS } from "@/lib/format";
-import { projectsQueryOptions } from "@/lib/queries";
+import { metaQueryOptions, projectsQueryOptions } from "@/lib/queries";
 import { type ThemePreference, useTheme } from "@/lib/theme";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { cn } from "@/lib/utils";
@@ -55,6 +59,9 @@ interface PaletteItem {
     | "theme"
     | "home"
     | "prefs"
+    | "profile"
+    | "security"
+    | "logout"
     | "keys";
   onSelect: () => void;
 }
@@ -133,6 +140,12 @@ function renderItemIcon(item: PaletteItem) {
       return <Inbox className={className} aria-hidden="true" />;
     case "prefs":
       return <SlidersHorizontal className={className} aria-hidden="true" />;
+    case "profile":
+      return <User className={className} aria-hidden="true" />;
+    case "security":
+      return <Shield className={className} aria-hidden="true" />;
+    case "logout":
+      return <LogOut className={className} aria-hidden="true" />;
     case "keys":
       return <Keyboard className={className} aria-hidden="true" />;
   }
@@ -147,8 +160,10 @@ const THEME_CYCLE: ReadonlyArray<ThemePreference> = ["light", "dark", "system"];
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { activeInbox, openCreateProject, openShortcuts } = useAppCommands();
   const { theme, setTheme } = useTheme();
+  const { data: meta } = useQuery(metaQueryOptions());
   const { data: projects } = useQuery(projectsQueryOptions());
 
   const [query, setQuery] = useState("");
@@ -379,6 +394,50 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           void navigate({ to: "/account/preferences" });
         },
       },
+      ...(meta?.mode === "server"
+        ? ([
+            {
+              id: "action:account-profile",
+              group: "Actions",
+              label: "Account profile",
+              keywords: "account profile name email",
+              icon: "profile",
+              onSelect: () => {
+                void navigate({ to: "/account/profile" });
+              },
+            },
+            {
+              id: "action:account-security",
+              group: "Actions",
+              label: "Account security & sessions",
+              keywords: "account security password sessions revoke",
+              icon: "security",
+              onSelect: () => {
+                void navigate({ to: "/account/security" });
+              },
+            },
+            {
+              id: "action:sign-out",
+              group: "Actions",
+              label: "Sign out",
+              keywords: "logout sign out exit account",
+              destructive: true,
+              icon: "logout",
+              onSelect: () => {
+                void (async () => {
+                  try {
+                    unwrapVoid(await api.POST("/api/v1/auth/logout"));
+                    setCsrfToken("");
+                    queryClient.clear();
+                    await navigate({ to: "/login", search: { returnTo: undefined } });
+                  } catch (err) {
+                    handleApiError(err, "Failed to sign out");
+                  }
+                })();
+              },
+            },
+          ] satisfies PaletteItem[])
+        : []),
       {
         id: "action:shortcuts",
         group: "Actions",
@@ -391,7 +450,17 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     );
 
     return items;
-  }, [projects, activeInbox, theme, setTheme, navigate, openCreateProject, openShortcuts]);
+  }, [
+    projects,
+    activeInbox,
+    theme,
+    setTheme,
+    navigate,
+    openCreateProject,
+    openShortcuts,
+    meta?.mode,
+    queryClient,
+  ]);
 
   const sections = useMemo<Array<{ group: PaletteGroup; items: PaletteItem[] }>>(() => {
     const trimmed = query.trim();
