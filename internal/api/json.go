@@ -163,6 +163,41 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return true
 }
 
+// decodeOptionalJSON decodes a JSON request body when present, allowing an
+// empty body (e.g. a logged-in user accepting an invite without name/password).
+func decodeOptionalJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	if r.Body == nil {
+		return true
+	}
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(dst); err != nil {
+		if errors.Is(err, io.EOF) {
+			return true
+		}
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, ErrCodePayloadTooLarge, "request body exceeds maximum size", nil)
+			return false
+		}
+		writeError(w, http.StatusBadRequest, ErrCodeBadRequest, fmt.Sprintf("invalid JSON body: %v", err), nil)
+		return false
+	}
+
+	var trailing any
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, ErrCodePayloadTooLarge, "request body exceeds maximum size", nil)
+			return false
+		}
+		writeError(w, http.StatusBadRequest, ErrCodeBadRequest, "request body must contain a single JSON object", nil)
+		return false
+	}
+	return true
+}
+
 // encodeMessageCursor encodes a message ULID into an opaque base64url cursor (SPEC 8.1).
 func encodeMessageCursor(id string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(id))

@@ -210,6 +210,68 @@ paths:
         "404":
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/invites/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: previewInvite
+      summary: Preview a pending project or instance invitation (server mode)
+      responses:
+        "200":
+          description: Invite preview metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitePreview"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "410":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/invites/{token}/accept:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: acceptInvite
+      summary: Accept a pending project or instance invitation (server mode)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInviteRequest"
+      responses:
+        "200":
+          description: Invitation accepted (sets session cookie for unauthenticated signup/password set)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptInviteResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "410":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/password-reset/{token}:
     parameters:
       - name: token
@@ -747,6 +809,156 @@ paths:
         "400":
           $ref: "#/components/responses/ErrorResponse"
         "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/members:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+    get:
+      operationId: listProjectMembers
+      summary: List project members and roles (server mode)
+      responses:
+        "200":
+          description: Project members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectMember"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/members/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    patch:
+      operationId: updateProjectMember
+      summary: Update a member's project role (server mode)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectMemberRequest"
+      responses:
+        "200":
+          description: Updated project member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMember"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+    delete:
+      operationId: deleteProjectMember
+      summary: Remove a member from the project (server mode)
+      responses:
+        "204":
+          description: Member removed
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/invites:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+    get:
+      operationId: listProjectInvites
+      summary: List project invitations (server mode)
+      responses:
+        "200":
+          description: Project invitations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectInvite"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      operationId: createProjectInvite
+      summary: Create a project invitation and return its one-time URL (server mode)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectInviteRequest"
+      responses:
+        "201":
+          description: Invitation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateProjectInviteResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/invites/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    delete:
+      operationId: revokeProjectInvite
+      summary: Revoke a pending project invitation (server mode)
+      responses:
+        "204":
+          description: Invitation revoked
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
           $ref: "#/components/responses/ErrorResponse"
 
   /api/v1/events:
@@ -1477,3 +1689,127 @@ components:
         affected:
           type: integer
           format: int64
+
+    MemberUser:
+      type: object
+      required: [id, email, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+
+    ProjectMember:
+      type: object
+      required: [user, role, created_at]
+      properties:
+        user:
+          $ref: "#/components/schemas/MemberUser"
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+        created_at:
+          type: string
+          format: date-time
+
+    UpdateProjectMemberRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+
+    InviteStatus:
+      type: string
+      enum: [pending, accepted, revoked, expired]
+
+    ProjectInvite:
+      type: object
+      required: [id, email, role, created_by, created_at, expires_at, status]
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+        created_by:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        status:
+          $ref: "#/components/schemas/InviteStatus"
+
+    CreateProjectInviteRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+
+    CreateProjectInviteResponse:
+      type: object
+      required: [invite, url]
+      properties:
+        invite:
+          $ref: "#/components/schemas/ProjectInvite"
+        url:
+          type: string
+          format: uri
+
+    InviteProjectPreview:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+
+    InvitePreview:
+      type: object
+      required: [role, email, invited_by, expires_at]
+      properties:
+        project:
+          $ref: "#/components/schemas/InviteProjectPreview"
+        role:
+          type: ["string", "null"]
+          enum: [owner, member, viewer, null]
+        email:
+          type: string
+          format: email
+        invited_by:
+          type: ["string", "null"]
+        expires_at:
+          type: string
+          format: date-time
+
+    AcceptInviteRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        password:
+          type: string
+          minLength: 10
+          maxLength: 256
+
+    AcceptInviteResponse:
+      type: object
+      properties:
+        project:
+          $ref: "#/components/schemas/InviteProjectPreview"

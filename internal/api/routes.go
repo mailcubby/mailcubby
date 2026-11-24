@@ -59,6 +59,8 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodPatch, Pattern: "/api/v1/auth/me", Need: PermSession, ServerOnly: true, Handler: s.handleUpdateAuthMe},
 		{Method: http.MethodGet, Pattern: "/api/v1/auth/sessions", Need: PermSession, ServerOnly: true, Handler: s.handleListAuthSessions},
 		{Method: http.MethodDelete, Pattern: "/api/v1/auth/sessions/{id}", Need: PermSession, ServerOnly: true, Handler: s.handleDeleteAuthSession},
+		{Method: http.MethodGet, Pattern: "/api/v1/invites/{token}", Need: PermPublic, ServerOnly: true, Handler: s.handlePreviewInvite},
+		{Method: http.MethodPost, Pattern: "/api/v1/invites/{token}/accept", Need: PermPublic, ServerOnly: true, Handler: s.handleAcceptInvite},
 		{Method: http.MethodPost, Pattern: "/api/v1/password-reset/{token}", Need: PermPublic, ServerOnly: true, Handler: s.handlePasswordReset},
 
 		// Projects (SPEC 8.3)
@@ -89,6 +91,14 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/tags", Need: PermMember, Handler: s.handleCreateTag},
 		{Method: http.MethodPatch, Pattern: "/api/v1/projects/{project}/tags/{id}", Need: PermMember, Handler: s.handleUpdateTag},
 		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}/tags/{id}", Need: PermMember, Handler: s.handleDeleteTag},
+
+		// Members & Invites (SPEC 8.6)
+		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/members", Need: PermListMembers, ServerOnly: true, Handler: s.handleListProjectMembers},
+		{Method: http.MethodPatch, Pattern: "/api/v1/projects/{project}/members/{user_id}", Need: PermOwner, ServerOnly: true, Handler: s.handleUpdateProjectMember},
+		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}/members/{user_id}", Need: PermOwner, ServerOnly: true, Handler: s.handleDeleteProjectMember},
+		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/invites", Need: PermOwner, ServerOnly: true, Handler: s.handleListProjectInvites},
+		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/invites", Need: PermOwner, ServerOnly: true, Handler: s.handleCreateProjectInvite},
+		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}/invites/{id}", Need: PermOwner, ServerOnly: true, Handler: s.handleRevokeProjectInvite},
 
 		// Events & Render (SPEC 8.9)
 		{Method: http.MethodGet, Pattern: "/api/v1/events", Need: PermUser, Handler: s.handleEvents},
