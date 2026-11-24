@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
@@ -118,9 +119,16 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 		}
 		memberships = make([]authMembershipResponse, 0, len(projects))
 		for _, p := range projects {
+			if principal.Kind == auth.PrincipalToken && principal.TokenProjectID != nil && *principal.TokenProjectID != p.ID {
+				continue
+			}
+			role := string(auth.RoleOwner)
+			if principal.Kind == auth.PrincipalToken {
+				role = string(auth.EffectiveTokenRole(auth.RoleAdmin, principal.TokenScope))
+			}
 			memberships = append(memberships, authMembershipResponse{
 				Project: p.Slug,
-				Role:    "owner",
+				Role:    role,
 			})
 		}
 	} else {
@@ -136,10 +144,25 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 		}
 		memberships = make([]authMembershipResponse, 0, len(rows))
 		for _, m := range rows {
+			if principal.Kind == auth.PrincipalToken && principal.TokenProjectID != nil && *principal.TokenProjectID != m.ProjectID {
+				continue
+			}
+			role := m.Role
+			if principal.Kind == auth.PrincipalToken {
+				role = string(auth.EffectiveTokenRole(auth.Role(m.Role), principal.TokenScope))
+			}
 			memberships = append(memberships, authMembershipResponse{
 				Project: m.ProjectSlug,
-				Role:    m.Role,
+				Role:    role,
 			})
+		}
+	}
+
+	var tokenInfo *authTokenResponse
+	if principal.Kind == auth.PrincipalToken {
+		tokenInfo = &authTokenResponse{
+			Scope:   principal.TokenScope,
+			Project: principal.TokenProjectSlug,
 		}
 	}
 
@@ -153,6 +176,7 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 		},
 		CSRFToken:   principal.CSRFToken,
 		Memberships: memberships,
+		Token:       tokenInfo,
 	})
 }
 

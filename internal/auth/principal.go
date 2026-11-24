@@ -32,8 +32,11 @@ type Principal struct {
 	CanCreateProjects bool
 	SessionID         string
 	CSRFToken         string
+	TokenID           int64
+	TokenPrefix       string
 	TokenScope        string
 	TokenProjectID    *int64
+	TokenProjectSlug  *string
 }
 
 // IsAuthenticated reports whether the principal represents a signed-in user,

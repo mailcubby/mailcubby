@@ -147,6 +147,17 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	out := make([]projectSummaryResponse, 0, len(list))
 	for _, item := range list {
 		p := item.Project
+		if principal.Kind == auth.PrincipalToken && principal.TokenProjectID != nil && *principal.TokenProjectID != p.ID {
+			continue
+		}
+		role := item.Role
+		if principal.Kind == auth.PrincipalToken {
+			userRole := auth.Role(item.Role)
+			if principal.IsAdmin {
+				userRole = auth.RoleAdmin
+			}
+			role = string(auth.EffectiveTokenRole(userRole, principal.TokenScope))
+		}
 		spark, err := s.getSparkline(r.Context(), p.ID)
 		if err != nil {
 			s.log.Error("compute project sparkline failed",
@@ -164,7 +175,7 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 			Slug:          p.Slug,
 			Name:          p.Name,
 			Color:         p.Color,
-			Role:          item.Role,
+			Role:          role,
 			MessageCount:  p.MessageCount,
 			UnreadCount:   p.UnreadCount,
 			SizeBytes:     p.SizeBytes,

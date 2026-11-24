@@ -198,6 +198,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	connKey := fmt.Sprintf("%s:%d", principal.Kind, principal.UserID)
+	if principal.Kind == PrincipalToken && principal.TokenID > 0 {
+		connKey = fmt.Sprintf("token:%d", principal.TokenID)
+	}
 	evictCh, unregister := s.sse.register(connKey)
 	defer unregister()
 

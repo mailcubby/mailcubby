@@ -27,12 +27,15 @@ const (
 	roleMember
 	roleOwner
 	roleAdmin
+	roleTokenRead
+	roleTokenWrite
 )
 
 type roleCreds struct {
 	user   store.User
 	cookie *http.Cookie
 	csrf   string
+	bearer string
 }
 
 type routeAuthzSpec struct {
@@ -118,6 +121,29 @@ func TestAuthorizationMatrix(t *testing.T) {
 		c, csrf := loginAndGetCSRF(t, h, u.Email, pass)
 		credsByRole[r] = roleCreds{user: u, cookie: c, csrf: csrf}
 	}
+
+	// Create personal API tokens (read and write) owned by ownerUser for the matrix (FR-050, FR-066).
+	createAPIToken := func(scope, name string) string {
+		t.Helper()
+		oc := credsByRole[roleOwner]
+		rec := doReq(t, h, http.MethodPost, "/api/v1/tokens", map[string]any{
+			"name": name, "scope": scope,
+		}, oc.cookie, csrfHeaders(oc.csrf))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("seed api token(%s) status = %d, want 201; body=%s", scope, rec.Code, rec.Body.String())
+		}
+		var out struct {
+			Token string `json:"token"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("unmarshal seed api token: %v", err)
+		}
+		return out.Token
+	}
+	readTok := createAPIToken("read", "Matrix Read Token")
+	writeTok := createAPIToken("write", "Matrix Write Token")
+	credsByRole[roleTokenRead] = roleCreds{user: ownerUser, bearer: readTok}
+	credsByRole[roleTokenWrite] = roleCreds{user: ownerUser, bearer: writeTok}
 
 	sendSample := func(slug string) (string, int64) {
 		t.Helper()
@@ -247,37 +273,50 @@ func TestAuthorizationMatrix(t *testing.T) {
 	}
 
 	publicOK := map[authzRole]int{
-		roleNone: 200, roleOutsider: 200, roleViewer: 200, roleMember: 200, roleOwner: 200, roleAdmin: 200,
+		roleNone: 200, roleOutsider: 200, roleViewer: 200, roleMember: 200, roleOwner: 200, roleAdmin: 200, roleTokenRead: 200, roleTokenWrite: 200,
 	}
 	userOK := map[authzRole]int{
-		roleNone: 401, roleOutsider: 200, roleViewer: 200, roleMember: 200, roleOwner: 200, roleAdmin: 200,
+		roleNone: 401, roleOutsider: 200, roleViewer: 200, roleMember: 200, roleOwner: 200, roleAdmin: 200, roleTokenRead: 200, roleTokenWrite: 200,
+	}
+	sessionOK := map[authzRole]int{
+		roleNone: 401, roleOutsider: 200, roleViewer: 200, roleMember: 200, roleOwner: 200, roleAdmin: 200, roleTokenRead: 403, roleTokenWrite: 403,
+	}
+	session201 := map[authzRole]int{
+		roleNone: 401, roleOutsider: 201, roleViewer: 201, roleMember: 201, roleOwner: 201, roleAdmin: 201, roleTokenRead: 403, roleTokenWrite: 403,
+	}
+	session204 := map[authzRole]int{
+		roleNone: 401, roleOutsider: 204, roleViewer: 204, roleMember: 204, roleOwner: 204, roleAdmin: 204, roleTokenRead: 403, roleTokenWrite: 403,
 	}
 	viewerOK := map[authzRole]int{
-		roleNone: 401, roleOutsider: 404, roleViewer: 200, roleMember: 200, roleOwner: 200, roleAdmin: 200,
+		roleNone: 401, roleOutsider: 404, roleViewer: 200, roleMember: 200, roleOwner: 200, roleAdmin: 200, roleTokenRead: 200, roleTokenWrite: 200,
 	}
+	// FR-066: viewer_hide_technical applies only when the user's own role is viewer; owner's read/write tokens can read technical views.
 	viewerTechOK := map[authzRole]int{
-		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 200, roleOwner: 200, roleAdmin: 200,
+		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 200, roleOwner: 200, roleAdmin: 200, roleTokenRead: 200, roleTokenWrite: 200,
 	}
 	memberOK := map[authzRole]int{
-		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 200, roleOwner: 200, roleAdmin: 200,
+		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 200, roleOwner: 200, roleAdmin: 200, roleTokenRead: 403, roleTokenWrite: 200,
 	}
 	member201 := map[authzRole]int{
-		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 201, roleOwner: 201, roleAdmin: 201,
+		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 201, roleOwner: 201, roleAdmin: 201, roleTokenRead: 403, roleTokenWrite: 201,
 	}
 	member204 := map[authzRole]int{
-		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 204, roleOwner: 204, roleAdmin: 204,
+		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 204, roleOwner: 204, roleAdmin: 204, roleTokenRead: 403, roleTokenWrite: 204,
+	}
+	memberNoTokenOK := map[authzRole]int{
+		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 200, roleOwner: 200, roleAdmin: 200, roleTokenRead: 403, roleTokenWrite: 403,
 	}
 	ownerOK := map[authzRole]int{
-		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 403, roleOwner: 200, roleAdmin: 200,
+		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 403, roleOwner: 200, roleAdmin: 200, roleTokenRead: 403, roleTokenWrite: 403,
 	}
 	owner201 := map[authzRole]int{
-		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 403, roleOwner: 201, roleAdmin: 201,
+		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 403, roleOwner: 201, roleAdmin: 201, roleTokenRead: 403, roleTokenWrite: 403,
 	}
 	owner204 := map[authzRole]int{
-		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 403, roleOwner: 204, roleAdmin: 204,
+		roleNone: 401, roleOutsider: 404, roleViewer: 403, roleMember: 403, roleOwner: 204, roleAdmin: 204, roleTokenRead: 403, roleTokenWrite: 403,
 	}
 	adminOK := map[authzRole]int{
-		roleNone: 401, roleOutsider: 403, roleViewer: 403, roleMember: 403, roleOwner: 403, roleAdmin: 200,
+		roleNone: 401, roleOutsider: 403, roleViewer: 403, roleMember: 403, roleOwner: 403, roleAdmin: 200, roleTokenRead: 403, roleTokenWrite: 403,
 	}
 
 	matrix := map[string]routeAuthzSpec{
@@ -291,7 +330,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		"POST /api/v1/setup": {
 			// Setup is already complete in this fixture -> 409 for all callers (public route).
 			expected: map[authzRole]int{
-				roleNone: 409, roleOutsider: 409, roleViewer: 409, roleMember: 409, roleOwner: 409, roleAdmin: 409,
+				roleNone: 409, roleOutsider: 409, roleViewer: 409, roleMember: 409, roleOwner: 409, roleAdmin: 409, roleTokenRead: 409, roleTokenWrite: 409,
 			},
 			makeReq: constPath("/api/v1/setup", map[string]any{
 				"setup_token": "tok", "email": "x@example.test", "name": "X", "password": pass,
@@ -304,11 +343,9 @@ func TestAuthorizationMatrix(t *testing.T) {
 			}),
 		},
 		"POST /api/v1/auth/logout": {
-			expected: map[authzRole]int{
-				roleNone: 401, roleOutsider: 204, roleViewer: 204, roleMember: 204, roleOwner: 204, roleAdmin: 204,
-			},
+			expected: session204,
 			makeReq: func(t *testing.T, role authzRole, creds roleCreds) (string, any, *http.Cookie, string) {
-				if role == roleNone {
+				if role == roleNone || role == roleTokenRead || role == roleTokenWrite {
 					return "/api/v1/auth/logout", nil, nil, ""
 				}
 				// Use a fresh disposable session so the shared test session stays active.
@@ -318,7 +355,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		},
 		"GET /api/v1/auth/me": {expected: userOK, makeReq: constPath("/api/v1/auth/me", nil)},
 		"PATCH /api/v1/auth/me": {
-			expected: userOK,
+			expected: sessionOK,
 			makeReq: func(_ *testing.T, _ authzRole, creds roleCreds) (string, any, *http.Cookie, string) {
 				name := creds.user.Name
 				if name == "" {
@@ -327,13 +364,11 @@ func TestAuthorizationMatrix(t *testing.T) {
 				return "/api/v1/auth/me", map[string]any{"name": name}, nil, ""
 			},
 		},
-		"GET /api/v1/auth/sessions": {expected: userOK, makeReq: constPath("/api/v1/auth/sessions", nil)},
+		"GET /api/v1/auth/sessions": {expected: sessionOK, makeReq: constPath("/api/v1/auth/sessions", nil)},
 		"DELETE /api/v1/auth/sessions/{id}": {
-			expected: map[authzRole]int{
-				roleNone: 401, roleOutsider: 204, roleViewer: 204, roleMember: 204, roleOwner: 204, roleAdmin: 204,
-			},
+			expected: session204,
 			makeReq: func(t *testing.T, role authzRole, creds roleCreds) (string, any, *http.Cookie, string) {
-				if role == roleNone {
+				if role == roleNone || role == roleTokenRead || role == roleTokenWrite {
 					return "/api/v1/auth/sessions/nonexistent", nil, nil, ""
 				}
 				c, _ := loginAndGetCSRF(t, h, creds.user.Email, pass)
@@ -348,7 +383,9 @@ func TestAuthorizationMatrix(t *testing.T) {
 			},
 		},
 		"POST /api/v1/invites/{token}/accept": {
-			expected: publicOK,
+			expected: map[authzRole]int{
+				roleNone: 200, roleOutsider: 200, roleViewer: 200, roleMember: 200, roleOwner: 200, roleAdmin: 200, roleTokenRead: 403, roleTokenWrite: 403,
+			},
 			makeReq: func(t *testing.T, role authzRole, _ roleCreds) (string, any, *http.Cookie, string) {
 				dp := newDisposableProject(false, false, false)
 				_, tok := newDisposableInvite(dp.ID)
@@ -363,7 +400,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		"POST /api/v1/password-reset/{token}": {
 			// Public route: an unknown token returns 410 (proving no auth wall).
 			expected: map[authzRole]int{
-				roleNone: 410, roleOutsider: 410, roleViewer: 410, roleMember: 410, roleOwner: 410, roleAdmin: 410,
+				roleNone: 410, roleOutsider: 410, roleViewer: 410, roleMember: 410, roleOwner: 410, roleAdmin: 410, roleTokenRead: 410, roleTokenWrite: 410,
 			},
 			makeReq: constPath("/api/v1/password-reset/unknown-token", map[string]any{"password": pass}),
 		},
@@ -371,9 +408,9 @@ func TestAuthorizationMatrix(t *testing.T) {
 		// Projects
 		"GET /api/v1/projects": {expected: userOK, makeReq: constPath("/api/v1/projects", nil)},
 		"POST /api/v1/projects": {
-			// ownerUser has can_create_projects=true; outsider/viewer/member have can_create_projects=false.
+			// ownerUser has can_create_projects=true; outsider/viewer/member have can_create_projects=false; tokens cannot create projects.
 			expected: map[authzRole]int{
-				roleNone: 401, roleOutsider: 403, roleViewer: 403, roleMember: 403, roleOwner: 201, roleAdmin: 201,
+				roleNone: 401, roleOutsider: 403, roleViewer: 403, roleMember: 403, roleOwner: 201, roleAdmin: 201, roleTokenRead: 403, roleTokenWrite: 403,
 			},
 			makeReq: func(*testing.T, authzRole, roleCreds) (string, any, *http.Cookie, string) {
 				n := strconv.Itoa(nextSeq())
@@ -398,7 +435,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		"POST /api/v1/projects/{project}/leave": {
 			// Admin is not an explicit member of the disposable project -> 409 (passed auth & middleware!).
 			expected: map[authzRole]int{
-				roleNone: 401, roleOutsider: 404, roleViewer: 204, roleMember: 204, roleOwner: 204, roleAdmin: 409,
+				roleNone: 401, roleOutsider: 404, roleViewer: 204, roleMember: 204, roleOwner: 204, roleAdmin: 409, roleTokenRead: 403, roleTokenWrite: 403,
 			},
 			makeReq: func(t *testing.T, _ authzRole, _ roleCreds) (string, any, *http.Cookie, string) {
 				dp := newDisposableProject(true, true, true)
@@ -411,7 +448,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		"DELETE /api/v1/projects/{project}/messages": {
 			expected: memberOK,
 			makeReq: func(t *testing.T, role authzRole, _ roleCreds) (string, any, *http.Cookie, string) {
-				if role == roleMember || role == roleOwner || role == roleAdmin {
+				if role == roleMember || role == roleOwner || role == roleAdmin || role == roleTokenWrite {
 					dp := newDisposableProject(true, true, true)
 					return "/api/v1/projects/" + dp.Slug + "/messages", nil, nil, ""
 				}
@@ -439,7 +476,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		"DELETE /api/v1/projects/{project}/messages/{id}": {
 			expected: member204,
 			makeReq: func(t *testing.T, role authzRole, _ roleCreds) (string, any, *http.Cookie, string) {
-				if role == roleMember || role == roleOwner || role == roleAdmin {
+				if role == roleMember || role == roleOwner || role == roleAdmin || role == roleTokenWrite {
 					id, _ := sendSample(proj.Slug)
 					return "/api/v1/projects/" + proj.Slug + "/messages/" + id, nil, nil, ""
 				}
@@ -486,7 +523,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		"DELETE /api/v1/projects/{project}/tags/{id}": {
 			expected: member204,
 			makeReq: func(t *testing.T, role authzRole, _ roleCreds) (string, any, *http.Cookie, string) {
-				if role == roleMember || role == roleOwner || role == roleAdmin {
+				if role == roleMember || role == roleOwner || role == roleAdmin || role == roleTokenWrite {
 					tg, err := env.store.CreateTag(t.Context(), proj.ID, "del-tag-"+strconv.Itoa(nextSeq()), "slate", env.clk.Now().UTC())
 					if err != nil {
 						t.Fatalf("CreateTag: %v", err)
@@ -498,7 +535,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		},
 
 		// Members & Invites
-		"GET /api/v1/projects/{project}/members": {expected: memberOK, makeReq: constPath("/api/v1/projects/"+proj.Slug+"/members", nil)},
+		"GET /api/v1/projects/{project}/members": {expected: memberNoTokenOK, makeReq: constPath("/api/v1/projects/"+proj.Slug+"/members", nil)},
 		"PATCH /api/v1/projects/{project}/members/{user_id}": {
 			expected: ownerOK,
 			makeReq:  constPath("/api/v1/projects/"+proj.Slug+"/members/"+strconv.FormatInt(viewerUser.ID, 10), map[string]any{"role": "viewer"}),
@@ -535,7 +572,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 
 		// SMTP Credentials
 		"GET /api/v1/projects/{project}/smtp-credentials": {
-			expected: memberOK,
+			expected: memberNoTokenOK,
 			makeReq:  constPath("/api/v1/projects/"+proj.Slug+"/smtp-credentials", nil),
 		},
 		"POST /api/v1/projects/{project}/smtp-credentials": {
@@ -570,11 +607,48 @@ func TestAuthorizationMatrix(t *testing.T) {
 			},
 		},
 
+		// API Tokens (SPEC 8.7)
+		"GET /api/v1/tokens": {
+			expected: sessionOK,
+			makeReq:  constPath("/api/v1/tokens", nil),
+		},
+		"POST /api/v1/tokens": {
+			expected: session201,
+			makeReq: func(*testing.T, authzRole, roleCreds) (string, any, *http.Cookie, string) {
+				return "/api/v1/tokens", map[string]any{
+					"name": "tok-" + strconv.Itoa(nextSeq()), "scope": "read",
+				}, nil, ""
+			},
+		},
+		"DELETE /api/v1/tokens/{id}": {
+			expected: session204,
+			makeReq: func(t *testing.T, role authzRole, creds roleCreds) (string, any, *http.Cookie, string) {
+				if role == roleNone || role == roleTokenRead || role == roleTokenWrite {
+					return "/api/v1/tokens/999999", nil, nil, ""
+				}
+				rec := doReq(t, h, http.MethodPost, "/api/v1/tokens", map[string]any{
+					"name": "del-tok-" + strconv.Itoa(nextSeq()), "scope": "read",
+				}, creds.cookie, csrfHeaders(creds.csrf))
+				if rec.Code != http.StatusCreated {
+					t.Fatalf("seed disposable api token = %d, want 201", rec.Code)
+				}
+				var out struct {
+					TokenInfo struct {
+						ID int64 `json:"id"`
+					} `json:"token_info"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+					t.Fatalf("unmarshal disposable token: %v", err)
+				}
+				return "/api/v1/tokens/" + strconv.FormatInt(out.TokenInfo.ID, 10), nil, nil, ""
+			},
+		},
+
 		// Admin
 		"GET /api/v1/admin/users": {expected: adminOK, makeReq: constPath("/api/v1/admin/users", nil)},
 		"POST /api/v1/admin/users": {
 			expected: map[authzRole]int{
-				roleNone: 401, roleOutsider: 403, roleViewer: 403, roleMember: 403, roleOwner: 403, roleAdmin: 201,
+				roleNone: 401, roleOutsider: 403, roleViewer: 403, roleMember: 403, roleOwner: 403, roleAdmin: 201, roleTokenRead: 403, roleTokenWrite: 403,
 			},
 			makeReq: func(*testing.T, authzRole, roleCreds) (string, any, *http.Cookie, string) {
 				return "/api/v1/admin/users", map[string]any{
@@ -588,7 +662,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		},
 		"DELETE /api/v1/admin/users/{id}": {
 			expected: map[authzRole]int{
-				roleNone: 401, roleOutsider: 403, roleViewer: 403, roleMember: 403, roleOwner: 403, roleAdmin: 204,
+				roleNone: 401, roleOutsider: 403, roleViewer: 403, roleMember: 403, roleOwner: 403, roleAdmin: 204, roleTokenRead: 403, roleTokenWrite: 403,
 			},
 			makeReq: func(t *testing.T, role authzRole, _ roleCreds) (string, any, *http.Cookie, string) {
 				if role == roleAdmin {
@@ -628,14 +702,16 @@ func TestAuthorizationMatrix(t *testing.T) {
 	}
 
 	roleNames := map[authzRole]string{
-		roleNone:     "none",
-		roleOutsider: "outsider",
-		roleViewer:   "viewer",
-		roleMember:   "member",
-		roleOwner:    "owner",
-		roleAdmin:    "admin",
+		roleNone:       "none",
+		roleOutsider:   "outsider",
+		roleViewer:     "viewer",
+		roleMember:     "member",
+		roleOwner:      "owner",
+		roleAdmin:      "admin",
+		roleTokenRead:  "token-read",
+		roleTokenWrite: "token-write",
 	}
-	orderedRoles := []authzRole{roleNone, roleOutsider, roleViewer, roleMember, roleOwner, roleAdmin}
+	orderedRoles := []authzRole{roleNone, roleOutsider, roleViewer, roleMember, roleOwner, roleAdmin, roleTokenRead, roleTokenWrite}
 
 	// 2. Execute every route x role cell.
 	for _, rt := range env.srv.Routes() {
@@ -658,7 +734,9 @@ func TestAuthorizationMatrix(t *testing.T) {
 			}
 
 			var headers map[string]string
-			if auth.IsUnsafeMethod(rt.Method) {
+			if creds.bearer != "" {
+				headers = map[string]string{"Authorization": "Bearer " + creds.bearer}
+			} else if auth.IsUnsafeMethod(rt.Method) {
 				headers = map[string]string{"Origin": testBaseURL}
 				if cookie != nil && csrf != "" {
 					headers["X-CSRF-Token"] = csrf
@@ -667,7 +745,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 
 			var got int
 			if key == "GET /api/v1/events" && want == http.StatusOK {
-				got = probeSSEStatus(t, h, path, cookie)
+				got = probeSSEStatus(t, h, path, cookie, creds.bearer)
 			} else {
 				rec := doReq(t, h, rt.Method, path, body, cookie, headers)
 				got = rec.Code
@@ -733,13 +811,16 @@ func TestAuthorizationMatrix(t *testing.T) {
 	}
 }
 
-func probeSSEStatus(t *testing.T, handler http.Handler, path string, cookie *http.Cookie) int {
+func probeSSEStatus(t *testing.T, handler http.Handler, path string, cookie *http.Cookie, bearer string) int {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, path, nil)
 	if cookie != nil {
 		req.AddCookie(cookie)
+	}
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	sw := newSSEStreamWriter()
 	done := make(chan struct{})

@@ -1126,6 +1126,73 @@ paths:
         "409":
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/tokens:
+    get:
+      operationId: listAPITokens
+      summary: List active personal API tokens for the signed-in user (server mode, session)
+      responses:
+        "200":
+          description: Active API tokens
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/APITokenInfo"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      operationId: createAPIToken
+      summary: Create a personal API bearer token (server mode, session; token shown once)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAPITokenRequest"
+      responses:
+        "201":
+          description: Created API token with one-time raw secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAPITokenResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/tokens/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    delete:
+      operationId: revokeAPIToken
+      summary: Revoke a personal API token owned by the signed-in user (server mode, session)
+      responses:
+        "204":
+          description: Token revoked
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/admin/users:
     get:
       operationId: adminListUsers
@@ -2361,3 +2428,68 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MemberUser"
+
+    APITokenScope:
+      type: string
+      enum:
+        - read
+        - write
+
+    APITokenInfo:
+      type: object
+      required:
+        - id
+        - name
+        - prefix
+        - scope
+        - project
+        - created_at
+        - last_used_at
+        - expires_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        prefix:
+          type: string
+        scope:
+          $ref: "#/components/schemas/APITokenScope"
+        project:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: ["string", "null"]
+          format: date-time
+        expires_at:
+          type: ["string", "null"]
+          format: date-time
+
+    CreateAPITokenRequest:
+      type: object
+      required: [name, scope]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        scope:
+          $ref: "#/components/schemas/APITokenScope"
+        project:
+          type: ["string", "null"]
+        expires_in_days:
+          type: ["integer", "null"]
+          minimum: 1
+          maximum: 3650
+
+    CreateAPITokenResponse:
+      type: object
+      required: [token_info, token]
+      properties:
+        token_info:
+          $ref: "#/components/schemas/APITokenInfo"
+        token:
+          type: string

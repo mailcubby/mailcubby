@@ -163,3 +163,56 @@ func TestValidMemberRoleAndRank(t *testing.T) {
 		t.Fatal("role ranks are not strictly increasing")
 	}
 }
+
+// FR-066: effective token role capping and viewer_hide_technical rule.
+func TestEffectiveTokenRoleAndCanReadTechnical(t *testing.T) {
+	t.Parallel()
+
+	roleCases := []struct {
+		name     string
+		userRole Role
+		scope    string
+		want     Role
+	}{
+		{"none + read", RoleNone, APITokenScopeRead, RoleNone},
+		{"none + write", RoleNone, APITokenScopeWrite, RoleNone},
+		{"viewer + read", RoleViewer, APITokenScopeRead, RoleViewer},
+		{"viewer + write capped to viewer", RoleViewer, APITokenScopeWrite, RoleViewer},
+		{"member + read capped to viewer", RoleMember, APITokenScopeRead, RoleViewer},
+		{"member + write", RoleMember, APITokenScopeWrite, RoleMember},
+		{"owner + read capped to viewer", RoleOwner, APITokenScopeRead, RoleViewer},
+		{"owner + write capped to member", RoleOwner, APITokenScopeWrite, RoleMember},
+		{"admin + read capped to viewer", RoleAdmin, APITokenScopeRead, RoleViewer},
+		{"admin + write capped to member", RoleAdmin, APITokenScopeWrite, RoleMember},
+		{"unknown scope", RoleOwner, "owner", RoleNone},
+	}
+
+	for _, tc := range roleCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := EffectiveTokenRole(tc.userRole, tc.scope); got != tc.want {
+				t.Errorf("EffectiveTokenRole(%q, %q) = %q, want %q", tc.userRole, tc.scope, got, tc.want)
+			}
+		})
+	}
+
+	hideOn := ProjectSettings{ViewerHideTechnical: true}
+	hideOff := ProjectSettings{ViewerHideTechnical: false}
+
+	// Member read token has effectiveRole=viewer, userRole=member -> allowed even when viewer_hide_technical=true.
+	if !CanReadTechnical(RoleViewer, RoleMember, hideOn) {
+		t.Error("expected member read token to read technical views even when viewer_hide_technical=true")
+	}
+	if !CanReadTechnical(RoleViewer, RoleOwner, hideOn) {
+		t.Error("expected owner read token to read technical views even when viewer_hide_technical=true")
+	}
+	if CanReadTechnical(RoleViewer, RoleViewer, hideOn) {
+		t.Error("expected viewer with viewer_hide_technical=true to be denied technical views")
+	}
+	if !CanReadTechnical(RoleViewer, RoleViewer, hideOff) {
+		t.Error("expected viewer with viewer_hide_technical=false to be allowed technical views")
+	}
+	if CanReadTechnical(RoleNone, RoleMember, hideOff) {
+		t.Error("expected RoleNone effective role to be denied")
+	}
+}

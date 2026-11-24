@@ -113,3 +113,39 @@ func Allowed(role Role, a Action, p ProjectSettings) bool {
 		return false
 	}
 }
+
+// EffectiveTokenRole computes the effective project role for an API token caller
+// given the token owner's own project role and the token scope (SPEC FR-066):
+//   - "read" acts like viewer (provided the user has project access).
+//   - "write" acts like member (never owner), or viewer if the user is a viewer.
+func EffectiveTokenRole(userRole Role, scope string) Role {
+	if RoleRank(userRole) < RoleRank(RoleViewer) {
+		return RoleNone
+	}
+	switch scope {
+	case APITokenScopeRead:
+		return RoleViewer
+	case APITokenScopeWrite:
+		if userRole == RoleViewer {
+			return RoleViewer
+		}
+		return RoleMember
+	default:
+		return RoleNone
+	}
+}
+
+// CanReadTechnical reports whether a caller with effectiveRole (derived from a
+// user whose own project role is userRole) may view technical message details
+// (raw, eml, html source, headers, envelope, parse_warnings).
+// Per SPEC FR-066, viewer_hide_technical applies only when the user's own
+// project role is viewer (a read token of a member can still read technical views).
+func CanReadTechnical(effectiveRole, userRole Role, p ProjectSettings) bool {
+	if RoleRank(effectiveRole) < RoleRank(RoleViewer) || RoleRank(userRole) < RoleRank(RoleViewer) {
+		return false
+	}
+	if userRole == RoleViewer {
+		return !p.ViewerHideTechnical
+	}
+	return true
+}

@@ -233,6 +233,24 @@ func TestTwoTenantIsolation(t *testing.T) {
 		t.Fatalf("Tenant B message was affected by Tenant A bulk delete: %v", err)
 	}
 
+	// User A cannot revoke User B's personal API token (404).
+	tokRec := doReq(t, h, http.MethodPost, "/api/v1/tokens", map[string]any{
+		"name": "Tenant B token", "scope": "read", "project": "tenant-b",
+	}, cookieB, csrfHeaders(csrfB))
+	if tokRec.Code != http.StatusCreated {
+		t.Fatalf("Tenant B create token = %d, want 201", tokRec.Code)
+	}
+	var tokB struct {
+		TokenInfo struct {
+			ID int64 `json:"id"`
+		} `json:"token_info"`
+	}
+	_ = json.Unmarshal(tokRec.Body.Bytes(), &tokB)
+	rec = doReq(t, h, http.MethodDelete, "/api/v1/tokens/"+strconv.FormatInt(tokB.TokenInfo.ID, 10), nil, cookieA, csrfHeaders(csrfA))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("Tenant A revoking Tenant B token = %d, want 404", rec.Code)
+	}
+
 	// 3. List endpoints for User A must never leak Tenant B identifiers.
 	listEndpoints := []string{
 		"/api/v1/projects",

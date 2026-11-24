@@ -281,7 +281,11 @@ func (s *Server) recordAdminProjectAccess(ctx context.Context, principal Princip
 	}
 	sessKey := principal.SessionID
 	if sessKey == "" {
-		sessKey = "user:" + strconv.FormatInt(principal.UserID, 10)
+		if principal.Kind == auth.PrincipalToken && principal.TokenID > 0 {
+			sessKey = "token:" + strconv.FormatInt(principal.TokenID, 10)
+		} else {
+			sessKey = "user:" + strconv.FormatInt(principal.UserID, 10)
+		}
 	}
 	key := adminAccessKey{sessionID: sessKey, projectID: proj.ID}
 
@@ -374,7 +378,10 @@ func auditActorForPrincipal(p Principal) (store.AuditActorType, *int64, *string)
 	case auth.PrincipalToken:
 		uid := p.UserID
 		var label *string
-		if p.Email != "" {
+		if p.TokenPrefix != "" {
+			pref := p.TokenPrefix
+			label = &pref
+		} else if p.Email != "" {
 			e := p.Email
 			label = &e
 		}

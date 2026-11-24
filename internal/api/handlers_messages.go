@@ -12,7 +12,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/ingest"
 	"github.com/mailcubby/mailcubby/internal/render"
 	"github.com/mailcubby/mailcubby/internal/search"
@@ -342,8 +341,8 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		RemoteResourceCount:    remoteResourceCount,
 	}
 
-	// FR-071: omit envelope, parse_warnings, and headers for viewers when viewer_hide_technical is enabled.
-	if auth.Allowed(pctx.AuthRole, auth.ActionReadTechnical, pctx.AuthSettings()) {
+	// FR-071 & FR-066: omit envelope, parse_warnings, and headers for viewers when viewer_hide_technical is enabled.
+	if pctx.CanReadTechnical() {
 		warnings := msg.ParseWarnings
 		if warnings == nil {
 			warnings = []string{}

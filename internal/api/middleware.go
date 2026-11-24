@@ -64,6 +64,7 @@ type ProjectContext struct {
 	Project          store.Project
 	Role             string
 	AuthRole         auth.Role
+	UserAuthRole     auth.Role
 	IsExplicitMember bool
 }
 
@@ -73,6 +74,17 @@ func (p ProjectContext) AuthSettings() auth.ProjectSettings {
 		ViewerHideTechnical:  p.Project.Settings.ViewerHideTechnical,
 		MembersCanRevealSMTP: p.Project.Settings.MembersCanRevealSMTP,
 	}
+}
+
+// CanReadTechnical reports whether this request may read technical message views
+// (SPEC FR-066, FR-071): viewer_hide_technical applies only when the caller's own
+// project role is viewer (a member's read token still sees technical views).
+func (p ProjectContext) CanReadTechnical() bool {
+	userRole := p.UserAuthRole
+	if userRole == auth.RoleNone {
+		userRole = p.AuthRole
+	}
+	return auth.CanReadTechnical(p.AuthRole, userRole, p.AuthSettings())
 }
 
 // RequestIDFromContext returns the request ID attached by middleware, if any.
@@ -282,6 +294,12 @@ func (s *Server) authenticateServerRequest(r *http.Request) auth.Principal {
 	if s.store == nil {
 		return auth.Principal{Kind: auth.PrincipalAnonymous}
 	}
+
+	// SPEC FR-065: Authorization: Bearer <token> takes precedence and never falls back to cookie.
+	if rawBearer, ok := extractBearerToken(r.Header.Get("Authorization")); ok {
+		return s.authenticateBearerToken(r, rawBearer)
+	}
+
 	cookie, err := r.Cookie(auth.SessionCookieName)
 	if err != nil || strings.TrimSpace(cookie.Value) == "" {
 		return auth.Principal{Kind: auth.PrincipalAnonymous}
@@ -325,10 +343,80 @@ func (s *Server) authenticateServerRequest(r *http.Request) auth.Principal {
 	}
 }
 
+func (s *Server) authenticateBearerToken(r *http.Request, raw string) auth.Principal {
+	prefix, ok := auth.ParseAPIToken(raw)
+	if !ok {
+		return auth.Principal{Kind: auth.PrincipalAnonymous}
+	}
+	tok, err := s.store.GetAPITokenByPrefix(r.Context(), prefix)
+	if err != nil {
+		return auth.Principal{Kind: auth.PrincipalAnonymous}
+	}
+	if !auth.VerifyAPITokenHash(raw, tok.TokenHash) {
+		return auth.Principal{Kind: auth.PrincipalAnonymous}
+	}
+	if tok.RevokedAt != nil {
+		return auth.Principal{Kind: auth.PrincipalAnonymous}
+	}
+	now := s.clk.Now().UTC()
+	if tok.ExpiresAt != nil && !now.Before(*tok.ExpiresAt) {
+		return auth.Principal{Kind: auth.PrincipalAnonymous}
+	}
+
+	user, err := s.store.GetUserByID(r.Context(), tok.UserID)
+	if err != nil || user.DisabledAt != nil {
+		return auth.Principal{Kind: auth.PrincipalAnonymous}
+	}
+
+	if auth.NeedsAPITokenTouch(now, tok.LastUsedAt) {
+		if err := s.store.TouchAPITokenLastUsed(r.Context(), tok.ID, now); err != nil {
+			s.log.Warn("failed to update api token last_used_at",
+				"request_id", RequestIDFromContext(r.Context()),
+				"token_id", tok.ID,
+				"error", err,
+			)
+		}
+	}
+
+	return auth.Principal{
+		Kind:              auth.PrincipalToken,
+		UserID:            user.ID,
+		Email:             user.Email,
+		Name:              user.Name,
+		IsAdmin:           user.IsAdmin,
+		CanCreateProjects: user.CanCreateProjects,
+		TokenID:           tok.ID,
+		TokenPrefix:       tok.Prefix,
+		TokenScope:        tok.Scope,
+		TokenProjectID:    tok.ProjectID,
+		TokenProjectSlug:  tok.ProjectSlug,
+	}
+}
+
+func extractBearerToken(header string) (string, bool) {
+	trimmed := strings.TrimSpace(header)
+	if len(trimmed) < len("Bearer ") {
+		return "", false
+	}
+	if !strings.EqualFold(trimmed[:len("Bearer ")], "Bearer ") {
+		return "", false
+	}
+	return strings.TrimSpace(trimmed[len("Bearer "):]), true
+}
+
+func isPublicUnsafePath(p string) bool {
+	cleaned := path.Clean("/" + p)
+	return cleaned == "/api/v1/setup" ||
+		cleaned == "/api/v1/auth/login" ||
+		strings.HasPrefix(cleaned, "/api/v1/invites/") ||
+		strings.HasPrefix(cleaned, "/api/v1/password-reset/")
+}
+
 // csrfMiddleware enforces SPEC FR-045 in server mode:
 //   - All unsafe requests require Origin (or Referer fallback) matching MAILCUBBY_BASE_URL.
 //   - Cookie-authenticated unsafe requests additionally require X-CSRF-Token.
-//   - Bearer-token requests (Phase 9) are exempt.
+//   - Bearer-token requests are exempt; invalid/revoked Bearer headers on non-public
+//     routes pass through so route auth returns 401 rather than 403.
 func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.Mode != config.ModeServer || !auth.IsUnsafeMethod(r.Method) {
@@ -337,6 +425,12 @@ func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
 		}
 		principal := PrincipalFromContext(r.Context())
 		if principal.Kind == auth.PrincipalToken {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if _, hasBearer := extractBearerToken(r.Header.Get("Authorization")); hasBearer &&
+			principal.Kind == auth.PrincipalAnonymous &&
+			!isPublicUnsafePath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -458,19 +552,27 @@ func (s *Server) resolveProjectMiddleware(rt Route, next http.HandlerFunc) http.
 
 		var (
 			authRole         auth.Role
+			userAuthRole     auth.Role
 			displayRole      string
 			isExplicitMember bool
 		)
 		if s.cfg.Mode == config.ModeLocal {
 			authRole = auth.RoleOwner
+			userAuthRole = auth.RoleOwner
 			displayRole = string(auth.RoleOwner)
 			isExplicitMember = true
 		} else {
+			// FR-065/FR-066: project-restricted tokens cannot see other projects (404).
+			if principal.Kind == auth.PrincipalToken && principal.TokenProjectID != nil && *principal.TokenProjectID != proj.ID {
+				writeError(w, http.StatusNotFound, ErrCodeNotFound, "project not found", nil)
+				return
+			}
+
 			member, memErr := s.store.GetProjectMember(r.Context(), proj.ID, principal.UserID)
 			switch {
 			case memErr == nil:
 				isExplicitMember = true
-				authRole = auth.Role(member.Role)
+				userAuthRole = auth.Role(member.Role)
 				displayRole = member.Role
 			case errors.Is(memErr, store.ErrNotFound):
 				isExplicitMember = false
@@ -486,7 +588,7 @@ func (s *Server) resolveProjectMiddleware(rt Route, next http.HandlerFunc) http.
 			}
 
 			if principal.IsAdmin {
-				authRole = auth.RoleAdmin
+				userAuthRole = auth.RoleAdmin
 				displayRole = string(auth.RoleOwner)
 				if !isExplicitMember {
 					s.recordAdminProjectAccess(r.Context(), principal, proj)
@@ -497,12 +599,24 @@ func (s *Server) resolveProjectMiddleware(rt Route, next http.HandlerFunc) http.
 				return
 			}
 
+			authRole = userAuthRole
+			if principal.Kind == auth.PrincipalToken {
+				authRole = auth.EffectiveTokenRole(userAuthRole, principal.TokenScope)
+				displayRole = string(authRole)
+			}
+
 			if hasAction {
 				settings := auth.ProjectSettings{
 					ViewerHideTechnical:  proj.Settings.ViewerHideTechnical,
 					MembersCanRevealSMTP: proj.Settings.MembersCanRevealSMTP,
 				}
-				if !auth.Allowed(authRole, action, settings) {
+				var allowed bool
+				if action == auth.ActionReadTechnical {
+					allowed = auth.CanReadTechnical(authRole, userAuthRole, settings)
+				} else {
+					allowed = auth.Allowed(authRole, action, settings)
+				}
+				if !allowed {
 					writeError(w, http.StatusForbidden, ErrCodeForbidden, "insufficient permissions", nil)
 					return
 				}
@@ -513,6 +627,7 @@ func (s *Server) resolveProjectMiddleware(rt Route, next http.HandlerFunc) http.
 			Project:          proj,
 			Role:             displayRole,
 			AuthRole:         authRole,
+			UserAuthRole:     userAuthRole,
 			IsExplicitMember: isExplicitMember,
 		}
 		ctx := context.WithValue(r.Context(), ctxKeyProject, pctx)

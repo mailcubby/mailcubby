@@ -114,6 +114,11 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodPatch, Pattern: "/api/v1/projects/{project}/smtp-credentials/{id}", Need: PermManageSMTP, ServerOnly: true, Handler: s.handleUpdateSMTPCredential},
 		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}/smtp-credentials/{id}", Need: PermManageSMTP, ServerOnly: true, Handler: s.handleDeleteSMTPCredential},
 
+		// API Tokens (SPEC 8.7)
+		{Method: http.MethodGet, Pattern: "/api/v1/tokens", Need: PermSession, ServerOnly: true, Handler: s.handleListAPITokens},
+		{Method: http.MethodPost, Pattern: "/api/v1/tokens", Need: PermSession, ServerOnly: true, Handler: s.handleCreateAPIToken},
+		{Method: http.MethodDelete, Pattern: "/api/v1/tokens/{id}", Need: PermSession, ServerOnly: true, Handler: s.handleDeleteAPIToken},
+
 		// Admin (SPEC 8.8)
 		{Method: http.MethodGet, Pattern: "/api/v1/admin/users", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminListUsers},
 		{Method: http.MethodPost, Pattern: "/api/v1/admin/users", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminCreateUser},
