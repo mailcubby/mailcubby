@@ -1,7 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  Eye,
   Folder,
+  FolderKanban,
   Inbox,
   Keyboard,
   LogOut,
@@ -12,22 +14,25 @@ import {
   Plus,
   Search,
   Send,
+  Settings,
   Shield,
   SlidersHorizontal,
   Sun,
   Tag,
   Trash2,
   User,
+  Users,
 } from "lucide-react";
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useAppCommands } from "@/components/AppCommandContext";
 import { Badge } from "@/components/ui/badge";
 import { api, handleApiError, setCsrfToken, unwrapVoid } from "@/lib/api";
 import { formatCount, getSenderLabel, PROJECT_COLOR_DOT_CLASS } from "@/lib/format";
-import { metaQueryOptions, projectsQueryOptions } from "@/lib/queries";
+import { authMeQueryOptions, metaQueryOptions, projectsQueryOptions } from "@/lib/queries";
 import { type ThemePreference, useTheme } from "@/lib/theme";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { cn } from "@/lib/utils";
+import { canUserCreateProjects } from "@/lib/viewerPreview";
 
 type PaletteGroup =
   | "Recent"
@@ -62,6 +67,10 @@ interface PaletteItem {
     | "profile"
     | "security"
     | "logout"
+    | "settings"
+    | "eye"
+    | "admin-users"
+    | "admin-projects"
     | "keys";
   onSelect: () => void;
 }
@@ -146,6 +155,14 @@ function renderItemIcon(item: PaletteItem) {
       return <Shield className={className} aria-hidden="true" />;
     case "logout":
       return <LogOut className={className} aria-hidden="true" />;
+    case "settings":
+      return <Settings className={className} aria-hidden="true" />;
+    case "eye":
+      return <Eye className={className} aria-hidden="true" />;
+    case "admin-users":
+      return <Users className={className} aria-hidden="true" />;
+    case "admin-projects":
+      return <FolderKanban className={className} aria-hidden="true" />;
     case "keys":
       return <Keyboard className={className} aria-hidden="true" />;
   }
@@ -161,10 +178,13 @@ const THEME_CYCLE: ReadonlyArray<ThemePreference> = ["light", "dark", "system"];
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { activeInbox, openCreateProject, openShortcuts } = useAppCommands();
+  const { activeInbox, openCreateProject, openShortcuts, previewAsViewer, togglePreviewAsViewer } =
+    useAppCommands();
   const { theme, setTheme } = useTheme();
   const { data: meta } = useQuery(metaQueryOptions());
+  const { data: me } = useQuery(authMeQueryOptions());
   const { data: projects } = useQuery(projectsQueryOptions());
+  const canCreateProjects = canUserCreateProjects(meta?.mode, me?.user);
 
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -322,23 +342,52 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     }
 
     if (activeInbox) {
-      items.push({
-        id: "action:send-test",
-        group: "Actions",
-        label: `Send test email to ${activeInbox.projectName}`,
-        keywords: "send test sample email",
-        icon: "send",
-        onSelect: () => activeInbox.sendTestEmail(),
-      });
-      if (activeInbox.messageCount > 0) {
+      if (activeInbox.effectiveRole !== "viewer") {
         items.push({
-          id: "action:delete-all",
+          id: "action:send-test",
           group: "Actions",
-          label: `Delete all in ${activeInbox.projectName}`,
-          keywords: "clear empty delete all messages",
-          destructive: true,
-          icon: "trash",
-          onSelect: () => activeInbox.openDeleteAll(),
+          label: `Send test email to ${activeInbox.projectName}`,
+          keywords: "send test sample email",
+          icon: "send",
+          onSelect: () => activeInbox.sendTestEmail(),
+        });
+        if (activeInbox.messageCount > 0) {
+          items.push({
+            id: "action:delete-all",
+            group: "Actions",
+            label: `Delete all in ${activeInbox.projectName}`,
+            keywords: "clear empty delete all messages",
+            destructive: true,
+            icon: "trash",
+            onSelect: () => activeInbox.openDeleteAll(),
+          });
+        }
+        items.push({
+          id: "action:project-settings",
+          group: "Actions",
+          label: `Go to ${activeInbox.projectName} settings`,
+          shortcut: "g s",
+          keywords: "project settings general members invites",
+          icon: "settings",
+          onSelect: () => {
+            void navigate({
+              to:
+                activeInbox.effectiveRole === "owner"
+                  ? "/p/$project/settings/general"
+                  : "/p/$project/settings/members",
+              params: { project: activeInbox.projectSlug },
+            });
+          },
+        });
+      }
+      if (activeInbox.actualRole === "owner") {
+        items.push({
+          id: "action:preview-as-viewer",
+          group: "Actions",
+          label: previewAsViewer ? "Exit viewer preview" : "Preview as viewer",
+          keywords: "client view mode preview viewer role",
+          icon: "eye",
+          onSelect: () => togglePreviewAsViewer(),
         });
       }
       items.push({
@@ -355,15 +404,19 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     const nextTheme =
       THEME_CYCLE[(THEME_CYCLE.indexOf(theme) + 1) % THEME_CYCLE.length] ?? "system";
     items.push(
-      {
-        id: "action:new-project",
-        group: "Actions",
-        label: "New project",
-        shortcut: "n",
-        keywords: "create add project",
-        icon: "plus",
-        onSelect: () => openCreateProject(),
-      },
+      ...(canCreateProjects
+        ? ([
+            {
+              id: "action:new-project",
+              group: "Actions",
+              label: "New project",
+              shortcut: "n",
+              keywords: "create add project",
+              icon: "plus",
+              onSelect: () => openCreateProject(),
+            },
+          ] satisfies PaletteItem[])
+        : []),
       {
         id: "action:toggle-theme",
         group: "Actions",
@@ -394,6 +447,30 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           void navigate({ to: "/account/preferences" });
         },
       },
+      ...(meta?.mode === "server" && me?.user.is_admin
+        ? ([
+            {
+              id: "action:admin-users",
+              group: "Actions",
+              label: "Admin: Users",
+              keywords: "admin users invite permissions reset password",
+              icon: "admin-users",
+              onSelect: () => {
+                void navigate({ to: "/admin/users" });
+              },
+            },
+            {
+              id: "action:admin-projects",
+              group: "Actions",
+              label: "Admin: Projects",
+              keywords: "admin all projects owners storage",
+              icon: "admin-projects",
+              onSelect: () => {
+                void navigate({ to: "/admin/projects" });
+              },
+            },
+          ] satisfies PaletteItem[])
+        : []),
       ...(meta?.mode === "server"
         ? ([
             {
@@ -453,12 +530,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   }, [
     projects,
     activeInbox,
+    previewAsViewer,
+    togglePreviewAsViewer,
+    canCreateProjects,
     theme,
     setTheme,
     navigate,
     openCreateProject,
     openShortcuts,
     meta?.mode,
+    me?.user.is_admin,
     queryClient,
   ]);
 

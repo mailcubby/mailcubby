@@ -8,10 +8,17 @@ export const Route = createFileRoute("/p/$project/")({
 });
 
 function ProjectInboxEmptyPane() {
-  const { project, allLoadedCount, isLoadingMessages, invalidateInbox } = useInboxContext();
+  const { project, effectiveRole, allLoadedCount, isLoadingMessages, invalidateInbox } =
+    useInboxContext();
 
   if (!isLoadingMessages && project.message_count === 0 && allLoadedCount === 0) {
-    return <EmptyInboxGuide project={project} onSentTest={invalidateInbox} />;
+    return (
+      <EmptyInboxGuide
+        project={project}
+        effectiveRole={effectiveRole}
+        onSentTest={invalidateInbox}
+      />
+    );
   }
 
   return (

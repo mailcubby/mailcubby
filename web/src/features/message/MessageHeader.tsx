@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 export interface MessageHeaderProps {
   projectSlug: string;
   projectRole: ProjectRole;
+  hideTechnical: boolean;
   projectTags: ReadonlyArray<TagSummary>;
   message: MessageDetail;
   hasPrevious: boolean;
@@ -93,6 +94,7 @@ function AddressList({ label, addresses }: { label: string; addresses: ReadonlyA
 export function MessageHeader({
   projectSlug,
   projectRole,
+  hideTechnical,
   projectTags,
   message,
   hasPrevious,
@@ -109,7 +111,8 @@ export function MessageHeader({
 }: MessageHeaderProps) {
   const [clock24h] = useClock24hPreference();
 
-  const canEditTags = projectRole !== "viewer";
+  const isViewer = projectRole === "viewer";
+  const canEditTags = !isViewer;
   const tagColorByLower = useMemo(() => {
     const map = new Map<string, string>();
     for (const tag of projectTags) {
@@ -181,31 +184,35 @@ export function MessageHeader({
 
           <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
 
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={message.seen ? "Mark unread" : "Mark read"}
-            title={message.seen ? "Mark unread (u)" : "Mark read (u)"}
-            disabled={isUpdatingSeen}
-            onClick={onToggleSeen}
-            className="size-7"
-          >
-            {message.seen ? (
-              <Mail className="size-3.5" aria-hidden="true" />
-            ) : (
-              <MailOpen className="size-3.5" aria-hidden="true" />
-            )}
-          </Button>
+          {!isViewer ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={message.seen ? "Mark unread" : "Mark read"}
+              title={message.seen ? "Mark unread (u)" : "Mark read (u)"}
+              disabled={isUpdatingSeen}
+              onClick={onToggleSeen}
+              className="size-7"
+            >
+              {message.seen ? (
+                <Mail className="size-3.5" aria-hidden="true" />
+              ) : (
+                <MailOpen className="size-3.5" aria-hidden="true" />
+              )}
+            </Button>
+          ) : null}
 
-          <a
-            href={emlHref}
-            download
-            aria-label="Download .eml"
-            title="Download .eml"
-            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <Download className="size-3.5" aria-hidden="true" />
-          </a>
+          {!hideTechnical ? (
+            <a
+              href={emlHref}
+              download
+              aria-label="Download .eml"
+              title="Download .eml"
+              className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Download className="size-3.5" aria-hidden="true" />
+            </a>
+          ) : null}
 
           <Button
             variant="ghost"
@@ -231,16 +238,18 @@ export function MessageHeader({
             </a>
           ) : null}
 
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Delete message"
-            title="Delete message (e)"
-            onClick={onDelete}
-            className="size-7 text-muted-foreground hover:text-destructive"
-          >
-            <Trash2 className="size-3.5" aria-hidden="true" />
-          </Button>
+          {!isViewer ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Delete message"
+              title="Delete message (e)"
+              onClick={onDelete}
+              className="size-7 text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="size-3.5" aria-hidden="true" />
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -270,9 +279,9 @@ export function MessageHeader({
         </div>
       </div>
 
-      {message.credential_label || message.tags.length > 0 || canEditTags ? (
+      {(!isViewer && message.credential_label) || message.tags.length > 0 || canEditTags ? (
         <div className="flex flex-wrap items-center gap-1.5">
-          {message.credential_label ? (
+          {!isViewer && message.credential_label ? (
             <Badge variant="outline">via {message.credential_label}</Badge>
           ) : null}
           {message.tags.map((tag) => {

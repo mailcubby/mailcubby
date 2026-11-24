@@ -275,7 +275,7 @@ Tasks:
 - [x] Projects home with roles and "New project" (when allowed); project settings shell (UI 3.6) with General and Members and invites sections.
 - [x] Invite accept page (`/invite/$token`) for all FR-056 cases; reset page (`/reset/$token`).
 - [x] Admin users and projects pages (UI 3.7).
-- [ ] Viewer UI restrictions (UI 3.8) and "Preview as viewer" toggle.
+- [x] Viewer UI restrictions (UI 3.8) and "Preview as viewer" toggle.
 
 Files: `web/src/features/{projects,settings,admin,auth}/`, `web/e2e/`.
 

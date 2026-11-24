@@ -37,6 +37,7 @@ function RootShell() {
     setShortcutsOpen,
     createProjectOpen,
     setCreateProjectOpen,
+    activeInbox,
   } = useAppCommands();
 
   const globalBindings = useMemo<KeyShortcutBinding[]>(
@@ -64,13 +65,29 @@ function RootShell() {
         },
       },
       {
+        keys: "g s",
+        enabled: Boolean(activeInbox && activeInbox.effectiveRole !== "viewer"),
+        handler: () => {
+          if (!activeInbox) {
+            return;
+          }
+          void navigate({
+            to:
+              activeInbox.effectiveRole === "owner"
+                ? "/p/$project/settings/general"
+                : "/p/$project/settings/members",
+            params: { project: activeInbox.projectSlug },
+          });
+        },
+      },
+      {
         keys: "g a",
         handler: () => {
           void navigate({ to: "/account/preferences" });
         },
       },
     ],
-    [navigate, paletteOpen, setPaletteOpen, setShortcutsOpen],
+    [activeInbox, navigate, paletteOpen, setPaletteOpen, setShortcutsOpen],
   );
 
   useKeyShortcuts(globalBindings, { singleKeyEnabled });

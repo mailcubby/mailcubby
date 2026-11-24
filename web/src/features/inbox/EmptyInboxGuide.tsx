@@ -5,17 +5,18 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { generateIntegrationSnippets } from "@/features/settings/snippets";
-import { api, type ProjectDetail, unwrap } from "@/lib/api";
+import { api, type ProjectDetail, type ProjectRole, unwrap } from "@/lib/api";
 import { copyToClipboard } from "@/lib/clipboard";
 import { metaQueryOptions } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 export interface EmptyInboxGuideProps {
   project: ProjectDetail;
+  effectiveRole?: ProjectRole;
   onSentTest: () => Promise<void>;
 }
 
-export function EmptyInboxGuide({ project, onSentTest }: EmptyInboxGuideProps) {
+export function EmptyInboxGuide({ project, effectiveRole, onSentTest }: EmptyInboxGuideProps) {
   const navigate = useNavigate();
   const { data: meta } = useQuery(metaQueryOptions());
   const [activeSnippetId, setActiveSnippetId] = useState("laravel");
@@ -59,7 +60,7 @@ export function EmptyInboxGuide({ project, onSentTest }: EmptyInboxGuideProps) {
 
   const activeSnippet = snippets.find((s) => s.id === activeSnippetId) ?? snippets[0];
 
-  if (project.role === "viewer") {
+  if ((effectiveRole ?? project.role) === "viewer") {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground">
         <Inbox className="size-8 opacity-50" aria-hidden="true" />

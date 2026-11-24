@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { AlertCircle, ArrowLeft, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, Eye, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAppCommands } from "@/components/AppCommandContext";
@@ -31,6 +31,7 @@ import {
   updateMessagesInPages,
 } from "@/lib/sseReducer";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { getEffectiveRole } from "@/lib/viewerPreview";
 import type { InboxFilter } from "@/routes/p.$project";
 
 interface InboxPaneSizes {
@@ -88,7 +89,7 @@ export function InboxLayout() {
   const filter: InboxFilter =
     searchQuery.trim().toLowerCase() === "is:unread" && !activeTag ? "unread" : "all";
 
-  const { setActiveInbox } = useAppCommands();
+  const { setActiveInbox, previewAsViewer, setPreviewAsViewer } = useAppCommands();
   const [singleKeyEnabled] = useSingleKeyShortcutsPreference();
 
   const viewportWidth = useViewportWidth();
@@ -338,15 +339,18 @@ export function InboxLayout() {
     },
   });
 
+  const effectiveRole = project ? getEffectiveRole(project.role, previewAsViewer) : "viewer";
+  const isPreviewingAsViewer = Boolean(project && project.role === "owner" && previewAsViewer);
+
   const toggleMessageSeen = useCallback(
     (message: MessageSummary, nextSeen?: boolean) => {
-      if (project?.role === "viewer") {
+      if (effectiveRole === "viewer") {
         return;
       }
       const targetSeen = nextSeen ?? !message.seen;
       seenMutation.mutate({ id: message.id, seen: targetSeen });
     },
-    [project?.role, seenMutation],
+    [effectiveRole, seenMutation],
   );
 
   const tagsMutation = useMutation({
@@ -387,17 +391,17 @@ export function InboxLayout() {
 
   const updateMessageTags = useCallback(
     (message: MessageSummary, nextTags: string[]) => {
-      if (project?.role === "viewer") {
+      if (effectiveRole === "viewer") {
         return;
       }
       tagsMutation.mutate({ id: message.id, tags: nextTags });
     },
-    [project?.role, tagsMutation],
+    [effectiveRole, tagsMutation],
   );
 
   const deleteMessageWithUndo = useCallback(
     (message: MessageSummary) => {
-      if (project?.role === "viewer") {
+      if (effectiveRole === "viewer") {
         return;
       }
       const currentIdx = visibleMessages.findIndex((m) => m.id === message.id);
@@ -424,7 +428,7 @@ export function InboxLayout() {
         }
       }
     },
-    [project?.role, visibleMessages, queryClient, projectSlug, activeMessageId, navigate],
+    [effectiveRole, visibleMessages, queryClient, projectSlug, activeMessageId, navigate],
   );
 
   const sendTestMutation = useMutation({
@@ -492,7 +496,7 @@ export function InboxLayout() {
       projectSlug: project.slug,
       projectName: project.name,
       actualRole: project.role,
-      effectiveRole: project.role,
+      effectiveRole,
       messageCount: project.message_count,
       messages: visibleMessages,
       tags: projectTags,
@@ -507,6 +511,7 @@ export function InboxLayout() {
     };
   }, [
     project,
+    effectiveRole,
     visibleMessages,
     projectTags,
     toggleSidebar,
@@ -591,6 +596,7 @@ export function InboxLayout() {
   const listPane = (
     <MessageListPane
       project={project}
+      effectiveRole={effectiveRole}
       tags={projectTags}
       messages={visibleMessages}
       recentSenders={recentSenders}
@@ -626,6 +632,8 @@ export function InboxLayout() {
 
   const contextValue = {
     project,
+    effectiveRole,
+    isPreviewingAsViewer,
     tags: projectTags,
     messages: visibleMessages,
     allLoadedCount: visibleMessages.length,
@@ -647,145 +655,173 @@ export function InboxLayout() {
 
   return (
     <InboxProvider value={contextValue}>
-      <main className="relative h-full w-full overflow-hidden">
-        {isDesktop ? (
-          <ResizablePanelGroup
-            key={sidebarCollapsed ? "two-pane" : "three-pane"}
-            orientation="horizontal"
-            onLayoutChanged={(layout, metaInfo) => {
-              if (!metaInfo.isUserInteraction) {
-                return;
-              }
-              const nextSidebar = layout.sidebar ?? paneSizes.sidebar;
-              const nextList = layout.list ?? paneSizes.list;
-              const nextReading = layout.reading ?? paneSizes.reading;
-              setPaneSizes({
-                sidebar: nextSidebar,
-                list: nextList,
-                reading: nextReading,
-              });
-            }}
+      <main className="relative flex h-full w-full flex-col overflow-hidden">
+        {isPreviewingAsViewer ? (
+          <div
+            role="status"
+            data-testid="viewer-preview-banner"
+            className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-500/35 bg-amber-500/10 px-4 py-1.5 text-xs text-foreground"
           >
-            {!sidebarCollapsed ? (
-              <>
-                <ResizablePanel
-                  id="sidebar"
-                  defaultSize={`${paneSizes.sidebar}%`}
-                  minSize="13%"
-                  maxSize="28%"
+            <span className="flex items-center gap-2">
+              <Eye
+                className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+                aria-hidden="true"
+              />
+              <span>
+                <strong className="font-semibold">Previewing as viewer.</strong>{" "}
+                {project.settings.viewer_hide_technical
+                  ? "Delete, tagging, settings, and technical views are hidden."
+                  : "Delete, tagging, and settings are hidden."}
+              </span>
+            </span>
+            <Button variant="outline" size="xs" onClick={() => setPreviewAsViewer(false)}>
+              Exit preview
+            </Button>
+          </div>
+        ) : null}
+
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          {isDesktop ? (
+            <ResizablePanelGroup
+              key={sidebarCollapsed ? "two-pane" : "three-pane"}
+              orientation="horizontal"
+              onLayoutChanged={(layout, metaInfo) => {
+                if (!metaInfo.isUserInteraction) {
+                  return;
+                }
+                const nextSidebar = layout.sidebar ?? paneSizes.sidebar;
+                const nextList = layout.list ?? paneSizes.list;
+                const nextReading = layout.reading ?? paneSizes.reading;
+                setPaneSizes({
+                  sidebar: nextSidebar,
+                  list: nextList,
+                  reading: nextReading,
+                });
+              }}
+            >
+              {!sidebarCollapsed ? (
+                <>
+                  <ResizablePanel
+                    id="sidebar"
+                    defaultSize={`${paneSizes.sidebar}%`}
+                    minSize="13%"
+                    maxSize="28%"
+                  >
+                    <InboxSidebar
+                      project={project}
+                      effectiveRole={effectiveRole}
+                      tags={projectTags}
+                      filter={filter}
+                      {...(activeTag ? { activeTag } : {})}
+                      onSelectFilter={handleSelectFilter}
+                      onSelectTag={handleSelectTag}
+                      onCollapse={() => setSidebarCollapsed(true)}
+                    />
+                  </ResizablePanel>
+                  <ResizableHandle aria-label="Resize sidebar" />
+                </>
+              ) : null}
+
+              <ResizablePanel
+                id="list"
+                defaultSize={`${sidebarCollapsed ? Math.min(45, paneSizes.list + 6) : paneSizes.list}%`}
+                minSize="22%"
+                maxSize="55%"
+              >
+                {listPane}
+              </ResizablePanel>
+
+              <ResizableHandle aria-label="Resize message list" />
+
+              <ResizablePanel
+                id="reading"
+                defaultSize={`${sidebarCollapsed ? Math.max(55, paneSizes.reading) : paneSizes.reading}%`}
+                minSize="30%"
+              >
+                <div
+                  ref={readingPaneRef}
+                  tabIndex={-1}
+                  className="h-full min-w-0 overflow-hidden bg-background"
                 >
+                  <Outlet />
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          ) : isMobile ? (
+            activeMessageId ? (
+              <div className="flex h-full flex-col overflow-hidden bg-background">
+                <div className="flex h-10 shrink-0 items-center border-b border-border bg-surface px-3">
+                  <Link
+                    to="/p/$project"
+                    params={{ project: project.slug }}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-accent"
+                  >
+                    <ArrowLeft className="size-3.5" aria-hidden="true" />
+                    <span>Back to {project.name}</span>
+                  </Link>
+                </div>
+                <div ref={readingPaneRef} tabIndex={-1} className="min-h-0 flex-1 overflow-hidden">
+                  <Outlet />
+                </div>
+              </div>
+            ) : (
+              <div className="h-full overflow-hidden">{listPane}</div>
+            )
+          ) : (
+            <ResizablePanelGroup orientation="horizontal">
+              <ResizablePanel id="list" defaultSize="40%" minSize="28%" maxSize="60%">
+                {listPane}
+              </ResizablePanel>
+              <ResizableHandle aria-label="Resize message list" />
+              <ResizablePanel id="reading" defaultSize="60%" minSize="35%">
+                <div
+                  ref={readingPaneRef}
+                  tabIndex={-1}
+                  className="h-full min-w-0 overflow-hidden bg-background"
+                >
+                  <Outlet />
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          )}
+
+          {!isDesktop && drawerOpen ? (
+            <div className="fixed inset-0 z-40 flex">
+              <div className="relative z-10 flex h-full w-64 flex-col border-r border-border bg-surface shadow-xl">
+                <div className="flex h-11 items-center justify-between border-b border-border px-3">
+                  <span className="text-xs font-semibold text-foreground">Navigation</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Close sidebar"
+                    onClick={() => setDrawerOpen(false)}
+                    className="size-7"
+                  >
+                    <X className="size-4" aria-hidden="true" />
+                  </Button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden">
                   <InboxSidebar
                     project={project}
+                    effectiveRole={effectiveRole}
                     tags={projectTags}
                     filter={filter}
                     {...(activeTag ? { activeTag } : {})}
                     onSelectFilter={handleSelectFilter}
                     onSelectTag={handleSelectTag}
-                    onCollapse={() => setSidebarCollapsed(true)}
+                    onCloseDrawer={() => setDrawerOpen(false)}
                   />
-                </ResizablePanel>
-                <ResizableHandle aria-label="Resize sidebar" />
-              </>
-            ) : null}
-
-            <ResizablePanel
-              id="list"
-              defaultSize={`${sidebarCollapsed ? Math.min(45, paneSizes.list + 6) : paneSizes.list}%`}
-              minSize="22%"
-              maxSize="55%"
-            >
-              {listPane}
-            </ResizablePanel>
-
-            <ResizableHandle aria-label="Resize message list" />
-
-            <ResizablePanel
-              id="reading"
-              defaultSize={`${sidebarCollapsed ? Math.max(55, paneSizes.reading) : paneSizes.reading}%`}
-              minSize="30%"
-            >
-              <div
-                ref={readingPaneRef}
-                tabIndex={-1}
-                className="h-full min-w-0 overflow-hidden bg-background"
-              >
-                <Outlet />
+                </div>
               </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        ) : isMobile ? (
-          activeMessageId ? (
-            <div className="flex h-full flex-col overflow-hidden bg-background">
-              <div className="flex h-10 shrink-0 items-center border-b border-border bg-surface px-3">
-                <Link
-                  to="/p/$project"
-                  params={{ project: project.slug }}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-accent"
-                >
-                  <ArrowLeft className="size-3.5" aria-hidden="true" />
-                  <span>Back to {project.name}</span>
-                </Link>
-              </div>
-              <div ref={readingPaneRef} tabIndex={-1} className="min-h-0 flex-1 overflow-hidden">
-                <Outlet />
-              </div>
+              <button
+                type="button"
+                aria-label="Dismiss sidebar"
+                onClick={() => setDrawerOpen(false)}
+                className="flex-1 bg-black/40"
+              />
             </div>
-          ) : (
-            <div className="h-full overflow-hidden">{listPane}</div>
-          )
-        ) : (
-          <ResizablePanelGroup orientation="horizontal">
-            <ResizablePanel id="list" defaultSize="40%" minSize="28%" maxSize="60%">
-              {listPane}
-            </ResizablePanel>
-            <ResizableHandle aria-label="Resize message list" />
-            <ResizablePanel id="reading" defaultSize="60%" minSize="35%">
-              <div
-                ref={readingPaneRef}
-                tabIndex={-1}
-                className="h-full min-w-0 overflow-hidden bg-background"
-              >
-                <Outlet />
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        )}
-
-        {!isDesktop && drawerOpen ? (
-          <div className="fixed inset-0 z-40 flex">
-            <div className="relative z-10 flex h-full w-64 flex-col border-r border-border bg-surface shadow-xl">
-              <div className="flex h-11 items-center justify-between border-b border-border px-3">
-                <span className="text-xs font-semibold text-foreground">Navigation</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Close sidebar"
-                  onClick={() => setDrawerOpen(false)}
-                  className="size-7"
-                >
-                  <X className="size-4" aria-hidden="true" />
-                </Button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <InboxSidebar
-                  project={project}
-                  tags={projectTags}
-                  filter={filter}
-                  {...(activeTag ? { activeTag } : {})}
-                  onSelectFilter={handleSelectFilter}
-                  onSelectTag={handleSelectTag}
-                  onCloseDrawer={() => setDrawerOpen(false)}
-                />
-              </div>
-            </div>
-            <button
-              type="button"
-              aria-label="Dismiss sidebar"
-              onClick={() => setDrawerOpen(false)}
-              className="flex-1 bg-black/40"
-            />
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </main>
     </InboxProvider>
   );

@@ -1,9 +1,11 @@
 import { createContext, type RefObject, useContext } from "react";
-import type { MessageSummary, ProjectDetail, TagSummary } from "@/lib/api";
+import type { MessageSummary, ProjectDetail, ProjectRole, TagSummary } from "@/lib/api";
 import type { InboxFilter } from "@/routes/p.$project";
 
 export interface InboxContextValue {
   project: ProjectDetail;
+  effectiveRole: ProjectRole;
+  isPreviewingAsViewer: boolean;
   tags: ReadonlyArray<TagSummary>;
   messages: ReadonlyArray<MessageSummary>;
   allLoadedCount: number;

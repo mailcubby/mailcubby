@@ -30,7 +30,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SearchBar } from "@/features/inbox/SearchBar";
 import { combineQueryAndTag } from "@/features/inbox/searchQuery";
 import { TagPickerPopover } from "@/features/inbox/TagPickerPopover";
-import { api, type MessageSummary, type ProjectDetail, type TagSummary, unwrap } from "@/lib/api";
+import {
+  api,
+  type MessageSummary,
+  type ProjectDetail,
+  type ProjectRole,
+  type TagSummary,
+  unwrap,
+} from "@/lib/api";
 import {
   formatCount,
   formatExactTimestamp,
@@ -53,6 +60,7 @@ const HOVER_PREFETCH_DELAY_MS = 100;
 
 export interface MessageListPaneProps {
   project: ProjectDetail;
+  effectiveRole: ProjectRole;
   tags: ReadonlyArray<TagSummary>;
   messages: ReadonlyArray<MessageSummary>;
   recentSenders: ReadonlyArray<string>;
@@ -81,6 +89,7 @@ export interface MessageListPaneProps {
 
 export function MessageListPane({
   project,
+  effectiveRole,
   tags,
   messages,
   recentSenders,
@@ -160,6 +169,18 @@ export function MessageListPane({
       }
     });
   }, [project.slug, subscribeArrivals]);
+
+  const isViewer = effectiveRole === "viewer";
+
+  // Clear selection whenever entering viewer mode / viewer preview.
+  useEffect(() => {
+    if (isViewer) {
+      setSelectedIds(new Set());
+      setLastSelectedIndex(null);
+      setConfirmBulkDelete(false);
+      setBulkTagOpen(false);
+    }
+  }, [isViewer]);
 
   // Prune selection when project changes or deleted messages disappear.
   useEffect(() => {
@@ -384,10 +405,12 @@ export function MessageListPane({
       },
       {
         keys: "Shift+j",
+        enabled: !isViewer,
         handler: () => moveSelection(1, true),
       },
       {
         keys: "Shift+k",
+        enabled: !isViewer,
         handler: () => moveSelection(-1, true),
       },
       {
@@ -427,6 +450,7 @@ export function MessageListPane({
       },
       {
         keys: "x",
+        enabled: !isViewer,
         handler: () => {
           const idx = Math.max(currentIdx, 0);
           const target = messages[idx];
@@ -437,18 +461,22 @@ export function MessageListPane({
       },
       {
         keys: "e",
+        enabled: !isViewer,
         handler: deleteCurrentOrBulk,
       },
       {
         keys: "#",
+        enabled: !isViewer,
         handler: deleteCurrentOrBulk,
       },
       {
         keys: "Delete",
+        enabled: !isViewer,
         handler: deleteCurrentOrBulk,
       },
       {
         keys: "u",
+        enabled: !isViewer,
         handler: () => {
           if (selectedArray.length > 0) {
             const anyUnread = messages.some((m) => selectedIds.has(m.id) && !m.seen);
@@ -462,7 +490,7 @@ export function MessageListPane({
       },
       {
         keys: "t",
-        enabled: selectedArray.length > 0 && project.role !== "viewer",
+        enabled: selectedArray.length > 0 && !isViewer,
         handler: () => setBulkTagOpen(true),
       },
     ];
@@ -477,7 +505,7 @@ export function MessageListPane({
     readingPaneRef,
     handleToggleSelect,
     bulkMutate,
-    project.role,
+    isViewer,
   ]);
 
   useKeyShortcuts(inboxShortcuts, { singleKeyEnabled });
@@ -513,7 +541,7 @@ export function MessageListPane({
       aria-label="Message list"
       className="relative flex h-full min-w-0 flex-col bg-surface text-[13px]"
     >
-      {selectedIds.size > 0 ? (
+      {!isViewer && selectedIds.size > 0 ? (
         <div
           role="toolbar"
           aria-label="Bulk message actions"
@@ -571,7 +599,7 @@ export function MessageListPane({
               <Mail className="size-3.5" aria-hidden="true" />
               <span className="hidden xl:inline">Mark unread</span>
             </Button>
-            {project.role !== "viewer" ? (
+            {!isViewer ? (
               <TagPickerPopover
                 mode="bulk"
                 open={bulkTagOpen}
@@ -621,7 +649,7 @@ export function MessageListPane({
           </div>
 
           <div className="flex items-center gap-1">
-            {messages.length > 0 ? (
+            {!isViewer && messages.length > 0 ? (
               <Button
                 variant="ghost"
                 size="icon"
@@ -643,8 +671,7 @@ export function MessageListPane({
             >
               <RefreshCw className="size-3.5" aria-hidden="true" />
             </Button>
-            {project.role !== "viewer" &&
-            (hasActiveFilter ? messages.length > 0 : project.message_count > 0) ? (
+            {!isViewer && (hasActiveFilter ? messages.length > 0 : project.message_count > 0) ? (
               <Button
                 variant="ghost"
                 size="xs"
@@ -727,7 +754,9 @@ export function MessageListPane({
                 ? "Try broadening or clearing your search filters."
                 : filter === "unread"
                   ? "All messages in this project have been read."
-                  : "Send mail via SMTP or use the setup guide to test."}
+                  : isViewer
+                    ? "Messages captured for this project will appear here."
+                    : "Send mail via SMTP or use the setup guide to test."}
             </p>
             {hasActiveFilter ? (
               <Button variant="outline" size="xs" onClick={onClearSearchAll} className="mt-1">
@@ -789,14 +818,16 @@ export function MessageListPane({
                   )}
                 >
                   <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select message: ${subject}`}
-                      checked={isSelected}
-                      onChange={() => {}}
-                      onClick={handleCheckboxClick}
-                      className="size-3.5 cursor-pointer rounded-xs border border-border accent-accent"
-                    />
+                    {!isViewer ? (
+                      <input
+                        type="checkbox"
+                        aria-label={`Select message: ${subject}`}
+                        checked={isSelected}
+                        onChange={() => {}}
+                        onClick={handleCheckboxClick}
+                        className="size-3.5 cursor-pointer rounded-xs border border-border accent-accent"
+                      />
+                    ) : null}
                     <span
                       className={cn(
                         "size-2 rounded-full",

@@ -58,6 +58,7 @@ export function MessageView() {
   const search = useSearch({ from: "/p/$project/m/$messageId" });
   const {
     project,
+    effectiveRole,
     tags,
     messages,
     deleteMessageWithUndo,
@@ -88,7 +89,7 @@ export function MessageView() {
 
   // Mark message seen after configured delay when opened by a member/owner (FR-075, UI 3.7).
   useEffect(() => {
-    if (!message || message.seen || project.role === "viewer" || markReadDelay === "never") {
+    if (!message || message.seen || effectiveRole === "viewer" || markReadDelay === "never") {
       return;
     }
     if (autoMarkedRef.current === message.id) {
@@ -106,7 +107,7 @@ export function MessageView() {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [message, project.role, markReadDelay, toggleMessageSeen]);
+  }, [message, effectiveRole, markReadDelay, toggleMessageSeen]);
 
   const currentIdx = messages.findIndex((m) => m.id === messageId);
   const previousMessage = currentIdx > 0 ? messages[currentIdx - 1] : undefined;
@@ -136,7 +137,7 @@ export function MessageView() {
   }, [queryClient, projectSlug, nextMessage, previousMessage]);
 
   const hasPreview = Boolean(message?.has_html && message?.render_url);
-  const hideTechnical = project.role === "viewer" && project.settings.viewer_hide_technical;
+  const hideTechnical = effectiveRole === "viewer" && project.settings.viewer_hide_technical;
 
   const availableTabs = useMemo<TabDefinition[]>(() => {
     const list: TabDefinition[] = [];
@@ -184,11 +185,11 @@ export function MessageView() {
       })),
       {
         keys: "t",
-        enabled: project.role !== "viewer",
+        enabled: effectiveRole !== "viewer",
         handler: () => setTagEditorOpen(true),
       },
     ],
-    [availableTabs, selectTab, project.role, setTagEditorOpen],
+    [availableTabs, selectTab, effectiveRole, setTagEditorOpen],
   );
 
   useKeyShortcuts(tabShortcutBindings, { singleKeyEnabled });
@@ -255,7 +256,8 @@ export function MessageView() {
     <article aria-label="Message viewer" className="flex h-full min-h-0 flex-col bg-background">
       <MessageHeader
         projectSlug={projectSlug}
-        projectRole={project.role}
+        projectRole={effectiveRole}
+        hideTechnical={hideTechnical}
         projectTags={tags}
         message={message}
         hasPrevious={Boolean(previousMessage)}

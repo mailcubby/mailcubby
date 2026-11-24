@@ -26,6 +26,7 @@ import {
   handleApiError,
   type ProjectColor,
   type ProjectDetail,
+  type ProjectRole,
   type TagSummary,
   unwrap,
   unwrapVoid,
@@ -39,6 +40,7 @@ import type { InboxFilter } from "@/routes/p.$project";
 
 export interface InboxSidebarProps {
   project: ProjectDetail;
+  effectiveRole: ProjectRole;
   tags: ReadonlyArray<TagSummary>;
   filter: InboxFilter;
   activeTag?: string;
@@ -50,6 +52,7 @@ export interface InboxSidebarProps {
 
 export function InboxSidebar({
   project,
+  effectiveRole,
   tags,
   filter,
   activeTag,
@@ -75,7 +78,7 @@ export function InboxSidebar({
   const switcherSearchId = useId();
   const newTagInputId = useId();
 
-  const canManageTags = project.role !== "viewer";
+  const canManageTags = effectiveRole !== "viewer";
 
   const createTagMutation = useMutation({
     mutationFn: async ({ name, color }: { name: string; color: ProjectColor }) =>
@@ -429,10 +432,10 @@ export function InboxSidebar({
         </section>
 
         <div className="mt-6 flex flex-col gap-0.5 border-t border-border pt-3">
-          {project.role !== "viewer" ? (
+          {effectiveRole !== "viewer" ? (
             <Link
               to={
-                project.role === "owner"
+                effectiveRole === "owner"
                   ? "/p/$project/settings/general"
                   : "/p/$project/settings/members"
               }
@@ -456,7 +459,7 @@ export function InboxSidebar({
       </div>
 
       <div className="border-t border-border">
-        {meta?.mode === "local" ? (
+        {meta?.mode === "local" && effectiveRole !== "viewer" ? (
           <div className="p-3">
             <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               SMTP Quick Copy

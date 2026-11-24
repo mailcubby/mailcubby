@@ -19,6 +19,7 @@ const SHORTCUT_GROUPS: ReadonlyArray<ShortcutGroup> = [
       { keys: ["Esc"], description: "Close dialog, clear selection, or return to list" },
       { keys: ["["], description: "Toggle sidebar" },
       { keys: ["g", "p"], description: "Go to Projects" },
+      { keys: ["g", "s"], description: "Go to Project settings" },
       { keys: ["g", "a"], description: "Go to Preferences" },
     ],
   },
