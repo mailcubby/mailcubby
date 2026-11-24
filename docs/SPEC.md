@@ -271,6 +271,7 @@ Unknown operators are treated as plain text. The parser MUST produce parameteris
 - AC: fuzz test of the parser never panics and never produces SQL containing user text outside bind parameters.
 
 **FR-082 Search API.** `query` parameter on the list, delete-all and wait endpoints.
+- Delete-all with a `query` returns `400 bad_request` and deletes nothing when the query does not narrow the selection: it parses to zero terms, every term is a negated full-text term without indexable tokens (e.g. `-"!"`), or it consists only of exclusions (negated text, `from:`, `to:`, `subject:`, `tag:`, `credential:` terms) that exclude no message in the project. To delete every message, omit `query`. List and wait treat such no-op terms as matching everything.
 
 ### 6.11 Tags
 

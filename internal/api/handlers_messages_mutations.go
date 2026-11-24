@@ -303,6 +303,10 @@ func (s *Server) handleDeleteAllMessages(w http.ResponseWriter, r *http.Request)
 		}
 
 		deleted, proj, delErr := search.DeleteMessagesByQuery(r.Context(), s.store, pctx.Project.ID, parsedQuery, s.clk.Now().UTC())
+		if errors.Is(delErr, search.ErrNoEffectiveFilter) {
+			writeError(w, http.StatusBadRequest, ErrCodeBadRequest, "query must narrow the selection; omit the query to delete all messages", nil)
+			return
+		}
 		if delErr != nil {
 			s.log.Error("delete messages by query failed",
 				"request_id", RequestIDFromContext(r.Context()),

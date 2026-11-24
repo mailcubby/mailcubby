@@ -165,3 +165,65 @@ func TestSearchQueryOnListDeleteAndWait(t *testing.T) {
 		t.Fatalf("DELETE ?query=\"\" status = %d, want 400", res.status)
 	}
 }
+
+// TestDeleteMessagesByQueryRejectsNoOpFilter verifies that DELETE /messages?query=
+// returns 400 and deletes nothing when the query does not narrow the selection,
+// instead of deleting every message in the project (FR-076, FR-081, FR-082).
+func TestDeleteMessagesByQueryRejectsNoOpFilter(t *testing.T) {
+	t.Parallel()
+
+	srv := testutil.StartServer(t, nil)
+	base := "http://" + srv.HTTPAddr
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	for _, from := range []string{"alice@shop.test", "bob@shop.test", "carol@shop.test"} {
+		raw := "From: " + from + "\r\nTo: dest@example.test\r\nSubject: Hello\r\n\r\nBody.\r\n"
+		testutil.SendSMTP(t, srv.SMTPAddr, from, []string{"dest@example.test"}, []byte(raw))
+	}
+
+	messageCount := func() int64 {
+		t.Helper()
+		res := doJSON(t, client, http.MethodGet, base+"/api/v1/projects/default", nil)
+		if res.status != http.StatusOK {
+			t.Fatalf("GET project status = %d, body = %s", res.status, string(res.body))
+		}
+		var proj struct {
+			MessageCount int64 `json:"message_count"`
+		}
+		if err := json.Unmarshal(res.body, &proj); err != nil {
+			t.Fatalf("decode project: %v", err)
+		}
+		return proj.MessageCount
+	}
+	if got := messageCount(); got != 3 {
+		t.Fatalf("message_count after seeding = %d, want 3", got)
+	}
+
+	for _, query := range []string{`-"!"`, `-!`, `-*`, "-\U0001E030", `-credential:nope`, `-tag:nope`} {
+		res := doJSON(t, client, http.MethodDelete, base+"/api/v1/projects/default/messages?query="+url.QueryEscape(query), nil)
+		if res.status != http.StatusBadRequest {
+			t.Fatalf("DELETE ?query=%s status = %d, want 400 (body %s)", query, res.status, string(res.body))
+		}
+		if got := messageCount(); got != 3 {
+			t.Fatalf("message_count after DELETE ?query=%s = %d, want 3", query, got)
+		}
+	}
+
+	// List keeps matching everything for a no-op negated term (documented behaviour).
+	res := doJSON(t, client, http.MethodGet, base+"/api/v1/projects/default/messages?query="+url.QueryEscape(`-"!"`), nil)
+	var list struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if res.status != http.StatusOK || json.Unmarshal(res.body, &list) != nil || len(list.Items) != 3 {
+		t.Fatalf("GET ?query=-\"!\" status = %d, items = %d; want 200 with 3 items", res.status, len(list.Items))
+	}
+
+	// An exclusion that excludes something still deletes the rest.
+	res = doJSON(t, client, http.MethodDelete, base+"/api/v1/projects/default/messages?query="+url.QueryEscape(`-from:alice`), nil)
+	if res.status != http.StatusOK {
+		t.Fatalf("DELETE ?query=-from:alice status = %d, body = %s", res.status, string(res.body))
+	}
+	if got := messageCount(); got != 1 {
+		t.Fatalf("message_count after DELETE ?query=-from:alice = %d, want 1", got)
+	}
+}
