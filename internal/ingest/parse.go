@@ -19,6 +19,9 @@ import (
 const (
 	maxSnippetRunes = 200
 	maxTagRunes     = 40
+	// MaxAutoTagsPerMessage caps automatic tags (X-Tags + plus-address tags)
+	// extracted per ingested message, matching the REST API cap of 50.
+	MaxAutoTagsPerMessage = 50
 )
 
 // ParsedAttachment holds extracted metadata for one attachment or inline part.
@@ -111,7 +114,10 @@ func ParseMessage(r io.Reader, rcptTo []string) ParsedMessage {
 
 	snippet := buildSnippet(env.Text)
 	attachments := extractAttachments(env)
-	xTags := extractXTags(env)
+	xTags, xTagsTruncated := extractXTags(env)
+	if xTagsTruncated {
+		warnings = append(warnings, fmt.Sprintf("auto-tags truncated to %d per message", MaxAutoTagsPerMessage))
+	}
 
 	return ParsedMessage{
 		Subject:         subject,
@@ -340,16 +346,16 @@ func collapseNewlines(s string) string {
 	return strings.TrimSpace(s)
 }
 
-func extractXTags(env *enmime.Envelope) []string {
+func extractXTags(env *enmime.Envelope) ([]string, bool) {
 	values := env.GetHeaderValues("X-Tags")
 	if len(values) == 0 {
-		return nil
+		return nil, false
 	}
 	var raw []string
 	for _, val := range values {
 		raw = append(raw, strings.Split(val, ",")...)
 	}
-	return sanitizeAndDedupeTags(raw)
+	return sanitizeAndDedupeTags(raw, MaxAutoTagsPerMessage)
 }
 
 // SanitizeTag normalizes a raw tag name per FR-085 / FR-086: trims whitespace,
@@ -375,12 +381,17 @@ func SanitizeTag(raw string) string {
 	return buf.String()
 }
 
-func sanitizeAndDedupeTags(raw []string) []string {
+func sanitizeAndDedupeTags(raw []string, maxCount int) ([]string, bool) {
 	if len(raw) == 0 {
-		return nil
+		return nil, false
 	}
-	seen := make(map[string]struct{}, len(raw))
-	out := make([]string, 0, len(raw))
+	capHint := len(raw)
+	if maxCount > 0 && capHint > maxCount {
+		capHint = maxCount
+	}
+	seen := make(map[string]struct{}, capHint)
+	out := make([]string, 0, capHint)
+	truncated := false
 	for _, item := range raw {
 		tag := SanitizeTag(item)
 		if tag == "" {
@@ -390,11 +401,15 @@ func sanitizeAndDedupeTags(raw []string) []string {
 		if _, dup := seen[key]; dup {
 			continue
 		}
+		if maxCount > 0 && len(out) >= maxCount {
+			truncated = true
+			break
+		}
 		seen[key] = struct{}{}
 		out = append(out, tag)
 	}
 	if len(out) == 0 {
-		return nil
+		return nil, truncated
 	}
-	return out
+	return out, truncated
 }

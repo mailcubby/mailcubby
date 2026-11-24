@@ -13,12 +13,58 @@ import (
 var (
 	sqlcNameRe       = regexp.MustCompile(`^--\s*name:\s*([A-Za-z0-9_]+)\s*:`)
 	isolationAnnotRe = regexp.MustCompile(`(?i)^--\s*isolation:\s*global\s*\(\s*\S[^)]*\)\s*$`)
-	tenantTableRe    = regexp.MustCompile(`(?i)\b(?:from|join|into|update)\s+(?:main\.)?"?(messages|attachments|tags|message_tags|smtp_credentials|invites|project_members)"?\b`)
+	tenantTableRefRe = regexp.MustCompile(`(?i)\b(?:from|join|into|update)\s+(?:main\.)?"?(messages|attachments|tags|message_tags|smtp_credentials|invites|project_members)"?(?:\s+(?:as\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?`)
 	insertStmtRe     = regexp.MustCompile(`(?i)^\s*(?:with\b[\s\S]*?\)\s*)?insert\b`)
-	projectIDWordRe  = regexp.MustCompile(`(?i)\bproject_id\b`)
-	projectIDPredRe  = regexp.MustCompile(`(?i)(?:\bproject_id\s*(?:=|in\b)|using\s*\([^)]*\bproject_id\b)`)
+	insertColsRe     = regexp.MustCompile(`(?is)\binto\s+(?:main\.)?"?[a-zA-Z_][a-zA-Z0-9_]*"?\s*\(([^)]*)\)`)
+	unqualProjPredRe = regexp.MustCompile(`(?i)(?:^|[^.\w])project_id\s*(?:=|in\b)`)
+	usingProjRe      = regexp.MustCompile(`(?i)\busing\s*\([^)]*\bproject_id\b`)
+	qualProjEqQualRe = regexp.MustCompile(`(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.project_id\s*=\s*([a-zA-Z_][a-zA-Z0-9_]*)\.project_id\b`)
+	qualProjPredRe   = regexp.MustCompile(`(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.project_id\s*(?:=\s*(?:\?|sqlc\.arg\b|\$|:[a-zA-Z_])|in\s*\()`)
 	blockCommentRe   = regexp.MustCompile(`(?s)/\*.*?\*/`)
 )
+
+var sqlKeywords = map[string]struct{}{
+	"where": {}, "set": {}, "on": {}, "using": {}, "join": {}, "left": {}, "right": {},
+	"inner": {}, "outer": {}, "cross": {}, "full": {}, "natural": {}, "order": {},
+	"group": {}, "limit": {}, "offset": {}, "having": {}, "union": {}, "intersect": {},
+	"except": {}, "returning": {}, "values": {}, "select": {}, "and": {}, "or": {},
+}
+
+type tenantTableRef struct {
+	table string
+	alias string
+}
+
+func (r tenantTableRef) qualifier() string {
+	if r.alias != "" {
+		return r.alias
+	}
+	return r.table
+}
+
+func findTenantTableRefs(sqlText string) []tenantTableRef {
+	matches := tenantTableRefRe.FindAllStringSubmatch(sqlText, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(matches))
+	refs := make([]tenantTableRef, 0, len(matches))
+	for _, m := range matches {
+		tbl := strings.ToLower(m[1])
+		alias := strings.ToLower(strings.TrimSpace(m[2]))
+		if _, isKW := sqlKeywords[alias]; isKW {
+			alias = ""
+		}
+		ref := tenantTableRef{table: tbl, alias: alias}
+		key := ref.table + ":" + ref.alias
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		refs = append(refs, ref)
+	}
+	return refs
+}
 
 type parsedQuery struct {
 	file        string
@@ -94,26 +140,71 @@ func stripSQLComments(s string) string {
 }
 
 func checkQueryIsolation(q parsedQuery) error {
-	m := tenantTableRe.FindStringSubmatch(q.strippedSQL)
-	if m == nil {
+	refs := findTenantTableRefs(q.strippedSQL)
+	if len(refs) == 0 {
 		return nil
 	}
 	if q.globalOK {
 		return nil
 	}
 
-	table := strings.ToLower(m[1])
 	if insertStmtRe.MatchString(q.strippedSQL) {
-		if projectIDWordRe.MatchString(q.strippedSQL) {
-			return nil
+		colsMatch := insertColsRe.FindStringSubmatch(q.strippedSQL)
+		if colsMatch != nil && regexp.MustCompile(`(?i)\bproject_id\b`).MatchString(colsMatch[1]) {
+			// If INSERT ... SELECT references additional tenant tables beyond the target, verify those too.
+			if len(refs) == 1 {
+				return nil
+			}
+			refs = refs[1:]
+		} else {
+			return fmt.Errorf("%s (%s): INSERT into tenant table %q must include project_id in column list or '-- isolation: global (<reason>)'", q.file, q.name, refs[0].table)
 		}
-		return fmt.Errorf("%s (%s): INSERT into tenant table %q must include project_id or '-- isolation: global (<reason>)'", q.file, q.name, table)
 	}
 
-	if projectIDPredRe.MatchString(q.strippedSQL) {
+	if usingProjRe.MatchString(q.strippedSQL) {
 		return nil
 	}
-	return fmt.Errorf("%s (%s): query on tenant table %q must filter by project_id or carry '-- isolation: global (<reason>)'", q.file, q.name, table)
+
+	// Collect all qualifiers directly filtered by project_id = ? / IN (...).
+	constrained := make(map[string]bool)
+	for _, m := range qualProjPredRe.FindAllStringSubmatch(q.strippedSQL, -1) {
+		constrained[strings.ToLower(m[1])] = true
+	}
+
+	// When only a single tenant table is referenced, an unqualified project_id predicate applies to it.
+	if len(refs) == 1 && unqualProjPredRe.MatchString(q.strippedSQL) {
+		constrained[refs[0].qualifier()] = true
+		constrained[refs[0].table] = true
+	}
+
+	// Propagate project_id constraint across explicit equijoins (a.project_id = b.project_id).
+	edges := make(map[string][]string)
+	for _, m := range qualProjEqQualRe.FindAllStringSubmatch(q.strippedSQL, -1) {
+		a, b := strings.ToLower(m[1]), strings.ToLower(m[2])
+		edges[a] = append(edges[a], b)
+		edges[b] = append(edges[b], a)
+	}
+	for changed := true; changed; {
+		changed = false
+		for a, neighbors := range edges {
+			if !constrained[a] {
+				continue
+			}
+			for _, b := range neighbors {
+				if !constrained[b] {
+					constrained[b] = true
+					changed = true
+				}
+			}
+		}
+	}
+
+	for _, ref := range refs {
+		if !constrained[ref.qualifier()] && !constrained[ref.table] {
+			return fmt.Errorf("%s (%s): tenant table %q (qualifier %q) must filter by project_id or carry '-- isolation: global (<reason>)'", q.file, q.name, ref.table, ref.qualifier())
+		}
+	}
+	return nil
 }
 
 func TestQueriesTenantIsolation(t *testing.T) {
@@ -235,6 +326,24 @@ UPDATE messages SET seen = 1 WHERE project_id = ? AND id = ?;`,
 			sql: `-- name: BadDeleteTag :exec
 DELETE FROM tags WHERE id = ?;`,
 			wantErr: true,
+		},
+		{
+			name: "multi-table tenant join filtering only one table fails",
+			sql: `-- name: BadJoinMissingSecondFilter :many
+SELECT m.id FROM messages m JOIN attachments a ON a.message_pk = m.pk WHERE m.project_id = ?;`,
+			wantErr: true,
+		},
+		{
+			name: "multi-table tenant join with equijoin on project_id passes",
+			sql: `-- name: GoodJoinEqui :many
+SELECT m.id FROM messages m JOIN attachments a ON a.message_pk = m.pk AND a.project_id = m.project_id WHERE m.project_id = ?;`,
+			wantErr: false,
+		},
+		{
+			name: "multi-table tenant join with explicit filter on both passes",
+			sql: `-- name: GoodJoinBothFiltered :many
+SELECT t.name FROM tags t JOIN message_tags mt ON mt.tag_id = t.id WHERE t.project_id = ? AND mt.project_id = ?;`,
+			wantErr: false,
 		},
 	}
 

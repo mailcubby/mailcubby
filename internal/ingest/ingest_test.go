@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -269,5 +271,129 @@ func TestSendTestSampleEmail(t *testing.T) {
 	}
 	if !hasPNG || !hasPDF {
 		t.Fatalf("expected inline PNG and PDF attachment, got %+v", atts)
+	}
+}
+
+func TestIngestAutoTagCapAndParseWarning(t *testing.T) {
+	t.Parallel()
+
+	st := testutil.NewStore(t)
+	blobs, err := blob.NewStore(t.TempDir(), 3)
+	if err != nil {
+		t.Fatalf("blob.NewStore: %v", err)
+	}
+	now := time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC)
+	proj, err := st.CreateProject(t.Context(), store.CreateProjectParams{
+		Slug: "tags-cap", Name: "Tags Cap", Color: "slate", Settings: store.DefaultProjectSettings(), Now: now,
+	})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+
+	rawTags := make([]string, 75)
+	for i := range rawTags {
+		rawTags[i] = fmt.Sprintf("tag-%03d", i)
+	}
+	rawMsg := "From: a@example.test\r\nTo: b@example.test\r\nSubject: Many Tags\r\nX-Tags: " +
+		strings.Join(rawTags, ", ") + "\r\n\r\nBody\r\n"
+
+	ing := ingest.New(st, blobs, clock.NewFake(now), nil, nil)
+	refs, err := ing.Ingest(
+		t.Context(),
+		ingest.Envelope{MailFrom: "a@example.test", RcptTo: []string{"b@example.test"}},
+		[]ingest.Target{{ProjectID: proj.ID, ProjectSlug: proj.Slug, PlusTags: []string{"extra-plus"}, PlusAddressTags: true}},
+		strings.NewReader(rawMsg),
+	)
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(refs[0].Tags) != ingest.MaxAutoTagsPerMessage {
+		t.Fatalf("len(tags) = %d, want %d", len(refs[0].Tags), ingest.MaxAutoTagsPerMessage)
+	}
+	msg, err := st.GetMessageByID(t.Context(), proj.ID, refs[0].ID.String())
+	if err != nil {
+		t.Fatalf("GetMessageByID: %v", err)
+	}
+	foundWarn := false
+	for _, w := range msg.ParseWarnings {
+		if strings.Contains(w, "auto-tags truncated") {
+			foundWarn = true
+			break
+		}
+	}
+	if !foundWarn {
+		t.Fatalf("expected auto-tags truncation parse warning, got %v", msg.ParseWarnings)
+	}
+}
+
+func TestIngestMultiProjectRollbackLeavesNoPartialCommitOrBlobs(t *testing.T) {
+	t.Parallel()
+
+	st := testutil.NewStore(t)
+	blobs, err := blob.NewStore(t.TempDir(), 3)
+	if err != nil {
+		t.Fatalf("blob.NewStore: %v", err)
+	}
+	now := time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC)
+	p1, err := st.CreateProject(t.Context(), store.CreateProjectParams{
+		Slug: "p1", Name: "P1", Color: "slate", Settings: store.DefaultProjectSettings(), Now: now,
+	})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+
+	bus := events.NewBus()
+	defer bus.Close()
+	sub, unsub := bus.Subscribe(events.AllFilter())
+	defer unsub()
+
+	ing := ingest.New(st, blobs, clock.NewFake(now), bus, nil)
+	// Second target references nonexistent project ID 999999 -> FK violation mid-tx.
+	_, err = ing.Ingest(
+		t.Context(),
+		ingest.Envelope{MailFrom: "a@example.test", RcptTo: []string{"p1@inbox.test", "missing@inbox.test"}},
+		[]ingest.Target{
+			{ProjectID: p1.ID, ProjectSlug: p1.Slug},
+			{ProjectID: 999999, ProjectSlug: "missing"},
+		},
+		strings.NewReader("Subject: Multi Fail\r\n\r\nBody\r\n"),
+	)
+	if err == nil {
+		t.Fatalf("expected error for nonexistent second project, got nil")
+	}
+
+	// First project must have 0 messages and counters unchanged.
+	msgs, err := st.ListMessages(t.Context(), p1.ID, 10)
+	if err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Fatalf("expected 0 messages in p1 after multi-project rollback, got %d", len(msgs))
+	}
+	p1After, err := st.GetProjectByID(t.Context(), p1.ID)
+	if err != nil {
+		t.Fatalf("GetProjectByID: %v", err)
+	}
+	if p1After.MessageCount != 0 {
+		t.Fatalf("p1.MessageCount = %d, want 0", p1After.MessageCount)
+	}
+
+	// Zero blobs left on disk.
+	var remaining int
+	if err := blobs.Walk(t.Context(), func(blob.Entry) error {
+		remaining++
+		return nil
+	}); err != nil {
+		t.Fatalf("Walk: %v", err)
+	}
+	if remaining != 0 {
+		t.Fatalf("expected 0 blobs after multi-project rollback, found %d", remaining)
+	}
+
+	// Zero events published.
+	select {
+	case ev := <-sub.Events():
+		t.Fatalf("unexpected event published after rollback: %+v", ev)
+	default:
 	}
 }

@@ -65,7 +65,9 @@ func GenerateAppKey() ([]byte, string, error) {
 }
 
 // LoadOrCreateLocalKey loads the local-mode app key from <dataDir>/app.key,
-// creating it with mode 0600 if it does not yet exist (SPEC 5.1).
+// creating it atomically with mode 0600 if it does not yet exist or is empty
+// (e.g. after a crash before writing). Existing key files have 0600 permissions
+// enforced (SPEC 5.1).
 func LoadOrCreateLocalKey(dataDir string) ([]byte, error) {
 	if strings.TrimSpace(dataDir) == "" {
 		return nil, errors.New("secrets: empty data dir")
@@ -78,13 +80,21 @@ func LoadOrCreateLocalKey(dataDir string) ([]byte, error) {
 	//nolint:gosec // G304: localKeyFilename is joined with configured dataDir
 	data, err := os.ReadFile(path)
 	if err == nil {
-		key, parseErr := ParseAppKey(string(data))
-		if parseErr != nil {
-			return nil, fmt.Errorf("secrets: parse %s: %w", path, parseErr)
+		if strings.TrimSpace(string(data)) != "" {
+			key, parseErr := ParseAppKey(string(data))
+			if parseErr != nil {
+				return nil, fmt.Errorf("secrets: parse %s: %w", path, parseErr)
+			}
+			if chmodErr := os.Chmod(path, 0o600); chmodErr != nil {
+				return nil, fmt.Errorf("secrets: chmod %s: %w", path, chmodErr)
+			}
+			return key, nil
 		}
-		return key, nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
+		// Empty/partial key file left behind by an interrupted startup: remove and regenerate.
+		if rmErr := os.Remove(path); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			return nil, fmt.Errorf("secrets: remove empty %s: %w", path, rmErr)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("secrets: read %s: %w", path, err)
 	}
 
@@ -93,33 +103,59 @@ func LoadOrCreateLocalKey(dataDir string) ([]byte, error) {
 		return nil, err
 	}
 
-	//nolint:gosec // G304: localKeyFilename is joined with configured dataDir
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	tmp, err := os.CreateTemp(dataDir, ".app.key.tmp-*")
 	if err != nil {
+		return nil, fmt.Errorf("secrets: create temp key file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	cleanupTmp := func() {
+		_ = os.Remove(tmpPath)
+	}
+
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		cleanupTmp()
+		return nil, fmt.Errorf("secrets: chmod temp key file: %w", err)
+	}
+	if _, err := tmp.WriteString(encoded + "\n"); err != nil {
+		_ = tmp.Close()
+		cleanupTmp()
+		return nil, fmt.Errorf("secrets: write temp key file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		cleanupTmp()
+		return nil, fmt.Errorf("secrets: sync temp key file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		cleanupTmp()
+		return nil, fmt.Errorf("secrets: close temp key file: %w", err)
+	}
+
+	// Atomically link into place so two concurrent startups never overwrite each other.
+	if err := os.Link(tmpPath, path); err != nil {
 		if errors.Is(err, os.ErrExist) {
-			// Another startup created the file concurrently; read it.
+			cleanupTmp()
 			//nolint:gosec // G304: localKeyFilename is joined with configured dataDir
 			existing, readErr := os.ReadFile(path)
 			if readErr != nil {
 				return nil, fmt.Errorf("secrets: read %s after race: %w", path, readErr)
 			}
-			return ParseAppKey(string(existing))
+			parsed, parseErr := ParseAppKey(string(existing))
+			if parseErr != nil {
+				return nil, fmt.Errorf("secrets: parse %s after race: %w", path, parseErr)
+			}
+			_ = os.Chmod(path, 0o600)
+			return parsed, nil
 		}
-		return nil, fmt.Errorf("secrets: create %s: %w", path, err)
+		// Fallback to Rename on filesystems that do not support hard links.
+		if renErr := os.Rename(tmpPath, path); renErr != nil {
+			cleanupTmp()
+			return nil, fmt.Errorf("secrets: place %s: %w", path, renErr)
+		}
+		return key, nil
 	}
-
-	if _, err := f.WriteString(encoded + "\n"); err != nil {
-		_ = f.Close()
-		_ = os.Remove(path)
-		return nil, fmt.Errorf("secrets: write %s: %w", path, err)
-	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return nil, fmt.Errorf("secrets: sync %s: %w", path, err)
-	}
-	if err := f.Close(); err != nil {
-		return nil, fmt.Errorf("secrets: close %s: %w", path, err)
-	}
+	cleanupTmp()
 
 	return key, nil
 }

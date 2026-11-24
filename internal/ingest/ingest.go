@@ -170,33 +170,206 @@ func (in *Ingestor) Ingest(ctx context.Context, env Envelope, targets []Target, 
 	rawSize := spool.Size()
 	rawSHA := spool.SHA256()
 
-	refs := make([]MessageRef, 0, len(deduped))
-	for _, target := range deduped {
-		ref, err := in.commitTarget(ctx, spool, env, target, parsed, ftsDoc, receivedAt, rawSize, rawSHA)
-		if err != nil {
-			return refs, err
-		}
-		refs = append(refs, ref)
+	type preparedTarget struct {
+		target        Target
+		msgID         ulid.ULID
+		relPath       string
+		extractedTags []string
+		warnings      []string
+	}
 
-		// Step 7: Publish message.created after commit succeeds (FR-012).
+	// Step 5: Place blobs for every target project before starting the DB transaction (FR-010).
+	// If placing any blob fails, clean up all blobs already placed.
+	prepared := make([]preparedTarget, 0, len(deduped))
+	cleanupPlaced := func() {
+		for _, pt := range prepared {
+			if rmErr := in.blobs.Remove(pt.relPath); rmErr != nil {
+				in.log.Warn("failed to remove blob after ingest error", "blob_path", pt.relPath, "error", rmErr)
+			}
+		}
+	}
+
+	for _, target := range deduped {
+		msgID, err := in.nextULID(receivedAt)
+		if err != nil {
+			cleanupPlaced()
+			return nil, fmt.Errorf("ingest: generate message id: %w", err)
+		}
+		relPath, err := in.blobs.Place(spool, target.ProjectID, msgID)
+		if err != nil {
+			cleanupPlaced()
+			return nil, fmt.Errorf("ingest: place blob for project %d: %w", target.ProjectID, err)
+		}
+
+		// Combine X-Tags and plus-address tags (FR-086), capped at MaxAutoTagsPerMessage.
+		combinedRawTags := make([]string, 0, len(parsed.XTags)+len(target.PlusTags))
+		combinedRawTags = append(combinedRawTags, parsed.XTags...)
+		if target.PlusAddressTags {
+			combinedRawTags = append(combinedRawTags, target.PlusTags...)
+		}
+		extractedTags, truncated := sanitizeAndDedupeTags(combinedRawTags, MaxAutoTagsPerMessage)
+		if extractedTags == nil {
+			extractedTags = []string{}
+		}
+		warnings := parsed.ParseWarnings
+		if truncated {
+			truncMsg := fmt.Sprintf("auto-tags truncated to %d per message", MaxAutoTagsPerMessage)
+			if !containsString(warnings, truncMsg) {
+				warnings = append(append([]string(nil), warnings...), truncMsg)
+			}
+		}
+
+		prepared = append(prepared, preparedTarget{
+			target:        target,
+			msgID:         msgID,
+			relPath:       relPath,
+			extractedTags: extractedTags,
+			warnings:      warnings,
+		})
+	}
+
+	// Step 6: Commit all target projects atomically in a single SQLite write transaction
+	// so a failure on a later target never leaves duplicates in earlier projects on SMTP 451 retry.
+	refs := make([]MessageRef, len(prepared))
+	txErr := in.store.WithTx(ctx, func(tx *store.Tx) error {
+		for i, pt := range prepared {
+			storedMsg, err := tx.InsertMessage(ctx, store.InsertMessageParams{
+				ID:               pt.msgID.String(),
+				ProjectID:        pt.target.ProjectID,
+				SMTPCredentialID: pt.target.CredentialID,
+				ReceivedAt:       receivedAt,
+				Subject:          parsed.Subject,
+				FromName:         parsed.FromName,
+				FromAddr:         parsed.FromAddr,
+				To:               parsed.To,
+				Cc:               parsed.Cc,
+				Bcc:              parsed.Bcc,
+				ReplyTo:          parsed.ReplyTo,
+				EnvelopeFrom:     env.MailFrom,
+				EnvelopeTo:       env.RcptTo,
+				MessageIDHeader:  nonEmptyPtr(parsed.MessageIDHeader),
+				DateHeader:       parsed.DateHeader,
+				Snippet:          parsed.Snippet,
+				HasHTML:          parsed.HasHTML,
+				HasText:          parsed.HasText,
+				TextGenerated:    parsed.TextGenerated,
+				AttachmentCount:  int64(len(parsed.Attachments)),
+				SizeBytes:        rawSize,
+				BlobPath:         pt.relPath,
+				Seen:             false,
+				RemoteIP:         nonEmptyPtr(env.RemoteIP),
+				HELO:             nonEmptyPtr(env.HELO),
+				AuthUser:         nonEmptyPtr(env.AuthUser),
+				TLS:              env.TLS,
+				ParseWarnings:    pt.warnings,
+			})
+			if err != nil {
+				return fmt.Errorf("project %d: %w", pt.target.ProjectID, err)
+			}
+
+			for _, att := range parsed.Attachments {
+				if _, err := tx.InsertAttachment(ctx, store.InsertAttachmentParams{
+					MessagePK:   storedMsg.PK,
+					ProjectID:   pt.target.ProjectID,
+					PartPath:    att.PartPath,
+					Filename:    att.Filename,
+					ContentType: att.ContentType,
+					SizeBytes:   att.SizeBytes,
+					ContentID:   nonEmptyPtr(att.ContentID),
+					Disposition: att.Disposition,
+					SHA256:      att.SHA256,
+				}); err != nil {
+					return fmt.Errorf("project %d attachment: %w", pt.target.ProjectID, err)
+				}
+			}
+
+			savedTags, err := tx.EnsureAndAttachTagsTx(ctx, pt.target.ProjectID, storedMsg.PK, pt.extractedTags, receivedAt)
+			if err != nil {
+				return fmt.Errorf("project %d tags: %w", pt.target.ProjectID, err)
+			}
+			if savedTags == nil {
+				savedTags = []string{}
+			}
+
+			if err := search.IndexTx(ctx, tx, storedMsg.PK, ftsDoc); err != nil {
+				return fmt.Errorf("project %d fts: %w", pt.target.ProjectID, err)
+			}
+
+			if err := tx.UpdateProjectCounters(ctx, pt.target.ProjectID, store.ProjectCounterDelta{
+				MessageDelta:  1,
+				UnreadDelta:   1,
+				SizeDelta:     rawSize,
+				LastMessageAt: &receivedAt,
+				Now:           receivedAt,
+			}); err != nil {
+				return fmt.Errorf("project %d counters: %w", pt.target.ProjectID, err)
+			}
+
+			refs[i] = MessageRef{
+				PK:          storedMsg.PK,
+				ID:          pt.msgID,
+				ProjectID:   pt.target.ProjectID,
+				ProjectSlug: pt.target.ProjectSlug,
+				BlobPath:    pt.relPath,
+				SizeBytes:   rawSize,
+				SHA256:      rawSHA,
+				Tags:        savedTags,
+				Summary: events.MessageSummary{
+					ID:         pt.msgID.String(),
+					ReceivedAt: receivedAt,
+					From: events.Address{
+						Name:    parsed.FromName,
+						Address: parsed.FromAddr,
+					},
+					To:              toEventAddresses(parsed.To),
+					Cc:              toEventAddresses(parsed.Cc),
+					Subject:         parsed.Subject,
+					Snippet:         parsed.Snippet,
+					SizeBytes:       rawSize,
+					Seen:            false,
+					AttachmentCount: int64(len(parsed.Attachments)),
+					HasHTML:         parsed.HasHTML,
+					HasText:         parsed.HasText,
+					Tags:            savedTags,
+					CredentialLabel: pt.target.CredentialLabel,
+				},
+			}
+		}
+		return nil
+	})
+	if txErr != nil {
+		// FR-010: remove all placed blobs if the transaction fails.
+		cleanupPlaced()
+		return nil, fmt.Errorf("ingest: commit: %w", txErr)
+	}
+
+	// Step 7 & 8: Publish message.created and signal retention nudges after commit (FR-012, FR-095).
+	for _, ref := range refs {
 		if in.bus != nil {
 			in.bus.Publish(events.Event{
 				Type:      events.TypeMessageCreated,
-				ProjectID: target.ProjectID,
+				ProjectID: ref.ProjectID,
 				Payload: events.MessageCreatedPayload{
-					Project: target.ProjectSlug,
+					Project: ref.ProjectSlug,
 					Message: ref.Summary,
 				},
 			})
 		}
-
-		// Step 8: Retention nudge hook (FR-095, ARCHITECTURE 3.4).
 		if in.retentionNudge != nil {
-			in.retentionNudge(ctx, target.ProjectID)
+			in.retentionNudge(ctx, ref.ProjectID)
 		}
 	}
 
 	return refs, nil
+}
+
+func containsString(list []string, target string) bool {
+	for _, s := range list {
+		if s == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (in *Ingestor) parseSpool(ctx context.Context, spool *blob.Spool, rcptTo []string) (ParsedMessage, error) {
@@ -212,157 +385,6 @@ func (in *Ingestor) parseSpool(ctx context.Context, spool *blob.Spool, rcptTo []
 	defer func() { _ = rc.Close() }()
 
 	return ParseMessage(rc, rcptTo), nil
-}
-
-func (in *Ingestor) commitTarget(
-	ctx context.Context,
-	spool *blob.Spool,
-	env Envelope,
-	target Target,
-	parsed ParsedMessage,
-	ftsDoc search.Document,
-	receivedAt time.Time,
-	rawSize int64,
-	rawSHA string,
-) (MessageRef, error) {
-	msgID, err := in.nextULID(receivedAt)
-	if err != nil {
-		return MessageRef{}, fmt.Errorf("ingest: generate message id: %w", err)
-	}
-
-	// Step 5: Place blob (link or copy + dir fsync) before DB commit (FR-010).
-	relPath, err := in.blobs.Place(spool, target.ProjectID, msgID)
-	if err != nil {
-		return MessageRef{}, fmt.Errorf("ingest: place blob for project %d: %w", target.ProjectID, err)
-	}
-
-	// Combine X-Tags and plus-address tags (FR-086).
-	combinedRawTags := make([]string, 0, len(parsed.XTags)+len(target.PlusTags))
-	combinedRawTags = append(combinedRawTags, parsed.XTags...)
-	if target.PlusAddressTags {
-		combinedRawTags = append(combinedRawTags, target.PlusTags...)
-	}
-	extractedTags := sanitizeAndDedupeTags(combinedRawTags)
-	if extractedTags == nil {
-		extractedTags = []string{}
-	}
-
-	var (
-		storedMsg store.Message
-		savedTags []string
-	)
-	// Step 6: Commit message, attachments, tags, FTS row, and project counters in one tx.
-	txErr := in.store.WithTx(ctx, func(tx *store.Tx) error {
-		var err error
-		storedMsg, err = tx.InsertMessage(ctx, store.InsertMessageParams{
-			ID:               msgID.String(),
-			ProjectID:        target.ProjectID,
-			SMTPCredentialID: target.CredentialID,
-			ReceivedAt:       receivedAt,
-			Subject:          parsed.Subject,
-			FromName:         parsed.FromName,
-			FromAddr:         parsed.FromAddr,
-			To:               parsed.To,
-			Cc:               parsed.Cc,
-			Bcc:              parsed.Bcc,
-			ReplyTo:          parsed.ReplyTo,
-			EnvelopeFrom:     env.MailFrom,
-			EnvelopeTo:       env.RcptTo,
-			MessageIDHeader:  nonEmptyPtr(parsed.MessageIDHeader),
-			DateHeader:       parsed.DateHeader,
-			Snippet:          parsed.Snippet,
-			HasHTML:          parsed.HasHTML,
-			HasText:          parsed.HasText,
-			TextGenerated:    parsed.TextGenerated,
-			AttachmentCount:  int64(len(parsed.Attachments)),
-			SizeBytes:        rawSize,
-			BlobPath:         relPath,
-			Seen:             false,
-			RemoteIP:         nonEmptyPtr(env.RemoteIP),
-			HELO:             nonEmptyPtr(env.HELO),
-			AuthUser:         nonEmptyPtr(env.AuthUser),
-			TLS:              env.TLS,
-			ParseWarnings:    parsed.ParseWarnings,
-		})
-		if err != nil {
-			return err
-		}
-
-		for _, att := range parsed.Attachments {
-			if _, err := tx.InsertAttachment(ctx, store.InsertAttachmentParams{
-				MessagePK:   storedMsg.PK,
-				ProjectID:   target.ProjectID,
-				PartPath:    att.PartPath,
-				Filename:    att.Filename,
-				ContentType: att.ContentType,
-				SizeBytes:   att.SizeBytes,
-				ContentID:   nonEmptyPtr(att.ContentID),
-				Disposition: att.Disposition,
-				SHA256:      att.SHA256,
-			}); err != nil {
-				return err
-			}
-		}
-
-		savedTags, err = tx.EnsureAndAttachTagsTx(ctx, target.ProjectID, storedMsg.PK, extractedTags, receivedAt)
-		if err != nil {
-			return err
-		}
-
-		if err := search.IndexTx(ctx, tx, storedMsg.PK, ftsDoc); err != nil {
-			return err
-		}
-
-		return tx.UpdateProjectCounters(ctx, target.ProjectID, store.ProjectCounterDelta{
-			MessageDelta:  1,
-			UnreadDelta:   1,
-			SizeDelta:     rawSize,
-			LastMessageAt: &receivedAt,
-			Now:           receivedAt,
-		})
-	})
-	if txErr != nil {
-		// FR-010: remove blob if transaction fails.
-		if rmErr := in.blobs.Remove(relPath); rmErr != nil {
-			in.log.Warn("failed to remove blob after db error", "blob_path", relPath, "error", rmErr)
-		}
-		return MessageRef{}, fmt.Errorf("ingest: commit project %d: %w", target.ProjectID, txErr)
-	}
-	if savedTags == nil {
-		savedTags = []string{}
-	}
-
-	summary := events.MessageSummary{
-		ID:         msgID.String(),
-		ReceivedAt: receivedAt,
-		From: events.Address{
-			Name:    parsed.FromName,
-			Address: parsed.FromAddr,
-		},
-		To:              toEventAddresses(parsed.To),
-		Cc:              toEventAddresses(parsed.Cc),
-		Subject:         parsed.Subject,
-		Snippet:         parsed.Snippet,
-		SizeBytes:       rawSize,
-		Seen:            false,
-		AttachmentCount: int64(len(parsed.Attachments)),
-		HasHTML:         parsed.HasHTML,
-		HasText:         parsed.HasText,
-		Tags:            savedTags,
-		CredentialLabel: target.CredentialLabel,
-	}
-
-	return MessageRef{
-		PK:          storedMsg.PK,
-		ID:          msgID,
-		ProjectID:   target.ProjectID,
-		ProjectSlug: target.ProjectSlug,
-		BlobPath:    relPath,
-		SizeBytes:   rawSize,
-		SHA256:      rawSHA,
-		Tags:        savedTags,
-		Summary:     summary,
-	}, nil
 }
 
 func (in *Ingestor) nextULID(ts time.Time) (ulid.ULID, error) {

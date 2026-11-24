@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/ingest"
 	"github.com/mailcubby/mailcubby/internal/render"
 	"github.com/mailcubby/mailcubby/internal/search"
@@ -355,13 +356,18 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		if rcptTo == nil {
 			rcptTo = []string{}
 		}
+		// FR-050: viewers (and read-only tokens) must never see SMTP usernames.
+		var authUser *string
+		if auth.Allowed(pctx.AuthRole, auth.ActionReadSMTP, pctx.AuthSettings()) {
+			authUser = msg.AuthUser
+		}
 		resp.Envelope = &messageEnvelopeResponse{
 			MailFrom: msg.EnvelopeFrom,
 			RcptTo:   rcptTo,
 			RemoteIP: msg.RemoteIP,
 			HELO:     msg.HELO,
 			TLS:      msg.TLS,
-			AuthUser: msg.AuthUser,
+			AuthUser: authUser,
 		}
 		resp.ParseWarnings = &warnings
 		resp.Headers = &headers

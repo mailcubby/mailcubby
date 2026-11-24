@@ -1,11 +1,13 @@
 package api_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"testing"
 
+	"github.com/mailcubby/mailcubby/internal/ingest"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
@@ -167,5 +169,49 @@ func TestViewerTechnicalAndSeenRestrictions(t *testing.T) {
 		if _, exists := unlockedDetail[techKey]; !exists {
 			t.Fatalf("viewer (hide=false) message detail missing %q", techKey)
 		}
+	}
+
+	// FR-050: even with viewer_hide_technical=false, envelope.auth_user (SMTP username)
+	// must be omitted/null for viewers while visible to members.
+	authRefs, err := env.ing.Ingest(t.Context(), ingest.Envelope{
+		MailFrom: "app@example.test",
+		RcptTo:   []string{"user@example.test"},
+		AuthUser: "client-app-abc12345",
+	}, []ingest.Target{{ProjectID: proj.ID, ProjectSlug: proj.Slug}}, bytes.NewReader([]byte("Subject: AuthUser\r\n\r\nBody\r\n")))
+	if err != nil {
+		t.Fatalf("Ingest auth message: %v", err)
+	}
+	authMsgPath := "/api/v1/projects/client-app/messages/" + authRefs[0].ID.String()
+
+	rec = doReq(t, h, http.MethodGet, authMsgPath, nil, viewerCookie, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("viewer GET auth message status = %d, want 200", rec.Code)
+	}
+	var viewerAuthDetail struct {
+		Envelope struct {
+			AuthUser *string `json:"auth_user"`
+		} `json:"envelope"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &viewerAuthDetail); err != nil {
+		t.Fatalf("unmarshal viewer auth detail: %v", err)
+	}
+	if viewerAuthDetail.Envelope.AuthUser != nil {
+		t.Fatalf("viewer saw envelope.auth_user = %q, want nil (FR-050)", *viewerAuthDetail.Envelope.AuthUser)
+	}
+
+	rec = doReq(t, h, http.MethodGet, authMsgPath, nil, memberCookie, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("member GET auth message status = %d, want 200", rec.Code)
+	}
+	var memberAuthDetail struct {
+		Envelope struct {
+			AuthUser *string `json:"auth_user"`
+		} `json:"envelope"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &memberAuthDetail); err != nil {
+		t.Fatalf("unmarshal member auth detail: %v", err)
+	}
+	if memberAuthDetail.Envelope.AuthUser == nil || *memberAuthDetail.Envelope.AuthUser != "client-app-abc12345" {
+		t.Fatalf("member envelope.auth_user = %v, want client-app-abc12345", memberAuthDetail.Envelope.AuthUser)
 	}
 }

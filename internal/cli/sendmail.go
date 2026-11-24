@@ -2,10 +2,13 @@ package cli
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/mail"
+	"net/netip"
 	"net/smtp"
 	"strings"
 )
@@ -13,14 +16,15 @@ import (
 const defaultSendmailSMTP = "localhost:1025"
 
 type sendmailOptions struct {
-	smtpAddr    string
-	user        string
-	password    string
-	from        string
-	fromSet     bool
-	readHeaders bool
-	showHelp    bool
-	recipients  []string
+	smtpAddr          string
+	user              string
+	password          string
+	allowInsecureAuth bool
+	from              string
+	fromSet           bool
+	readHeaders       bool
+	showHelp          bool
+	recipients        []string
 }
 
 // RunSendmail implements the "mailcubby sendmail" CLI subcommand (SPEC FR-115).
@@ -74,7 +78,7 @@ func RunSendmail(args []string, stdin io.Reader, stdout, stderr io.Writer, looku
 		auth = &sendmailPlainAuth{user: opts.user, pass: opts.password}
 	}
 
-	if err := submitSMTP(opts.smtpAddr, auth, from, rcpts, raw); err != nil {
+	if err := submitSMTP(opts.smtpAddr, auth, opts.allowInsecureAuth, from, rcpts, raw, stderr); err != nil {
 		_, _ = fmt.Fprintf(stderr, "sendmail: %v\n", err)
 		return 1
 	}
@@ -82,7 +86,7 @@ func RunSendmail(args []string, stdin io.Reader, stdout, stderr io.Writer, looku
 }
 
 func printSendmailUsage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "Usage: mailcubby sendmail [-t] [-f from] [--smtp host:port] [--user u --password p] [to...]")
+	_, _ = fmt.Fprintln(w, "Usage: mailcubby sendmail [-t] [-f from] [--smtp host:port] [--user u --password p] [--allow-insecure-auth] [to...]")
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Reads a raw RFC 5322 email from stdin and submits it over SMTP.")
 	_, _ = fmt.Fprintln(w, "Common sendmail flags (-i, -oi, -odi, -bm, -F name) are accepted and ignored.")
@@ -132,6 +136,9 @@ func parseSendmailArgs(args []string, defaultSMTP string) (sendmailOptions, erro
 				opts.password = v
 				i = nextIdx
 				continue
+			case "allow-insecure-auth":
+				opts.allowInsecureAuth = true
+				continue
 			default:
 				return opts, fmt.Errorf("unknown flag %q", arg)
 			}
@@ -145,12 +152,13 @@ func parseSendmailArgs(args []string, defaultSMTP string) (sendmailOptions, erro
 		case arg == "-t":
 			opts.readHeaders = true
 		case arg == "-f" || arg == "-r":
-			if i+1 >= len(args) {
+			v, nextIdx, err := consumeOptValue(arg[1:], "", false, args, i)
+			if err != nil {
 				return opts, fmt.Errorf("flag %s requires an address", arg)
 			}
-			i++
-			opts.from = strings.TrimSpace(args[i])
+			opts.from = strings.TrimSpace(v)
 			opts.fromSet = true
+			i = nextIdx
 		case strings.HasPrefix(arg, "-f") || strings.HasPrefix(arg, "-r"):
 			opts.from = strings.TrimSpace(arg[2:])
 			opts.fromSet = true
@@ -186,6 +194,8 @@ func splitLongOpt(arg string) (name, val string, hasEq bool) {
 	case arg == "-user" || strings.HasPrefix(arg, "-user="):
 		trimmed = arg[1:]
 	case arg == "-password" || strings.HasPrefix(arg, "-password="):
+		trimmed = arg[1:]
+	case arg == "-allow-insecure-auth":
 		trimmed = arg[1:]
 	case arg == "-help":
 		trimmed = arg[1:]
@@ -267,14 +277,49 @@ func dedupeAddresses(addrs []string) []string {
 	return out
 }
 
-func submitSMTP(addr string, auth smtp.Auth, from string, rcpts []string, raw []byte) error {
+func isLoopbackSMTPHost(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	host = strings.TrimSpace(strings.Trim(host, "[]"))
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip, err := netip.ParseAddr(host); err == nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
+func submitSMTP(addr string, auth smtp.Auth, allowInsecureAuth bool, from string, rcpts []string, raw []byte, stderr io.Writer) error {
 	c, err := smtp.Dial(addr)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", addr, err)
 	}
 	defer func() { _ = c.Close() }()
 
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	tlsActive := false
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		if err := c.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
+			return fmt.Errorf("starttls %s: %w", addr, err)
+		}
+		tlsActive = true
+	}
+
 	if auth != nil {
+		if !tlsActive && !isLoopbackSMTPHost(addr) {
+			if !allowInsecureAuth {
+				return fmt.Errorf("refusing plaintext SMTP AUTH to non-loopback host %s without STARTTLS (pass --allow-insecure-auth to override)", addr)
+			}
+			if stderr != nil {
+				_, _ = fmt.Fprintf(stderr, "sendmail: warning: sending SMTP AUTH credentials in plaintext to non-loopback host %s\n", addr)
+			}
+		}
 		if err := c.Auth(auth); err != nil {
 			return err
 		}

@@ -19,6 +19,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/clock"
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
+	"github.com/mailcubby/mailcubby/internal/ingest"
 	"github.com/mailcubby/mailcubby/internal/store"
 	"github.com/mailcubby/mailcubby/internal/testutil"
 )
@@ -57,6 +58,8 @@ func (h *instrumentedHasher) resetCounts() {
 type serverTestEnv struct {
 	srv    *api.Server
 	store  *store.Store
+	blobs  *blob.Store
+	ing    *ingest.Ingestor
 	bus    *events.Bus
 	clk    *clock.Fake
 	hasher *instrumentedHasher
@@ -92,16 +95,20 @@ func newServerModeEnv(t *testing.T) *serverTestEnv {
 	t.Cleanup(bus.Close)
 
 	hasher := newInstrumentedHasher()
+	ing := ingest.New(st, blobs, clk, bus, nil)
 	srv := api.New(cfg, st, blobs, bus, api.Options{
-		Version: "test",
-		Clock:   clk,
-		Hasher:  hasher,
+		Version:  "test",
+		Clock:    clk,
+		Ingestor: ing,
+		Hasher:   hasher,
 	})
 	t.Cleanup(srv.Close)
 
 	return &serverTestEnv{
 		srv:    srv,
 		store:  st,
+		blobs:  blobs,
+		ing:    ing,
 		bus:    bus,
 		clk:    clk,
 		hasher: hasher,

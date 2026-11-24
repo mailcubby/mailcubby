@@ -107,6 +107,52 @@ func TestLoadOrCreateLocalKey(t *testing.T) {
 	if !bytes.Equal(k1, k2) {
 		t.Fatalf("second LoadOrCreateLocalKey returned a different key")
 	}
+
+	// Enforce 0600 on an existing key file with overly permissive mode.
+	if runtime.GOOS != "windows" {
+		//nolint:gosec // G302: intentionally loosening mode in test to verify LoadOrCreateLocalKey tightens it back to 0600
+		if err := os.Chmod(keyPath, 0o644); err != nil {
+			t.Fatalf("chmod 0644: %v", err)
+		}
+		k3, err := LoadOrCreateLocalKey(dir)
+		if err != nil {
+			t.Fatalf("LoadOrCreateLocalKey chmod tighten: %v", err)
+		}
+		if !bytes.Equal(k1, k3) {
+			t.Fatalf("key changed when tightening permissions")
+		}
+		info, err = os.Stat(keyPath)
+		if err != nil {
+			t.Fatalf("stat after tighten: %v", err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("app.key mode after tighten = %o, want 0600", info.Mode().Perm())
+		}
+	}
+
+	// Empty 0-byte key file (e.g. interrupted startup) is recovered cleanly.
+	emptyDir := t.TempDir()
+	emptyPath := filepath.Join(emptyDir, "app.key")
+	//nolint:gosec // G306: intentionally creating loose empty file to test recovery and mode tightening
+	if err := os.WriteFile(emptyPath, nil, 0o644); err != nil {
+		t.Fatalf("write empty app.key: %v", err)
+	}
+	recovered, err := LoadOrCreateLocalKey(emptyDir)
+	if err != nil {
+		t.Fatalf("LoadOrCreateLocalKey empty file recovery: %v", err)
+	}
+	if len(recovered) != KeySize {
+		t.Fatalf("recovered key len = %d, want %d", len(recovered), KeySize)
+	}
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(emptyPath)
+		if err != nil {
+			t.Fatalf("stat recovered app.key: %v", err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("recovered app.key mode = %o, want 0600", info.Mode().Perm())
+		}
+	}
 }
 
 func TestSealOpenRoundTripAndFailures(t *testing.T) {

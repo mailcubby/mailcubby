@@ -67,6 +67,8 @@ type App struct {
 	apiSrv       *api.Server
 	smtpSrv      *smtpd.Server
 	httpSrv      *http.Server
+	cancelHTTP   context.CancelFunc
+	httpActive   sync.WaitGroup
 	smtpLn       net.Listener
 	httpLn       net.Listener
 
@@ -222,7 +224,17 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		})
 		handler = a.apiSrv.Handler()
 	}
-	a.httpSrv = api.NewHTTPServer(handler)
+	httpBaseCtx, cancelHTTP := context.WithCancel(context.Background())
+	a.cancelHTTP = cancelHTTP
+	trackedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		a.httpActive.Add(1)
+		defer a.httpActive.Done()
+		handler.ServeHTTP(w, r)
+	})
+	a.httpSrv = api.NewHTTPServer(trackedHandler)
+	a.httpSrv.BaseContext = func(net.Listener) context.Context {
+		return httpBaseCtx
+	}
 
 	return a, nil
 }
@@ -301,12 +313,19 @@ func (a *App) Serve(ctx context.Context) error {
 			return a.smtpSrv.Shutdown(shutdownCtx)
 		})
 		sg.Go(func() error {
-			if err := a.httpSrv.Shutdown(shutdownCtx); err != nil {
+			err := a.httpSrv.Shutdown(shutdownCtx)
+			if err != nil {
+				// Force-close lingering connections and cancel in-flight handler contexts
+				// so handlers finish before we close the SQLite store.
+				a.cancelHTTP()
+				_ = a.httpSrv.Close()
 				return fmt.Errorf("app: shutdown http: %w", err)
 			}
 			return nil
 		})
-		return sg.Wait()
+		waitErr := sg.Wait()
+		a.httpActive.Wait()
+		return waitErr
 	})
 
 	serveErr := g.Wait()
@@ -336,6 +355,9 @@ func (a *App) Close() error {
 			if cerr := a.httpLn.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) {
 				errs = append(errs, cerr)
 			}
+		}
+		if a.cancelHTTP != nil {
+			a.cancelHTTP()
 		}
 		if a.apiSrv != nil {
 			a.apiSrv.Close()
