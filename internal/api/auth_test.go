@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -513,6 +514,135 @@ func TestLoginRateLimit(t *testing.T) {
 	}, nil, map[string]string{"Origin": testBaseURL})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("post-window login status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// SPEC 12.4, FR-043: concurrent login attempts for one (IP, email) cannot
+// exceed the limit by all passing the check before any failure is recorded.
+func TestLoginRateLimitHoldsUnderConcurrency(t *testing.T) {
+	t.Parallel()
+
+	env := newServerModeEnv(t)
+	env.createUser(t, "admin@example.test", "Admin", "valid-password-1234", true, true, false)
+	h := env.srv.Handler()
+
+	const n = 40
+	codes := make([]int, n)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			<-start
+			pw := "wrong-password-1234"
+			if i == n-1 {
+				pw = "valid-password-1234"
+			}
+			rec := doReq(t, h, http.MethodPost, "/api/v1/auth/login", map[string]any{
+				"email": "admin@example.test", "password": pw,
+			}, nil, map[string]string{"Origin": testBaseURL})
+			codes[i] = rec.Code
+		})
+	}
+	close(start)
+	wg.Wait()
+
+	counts := map[int]int{}
+	for _, c := range codes {
+		counts[c]++
+	}
+	for c := range counts {
+		if c != http.StatusUnauthorized && c != http.StatusOK && c != http.StatusTooManyRequests {
+			t.Fatalf("unexpected status %d in %v", c, counts)
+		}
+	}
+	// At most the limit of failed verifications; a successful login gives its
+	// slot back, so it may let at most one more attempt through.
+	if counts[http.StatusUnauthorized] > 10 {
+		t.Fatalf("%d attempts got 401, want <= 10 (statuses %v)", counts[http.StatusUnauthorized], counts)
+	}
+	if got := int(env.hasher.verifyCalls.Load()); got > 10+counts[http.StatusOK] {
+		t.Fatalf("password verifications = %d, want <= %d (statuses %v)", got, 10+counts[http.StatusOK], counts)
+	}
+	if counts[http.StatusTooManyRequests] < n-11 {
+		t.Fatalf("%d attempts got 429, want >= %d (statuses %v)", counts[http.StatusTooManyRequests], n-11, counts)
+	}
+}
+
+// SPEC 12.4: only failed attempts count; a successful login frees its slot.
+func TestLoginRateLimitSuccessDoesNotCount(t *testing.T) {
+	t.Parallel()
+
+	env := newServerModeEnv(t)
+	env.createUser(t, "admin@example.test", "Admin", "valid-password-1234", true, true, false)
+	h := env.srv.Handler()
+	login := func(pw string) int {
+		return doReq(t, h, http.MethodPost, "/api/v1/auth/login", map[string]any{
+			"email": "admin@example.test", "password": pw,
+		}, nil, map[string]string{"Origin": testBaseURL}).Code
+	}
+
+	for i := range 9 {
+		if c := login("wrong-password-1234"); c != http.StatusUnauthorized {
+			t.Fatalf("failed attempt %d status = %d, want 401", i+1, c)
+		}
+	}
+	for i := range 3 {
+		if c := login("valid-password-1234"); c != http.StatusOK {
+			t.Fatalf("successful login %d status = %d, want 200", i+1, c)
+		}
+	}
+	if c := login("wrong-password-1234"); c != http.StatusUnauthorized {
+		t.Fatalf("10th failed attempt status = %d, want 401", c)
+	}
+	if c := login("valid-password-1234"); c != http.StatusTooManyRequests {
+		t.Fatalf("attempt after 10 failures status = %d, want 429", c)
+	}
+}
+
+// FR-043, AGENTS 8.7: an over-long email is rejected at the boundary before it
+// reaches the rate limiter, password hashing or the audit log.
+func TestLoginRejectsOverlongEmail(t *testing.T) {
+	t.Parallel()
+
+	const domain = "@example.test"
+	cases := []struct {
+		name       string
+		email      string
+		wantStatus int
+		wantAudit  int
+	}{
+		{name: "max length", email: strings.Repeat("a", auth.MaxEmailLen-len(domain)) + domain, wantStatus: http.StatusUnauthorized, wantAudit: 1},
+		{name: "one byte over", email: strings.Repeat("a", auth.MaxEmailLen-len(domain)+1) + domain, wantStatus: http.StatusBadRequest},
+		{name: "about 900 KB", email: strings.Repeat("a", 900<<10) + domain, wantStatus: http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := newServerModeEnv(t)
+			rec := doReq(t, env.srv.Handler(), http.MethodPost, "/api/v1/auth/login", map[string]any{
+				"email": tc.email, "password": "wrong-password-1234",
+			}, nil, map[string]string{"Origin": testBaseURL})
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%s", rec.Code, tc.wantStatus, rec.Body.String())
+			}
+			var audits, maxLabel int
+			if err := env.store.ReaderDB().QueryRowContext(t.Context(),
+				"SELECT COUNT(*), COALESCE(MAX(LENGTH(actor_label)), 0) FROM audit_log WHERE action = 'auth.login_failed'",
+			).Scan(&audits, &maxLabel); err != nil {
+				t.Fatalf("query audit_log: %v", err)
+			}
+			if audits != tc.wantAudit {
+				t.Fatalf("auth.login_failed audit rows = %d, want %d", audits, tc.wantAudit)
+			}
+			if maxLabel > auth.MaxEmailLen {
+				t.Fatalf("audit actor_label length = %d, want <= %d", maxLabel, auth.MaxEmailLen)
+			}
+			if tc.wantStatus == http.StatusBadRequest {
+				if got := env.hasher.verifyCalls.Load() + env.hasher.dummyCalls.Load(); got != 0 {
+					t.Fatalf("hasher calls = %d, want 0 for a rejected email", got)
+				}
+			}
+		})
 	}
 }
 

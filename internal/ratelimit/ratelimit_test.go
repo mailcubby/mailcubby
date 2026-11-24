@@ -1,6 +1,8 @@
 package ratelimit_test
 
 import (
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -64,4 +66,110 @@ func TestSlidingWindowAllow(t *testing.T) {
 	if ok, _ := lim.Allow("10.0.0.1"); !ok {
 		t.Fatalf("expected request allowed after 1m window")
 	}
+}
+
+// SPEC 12.4: Reserve counts an attempt up front and Cancel gives it back, so
+// concurrent callers can never exceed the limit while only failures persist.
+func TestSlidingWindowReserveAndCancel(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reserve enforces the limit and cancel frees one slot", func(t *testing.T) {
+		t.Parallel()
+		clk := clock.NewFake(time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC))
+		lim := ratelimit.NewSlidingWindow(3, time.Minute, clk)
+
+		var ats []time.Time
+		for i := range 3 {
+			at, ok, _ := lim.Reserve("k")
+			if !ok {
+				t.Fatalf("reserve %d unexpectedly blocked", i+1)
+			}
+			if !at.Equal(clk.Now()) {
+				t.Fatalf("reserve %d at = %v, want %v", i+1, at, clk.Now())
+			}
+			ats = append(ats, at)
+			clk.Advance(time.Second)
+		}
+		if at, ok, retry := lim.Reserve("k"); ok || !at.IsZero() || retry < time.Second {
+			t.Fatalf("4th reserve = (%v, %v, %v), want (zero, false, >=1s)", at, ok, retry)
+		}
+
+		lim.Cancel("k", ats[1])
+		if _, ok, _ := lim.Reserve("k"); !ok {
+			t.Fatalf("reserve after cancel unexpectedly blocked")
+		}
+		if _, ok, _ := lim.Reserve("k"); ok {
+			t.Fatalf("cancel freed more than one slot")
+		}
+	})
+
+	t.Run("cancel of an expired event does not remove newer events", func(t *testing.T) {
+		t.Parallel()
+		clk := clock.NewFake(time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC))
+		lim := ratelimit.NewSlidingWindow(2, time.Minute, clk)
+
+		old, _, _ := lim.Reserve("k")
+		clk.Advance(2 * time.Minute)
+		for i := range 2 {
+			if _, ok, _ := lim.Reserve("k"); !ok {
+				t.Fatalf("reserve %d after window unexpectedly blocked", i+1)
+			}
+		}
+		lim.Cancel("k", old)
+		if ok, _ := lim.Check("k"); ok {
+			t.Fatalf("cancel of an expired event removed a newer event")
+		}
+	})
+
+	t.Run("cancel of the last event clears the key and other keys are untouched", func(t *testing.T) {
+		t.Parallel()
+		clk := clock.NewFake(time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC))
+		lim := ratelimit.NewSlidingWindow(1, time.Minute, clk)
+
+		at, ok, _ := lim.Reserve("k")
+		if !ok {
+			t.Fatalf("first reserve unexpectedly blocked")
+		}
+		lim.Cancel("other", at)
+		if ok, _ := lim.Check("k"); ok {
+			t.Fatalf("cancel on another key freed this key")
+		}
+		lim.Cancel("k", at)
+		if ok, _ := lim.Check("k"); !ok {
+			t.Fatalf("key still blocked after cancelling its only event")
+		}
+	})
+
+	t.Run("disabled limiter always reserves and cancel is a no-op", func(t *testing.T) {
+		t.Parallel()
+		lim := ratelimit.NewSlidingWindow(0, time.Minute, clock.NewFake(time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)))
+		for range 5 {
+			at, ok, _ := lim.Reserve("k")
+			if !ok || !at.IsZero() {
+				t.Fatalf("disabled reserve = (%v, %v), want (zero, true)", at, ok)
+			}
+			lim.Cancel("k", at)
+		}
+	})
+
+	t.Run("concurrent reserves never exceed the limit", func(t *testing.T) {
+		t.Parallel()
+		clk := clock.NewFake(time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC))
+		lim := ratelimit.NewSlidingWindow(10, time.Minute, clk)
+
+		const n = 50
+		var granted atomic.Int32
+		var wg sync.WaitGroup
+		for range n {
+			wg.Go(func() {
+				if _, ok, _ := lim.Reserve("k"); ok {
+					granted.Add(1)
+				}
+			})
+		}
+		wg.Wait()
+		if got := granted.Load(); got != 10 {
+			t.Fatalf("granted = %d, want 10", got)
+		}
+	})
 }

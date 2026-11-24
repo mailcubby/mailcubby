@@ -836,7 +836,7 @@ Email HTML is attacker-controlled. It MUST never execute script, reach the app's
 In-memory (single process), sliding windows; state is lost on restart, which is acceptable.
 
 - SMTP AUTH: after `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` failures per IP or per username within `MAILCUBBY_SMTP_AUTH_LOCKOUT`, further AUTH attempts from that IP / for that username get `454 4.7.0` without checking the password until the window passes. An audit entry `smtp.auth_lockout` is written once per lockout. After a failure the server delays its reply by 1 s (the delay goes through the injected clock so tests do not sleep).
-- HTTP login: `MAILCUBBY_LOGIN_RATE_LIMIT` per (IP, email) and 5x that per IP; `429` with `Retry-After`.
+- HTTP login: `MAILCUBBY_LOGIN_RATE_LIMIT` per (IP, email) and 5x that per IP; `429` with `Retry-After`. Only failed attempts count, but each attempt is reserved atomically before the password is verified and given back only on success, so concurrent requests cannot exceed the limit. An email longer than 254 bytes gets `400 bad_request` before rate limiting, hashing or auditing.
 - Invite preview/accept and password reset: 20 requests per 15 min per IP.
 - API: `MAILCUBBY_API_RATE_LIMIT` per token or session (token bucket).
 - Client IP is the socket address, or `X-Forwarded-For` (rightmost untrusted hop) only when the peer is in `MAILCUBBY_TRUSTED_PROXIES`.

@@ -76,8 +76,19 @@ func (sw *SlidingWindow) Record(key string) {
 // an event. When allowed is false, no event is recorded and retryAfter gives
 // the wait duration.
 func (sw *SlidingWindow) Allow(key string) (allowed bool, retryAfter time.Duration) {
+	_, allowed, retryAfter = sw.Reserve(key)
+	return allowed, retryAfter
+}
+
+// Reserve is Allow that also returns the timestamp of the recorded event, so
+// the caller can give it back with Cancel once the outcome is known (for
+// example, to count only failed login attempts while still bounding how many
+// attempts can be in flight at once). When allowed is false, no event is
+// recorded and retryAfter gives the wait duration. When the limiter is
+// disabled, at is the zero time.
+func (sw *SlidingWindow) Reserve(key string) (at time.Time, allowed bool, retryAfter time.Duration) {
 	if sw.limit <= 0 || sw.window <= 0 {
-		return true, 0
+		return time.Time{}, true, 0
 	}
 	now := sw.clk.Now()
 
@@ -86,13 +97,40 @@ func (sw *SlidingWindow) Allow(key string) (allowed bool, retryAfter time.Durati
 
 	ts := sw.pruneKeyLocked(key, now)
 	if len(ts) >= sw.limit {
-		return false, computeRetryAfter(ts[0], sw.window, now)
+		return time.Time{}, false, computeRetryAfter(ts[0], sw.window, now)
 	}
 	sw.entries[key] = append(ts, now)
 	if len(sw.entries) > pruneThreshold {
 		sw.pruneAllLocked(now)
 	}
-	return true, 0
+	return now, true, 0
+}
+
+// Cancel removes one event recorded for key at exactly at, as returned by
+// Reserve. It is a no-op when no such event remains (for example, because it
+// has already left the window) or the limiter is disabled.
+func (sw *SlidingWindow) Cancel(key string, at time.Time) {
+	if sw.limit <= 0 || sw.window <= 0 {
+		return
+	}
+
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
+	ts := sw.entries[key]
+	for i := len(ts) - 1; i >= 0; i-- {
+		if !ts[i].Equal(at) {
+			continue
+		}
+		if len(ts) == 1 {
+			delete(sw.entries, key)
+			return
+		}
+		out := make([]time.Time, 0, len(ts)-1)
+		out = append(out, ts[:i]...)
+		sw.entries[key] = append(out, ts[i+1:]...)
+		return
+	}
 }
 
 // Reset removes all recorded events for key.
