@@ -42,3 +42,7 @@ WHERE user_id = ? AND id != ?;
 -- name: DeleteAllSessionsForUser :execrows
 DELETE FROM sessions
 WHERE user_id = ?;
+
+-- name: DeleteExpiredSessions :execrows
+DELETE FROM sessions
+WHERE expires_at <= ? OR last_seen_at <= ?;

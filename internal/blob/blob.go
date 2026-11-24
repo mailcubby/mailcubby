@@ -98,6 +98,83 @@ func (s *Store) CleanTmp() error {
 	return errors.Join(errs...)
 }
 
+// CleanTmpOlderThan removes temporary entries in tmp/ whose modification time is
+// strictly before cutoff (FR-098, ARCHITECTURE 3.12).
+func (s *Store) CleanTmpOlderThan(cutoff time.Time) (int, error) {
+	entries, err := os.ReadDir(s.tmpDir)
+	if err != nil {
+		return 0, fmt.Errorf("blob: read tmp dir: %w", err)
+	}
+	var (
+		removed int
+		errs    []error
+	)
+	for _, entry := range entries {
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			if errors.Is(infoErr, os.ErrNotExist) {
+				continue
+			}
+			errs = append(errs, fmt.Errorf("blob: stat tmp entry %q: %w", entry.Name(), infoErr))
+			continue
+		}
+		if !info.ModTime().Before(cutoff) {
+			continue
+		}
+		p := filepath.Join(s.tmpDir, entry.Name())
+		if rmErr := os.RemoveAll(p); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			errs = append(errs, fmt.Errorf("blob: remove stale tmp entry %q: %w", entry.Name(), rmErr))
+			continue
+		}
+		removed++
+	}
+	return removed, errors.Join(errs...)
+}
+
+// ListProjectDirs returns the numeric project IDs of top-level directories under blobs/.
+func (s *Store) ListProjectDirs() ([]int64, error) {
+	entries, err := os.ReadDir(s.blobsDir)
+	if err != nil {
+		return nil, fmt.Errorf("blob: read blobs dir: %w", err)
+	}
+	out := make([]int64, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		id, err := strconv.ParseInt(name, 10, 64)
+		if err != nil || id <= 0 || strconv.FormatInt(id, 10) != name {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+// TotalDiskBytes sums the compressed on-disk size in bytes of every valid blob under blobs/.
+func (s *Store) TotalDiskBytes(ctx context.Context) (int64, error) {
+	var total int64
+	err := s.Walk(ctx, func(e Entry) error {
+		total += e.Size
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// BlobsDir returns the absolute path to the blobs directory.
+func (s *Store) BlobsDir() string {
+	return s.blobsDir
+}
+
+// TmpDir returns the absolute path to the tmp spool directory.
+func (s *Store) TmpDir() string {
+	return s.tmpDir
+}
+
 // Spool represents an in-progress or finalized zstd-compressed temporary file in tmp/.
 type Spool struct {
 	store     *Store

@@ -68,6 +68,14 @@ type MessageRef struct {
 	Summary     events.MessageSummary
 }
 
+// Sentinel errors returned by ingest quota and rate-limit checks (FR-096, FR-097).
+var (
+	// ErrQuotaExceeded indicates MAILCUBBY_INSTANCE_MAX_BYTES would be exceeded (SMTP 452 4.3.1).
+	ErrQuotaExceeded = errors.New("ingest: instance storage quota exceeded")
+	// ErrRateLimited indicates MAILCUBBY_SMTP_RATE_LIMIT was exceeded for a project (SMTP 450 4.7.1).
+	ErrRateLimited = errors.New("ingest: project rate limit exceeded")
+)
+
 // Ingestor executes the message ingestion pipeline.
 type Ingestor struct {
 	store    TxStore
@@ -77,10 +85,8 @@ type Ingestor struct {
 	log      *slog.Logger
 	parseSem *semaphore.Weighted
 
-	// Phase 10 hooks (no-ops until Phase 10):
-	// TODO(phase-10): wire instance quota check, per-project rate limit, and retention nudge.
 	quotaCheck     func(ctx context.Context, sizeBytes int64, targets []Target) error
-	retentionNudge func(projectID int64)
+	retentionNudge func(ctx context.Context, projectID int64)
 
 	ulidMu  sync.Mutex
 	entropy io.Reader
@@ -105,6 +111,18 @@ func New(st TxStore, blobs *blob.Store, clk clock.Clock, bus Publisher, log *slo
 		parseSem: semaphore.NewWeighted(maxParse),
 		entropy:  ulid.Monotonic(rand.Reader, 0),
 	}
+}
+
+// SetQuotaCheck configures the step 2 instance-quota and per-project rate-limit hook (FR-096, FR-097).
+// Must be called before Ingest is invoked concurrently.
+func (in *Ingestor) SetQuotaCheck(fn func(ctx context.Context, sizeBytes int64, targets []Target) error) {
+	in.quotaCheck = fn
+}
+
+// SetRetentionNudge configures the post-commit retention nudge hook (FR-095, ARCHITECTURE 3.4).
+// Must be called before Ingest is invoked concurrently.
+func (in *Ingestor) SetRetentionNudge(fn func(ctx context.Context, projectID int64)) {
+	in.retentionNudge = fn
 }
 
 // Ingest runs pipeline steps 1 through 7 (ARCHITECTURE 3.4) for all target projects.
@@ -172,9 +190,9 @@ func (in *Ingestor) Ingest(ctx context.Context, env Envelope, targets []Target, 
 			})
 		}
 
-		// Step 8: Retention nudge hook (no-op until Phase 10).
+		// Step 8: Retention nudge hook (FR-095, ARCHITECTURE 3.4).
 		if in.retentionNudge != nil {
-			in.retentionNudge(target.ProjectID)
+			in.retentionNudge(ctx, target.ProjectID)
 		}
 	}
 

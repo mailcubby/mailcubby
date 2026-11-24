@@ -208,3 +208,15 @@ RETURNING
     last_message_at,
     created_at,
     updated_at;
+
+-- name: ListProjectIDs :many
+SELECT id
+FROM projects
+ORDER BY id ASC;
+
+-- name: GetInstanceProjectTotals :one
+SELECT
+    COUNT(*) AS project_count,
+    CAST(COALESCE(SUM(message_count), 0) AS INTEGER) AS total_messages,
+    CAST(COALESCE(SUM(size_bytes), 0) AS INTEGER) AS total_bytes
+FROM projects;

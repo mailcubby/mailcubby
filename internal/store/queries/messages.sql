@@ -330,3 +330,36 @@ FROM messages
 WHERE project_id = ?
 ORDER BY received_at DESC
 LIMIT 1;
+
+-- name: ListOldestMessagesBeforeTime :many
+SELECT
+    id,
+    blob_path,
+    size_bytes,
+    seen
+FROM messages
+WHERE project_id = ? AND received_at < ?
+ORDER BY received_at ASC, id ASC
+LIMIT ?;
+
+-- name: ListOldestMessages :many
+SELECT
+    id,
+    blob_path,
+    size_bytes,
+    seen
+FROM messages
+WHERE project_id = ?
+ORDER BY received_at ASC, id ASC
+LIMIT ?;
+
+-- name: MessageExistsByID :one
+SELECT COUNT(*)
+FROM messages
+WHERE project_id = ? AND id = ?;
+
+-- name: CountMessagesSince :one
+-- isolation: global (admin stats counts messages ingested across the instance in the last hour)
+SELECT COUNT(*)
+FROM messages
+WHERE received_at >= ?;

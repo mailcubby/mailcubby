@@ -19,3 +19,7 @@ SET used_at = ?
 WHERE id = ?
   AND used_at IS NULL
   AND expires_at > ?;
+
+-- name: DeleteExpiredPasswordResets :execrows
+DELETE FROM password_resets
+WHERE expires_at <= ? OR used_at IS NOT NULL;

@@ -113,6 +113,27 @@ func (q *Queries) DeleteProject(ctx context.Context, id int64) (int64, error) {
 	return result.RowsAffected()
 }
 
+const getInstanceProjectTotals = `-- name: GetInstanceProjectTotals :one
+SELECT
+    COUNT(*) AS project_count,
+    CAST(COALESCE(SUM(message_count), 0) AS INTEGER) AS total_messages,
+    CAST(COALESCE(SUM(size_bytes), 0) AS INTEGER) AS total_bytes
+FROM projects
+`
+
+type GetInstanceProjectTotalsRow struct {
+	ProjectCount  int64
+	TotalMessages int64
+	TotalBytes    int64
+}
+
+func (q *Queries) GetInstanceProjectTotals(ctx context.Context) (GetInstanceProjectTotalsRow, error) {
+	row := q.db.QueryRowContext(ctx, getInstanceProjectTotals)
+	var i GetInstanceProjectTotalsRow
+	err := row.Scan(&i.ProjectCount, &i.TotalMessages, &i.TotalBytes)
+	return i, err
+}
+
 const getProjectByID = `-- name: GetProjectByID :one
 SELECT
     id,
@@ -207,6 +228,35 @@ func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, e
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listProjectIDs = `-- name: ListProjectIDs :many
+SELECT id
+FROM projects
+ORDER BY id ASC
+`
+
+func (q *Queries) ListProjectIDs(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listProjectIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listProjects = `-- name: ListProjects :many

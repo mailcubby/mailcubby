@@ -102,6 +102,20 @@ func (q *Queries) CreateInvite(ctx context.Context, arg CreateInviteParams) (Inv
 	return i, err
 }
 
+const deleteExpiredInvites = `-- name: DeleteExpiredInvites :execrows
+DELETE FROM invites
+WHERE expires_at <= ?
+`
+
+// isolation: global (daily housekeeping removes expired invites across the instance)
+func (q *Queries) DeleteExpiredInvites(ctx context.Context, expiresAt int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteExpiredInvites, expiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getInviteByTokenHash = `-- name: GetInviteByTokenHash :one
 SELECT
     i.id,

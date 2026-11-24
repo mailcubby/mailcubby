@@ -18,3 +18,7 @@ SELECT id, at, actor_type, actor_user_id, actor_label, project_id, action, targe
 FROM audit_log
 ORDER BY at DESC, id DESC
 LIMIT ?;
+
+-- name: DeleteOldAuditEntries :execrows
+DELETE FROM audit_log
+WHERE at < ?;

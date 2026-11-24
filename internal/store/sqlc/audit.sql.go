@@ -10,6 +10,19 @@ import (
 	"database/sql"
 )
 
+const deleteOldAuditEntries = `-- name: DeleteOldAuditEntries :execrows
+DELETE FROM audit_log
+WHERE at < ?
+`
+
+func (q *Queries) DeleteOldAuditEntries(ctx context.Context, at int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteOldAuditEntries, at)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const insertAudit = `-- name: InsertAudit :one
 INSERT INTO audit_log (
     at,

@@ -10,6 +10,20 @@ import (
 	"database/sql"
 )
 
+const countMessagesSince = `-- name: CountMessagesSince :one
+SELECT COUNT(*)
+FROM messages
+WHERE received_at >= ?
+`
+
+// isolation: global (admin stats counts messages ingested across the instance in the last hour)
+func (q *Queries) CountMessagesSince(ctx context.Context, receivedAt int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countMessagesSince, receivedAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteAllMessagesByProject = `-- name: DeleteAllMessagesByProject :execrows
 DELETE FROM messages
 WHERE project_id = ?
@@ -877,6 +891,129 @@ func (q *Queries) ListMessagesBeforeCursor(ctx context.Context, arg ListMessages
 		return nil, err
 	}
 	return items, nil
+}
+
+const listOldestMessages = `-- name: ListOldestMessages :many
+SELECT
+    id,
+    blob_path,
+    size_bytes,
+    seen
+FROM messages
+WHERE project_id = ?
+ORDER BY received_at ASC, id ASC
+LIMIT ?
+`
+
+type ListOldestMessagesParams struct {
+	ProjectID int64
+	Limit     int64
+}
+
+type ListOldestMessagesRow struct {
+	ID        string
+	BlobPath  string
+	SizeBytes int64
+	Seen      int64
+}
+
+func (q *Queries) ListOldestMessages(ctx context.Context, arg ListOldestMessagesParams) ([]ListOldestMessagesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOldestMessages, arg.ProjectID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOldestMessagesRow{}
+	for rows.Next() {
+		var i ListOldestMessagesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BlobPath,
+			&i.SizeBytes,
+			&i.Seen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOldestMessagesBeforeTime = `-- name: ListOldestMessagesBeforeTime :many
+SELECT
+    id,
+    blob_path,
+    size_bytes,
+    seen
+FROM messages
+WHERE project_id = ? AND received_at < ?
+ORDER BY received_at ASC, id ASC
+LIMIT ?
+`
+
+type ListOldestMessagesBeforeTimeParams struct {
+	ProjectID  int64
+	ReceivedAt int64
+	Limit      int64
+}
+
+type ListOldestMessagesBeforeTimeRow struct {
+	ID        string
+	BlobPath  string
+	SizeBytes int64
+	Seen      int64
+}
+
+func (q *Queries) ListOldestMessagesBeforeTime(ctx context.Context, arg ListOldestMessagesBeforeTimeParams) ([]ListOldestMessagesBeforeTimeRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOldestMessagesBeforeTime, arg.ProjectID, arg.ReceivedAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOldestMessagesBeforeTimeRow{}
+	for rows.Next() {
+		var i ListOldestMessagesBeforeTimeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BlobPath,
+			&i.SizeBytes,
+			&i.Seen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const messageExistsByID = `-- name: MessageExistsByID :one
+SELECT COUNT(*)
+FROM messages
+WHERE project_id = ? AND id = ?
+`
+
+type MessageExistsByIDParams struct {
+	ProjectID int64
+	ID        string
+}
+
+func (q *Queries) MessageExistsByID(ctx context.Context, arg MessageExistsByIDParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, messageExistsByID, arg.ProjectID, arg.ID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const updateMessageSeenIfChanged = `-- name: UpdateMessageSeenIfChanged :execrows

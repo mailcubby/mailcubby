@@ -335,7 +335,7 @@ Acceptance:
 **Goal**: bounded storage and self-maintenance.
 
 Tasks:
-- [ ] `internal/retention`: sweeper (FR-095) with effective limits resolution (project, instance setting, env), batches, nudges from ingest; counters and `message.deleted` events for deletions.
+- [x] `internal/retention`: sweeper (FR-095) with effective limits resolution (project, instance setting, env), batches, nudges from ingest; counters and `message.deleted` events for deletions.
 - [ ] Instance quota `452` (FR-096) and per-project SMTP rate limit `450` (FR-097).
 - [ ] Orphan blob GC, tmp cleanup, project directory removal (replaces the Phase 3a synchronous walk), incremental vacuum (FR-098).
 - [ ] Housekeeping (FR-099).

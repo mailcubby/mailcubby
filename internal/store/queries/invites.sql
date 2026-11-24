@@ -115,3 +115,8 @@ WHERE id = ?
 UPDATE invites
 SET accepted_by = ?
 WHERE id = ?;
+
+-- name: DeleteExpiredInvites :execrows
+-- isolation: global (daily housekeeping removes expired invites across the instance)
+DELETE FROM invites
+WHERE expires_at <= ?;

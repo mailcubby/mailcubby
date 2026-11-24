@@ -73,6 +73,24 @@ func (q *Queries) DeleteAllSessionsForUser(ctx context.Context, userID int64) (i
 	return result.RowsAffected()
 }
 
+const deleteExpiredSessions = `-- name: DeleteExpiredSessions :execrows
+DELETE FROM sessions
+WHERE expires_at <= ? OR last_seen_at <= ?
+`
+
+type DeleteExpiredSessionsParams struct {
+	ExpiresAt  int64
+	LastSeenAt int64
+}
+
+func (q *Queries) DeleteExpiredSessions(ctx context.Context, arg DeleteExpiredSessionsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteExpiredSessions, arg.ExpiresAt, arg.LastSeenAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteOtherSessionsForUser = `-- name: DeleteOtherSessionsForUser :execrows
 DELETE FROM sessions
 WHERE user_id = ? AND id != ?

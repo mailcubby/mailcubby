@@ -27,6 +27,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/events"
 	"github.com/mailcubby/mailcubby/internal/ingest"
 	"github.com/mailcubby/mailcubby/internal/render"
+	"github.com/mailcubby/mailcubby/internal/retention"
 	"github.com/mailcubby/mailcubby/internal/secrets"
 	"github.com/mailcubby/mailcubby/internal/smtpd"
 	"github.com/mailcubby/mailcubby/internal/store"
@@ -59,6 +60,7 @@ type App struct {
 	blobs    *blob.Store
 	bus      *events.Bus
 	ingestor *ingest.Ingestor
+	sweeper  *retention.Sweeper
 	apiSrv   *api.Server
 	smtpSrv  *smtpd.Server
 	httpSrv  *http.Server
@@ -155,6 +157,8 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 
 	bus := events.NewBus()
 	ing := ingest.New(st, blobs, clk, bus, log)
+	sweeper := retention.NewSweeper(st, blobs, bus, clk, log, cfg)
+	ing.SetRetentionNudge(sweeper.MaybeNudge)
 	smtpSrv := smtpd.New(cfg, st, ing, clk, log)
 	if smtpTLSConfig != nil {
 		smtpSrv.SetTLSConfig(smtpTLSConfig)
@@ -185,6 +189,7 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		blobs:    blobs,
 		bus:      bus,
 		ingestor: ing,
+		sweeper:  sweeper,
 		smtpSrv:  smtpSrv,
 		smtpLn:   smtpLn,
 		httpLn:   httpLn,
@@ -219,9 +224,20 @@ func Run(ctx context.Context, cfg config.Config, opts Options) error {
 	return a.Serve(ctx)
 }
 
-// Serve runs the SMTP and HTTP servers under errgroup and performs graceful
-// shutdown in the order defined by ARCHITECTURE 3.1 when ctx is cancelled.
+// Serve runs the SMTP and HTTP servers plus background workers under errgroup
+// and performs graceful shutdown in the order defined by ARCHITECTURE 3.1 when
+// ctx is cancelled: stop SMTP/HTTP -> wait for in-flight -> stop workers -> close bus/store.
 func (a *App) Serve(ctx context.Context) error {
+	workersCtx, cancelWorkers := context.WithCancel(context.Background())
+	var workersWG sync.WaitGroup
+	if a.sweeper != nil {
+		workersWG.Add(1)
+		go func() {
+			defer workersWG.Done()
+			a.sweeper.Run(workersCtx)
+		}()
+	}
+
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
@@ -268,6 +284,12 @@ func (a *App) Serve(ctx context.Context) error {
 	})
 
 	serveErr := g.Wait()
+
+	// 2. Stop background workers cleanly before closing the event bus and SQLite store.
+	cancelWorkers()
+	workersWG.Wait()
+
+	// 3. Close event bus and SQLite store.
 	closeErr := a.Close()
 	return errors.Join(serveErr, closeErr)
 }
@@ -333,6 +355,11 @@ func (a *App) Bus() *events.Bus {
 // Ingestor returns the message ingestor.
 func (a *App) Ingestor() *ingest.Ingestor {
 	return a.ingestor
+}
+
+// Sweeper returns the retention sweeper worker.
+func (a *App) Sweeper() *retention.Sweeper {
+	return a.sweeper
 }
 
 // Config returns the resolved application configuration.
