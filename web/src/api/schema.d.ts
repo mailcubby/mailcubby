@@ -1798,8 +1798,10 @@ export interface operations {
     deleteAllMessages: {
         parameters: {
             query?: {
-                /** @description Optional search query filter (SPEC FR-081); absent deletes all messages */
+                /** @description Optional search query filter (SPEC FR-081). With neither query nor credential, deletes all messages. Returns 400 when the query does not narrow the selection (SPEC FR-082). */
                 query?: string;
+                /** @description Only delete messages received via the given SMTP credential ID (combined with query) */
+                credential?: number;
             };
             header?: never;
             path: {

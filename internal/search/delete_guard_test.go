@@ -96,7 +96,7 @@ func TestDeleteMessagesByQueryRejectsNoOpFilters(t *testing.T) {
 		if err != nil || q.IsEmpty() {
 			t.Fatalf("Parse(%q) = %+v, %v; want non-empty query", raw, q, err)
 		}
-		deleted, _, err := search.DeleteMessagesByQuery(ctx, st, proj.ID, q, now)
+		deleted, _, err := search.DeleteMessagesByQuery(ctx, st, proj.ID, q, nil, now)
 		if !errors.Is(err, search.ErrNoEffectiveFilter) {
 			t.Fatalf("DeleteMessagesByQuery(%q) err = %v, want ErrNoEffectiveFilter", raw, err)
 		}
@@ -110,14 +110,14 @@ func TestDeleteMessagesByQueryRejectsNoOpFilters(t *testing.T) {
 
 	// A positive term without tokens matches nothing and deletes nothing.
 	q, _ = search.Parse(`"!"`)
-	deleted, _, err := search.DeleteMessagesByQuery(ctx, st, proj.ID, q, now)
+	deleted, _, err := search.DeleteMessagesByQuery(ctx, st, proj.ID, q, nil, now)
 	if err != nil || len(deleted) != 0 {
 		t.Fatalf(`DeleteMessagesByQuery("!") = %d, %v; want 0, nil`, len(deleted), err)
 	}
 
 	// Exclusions that do exclude something still work.
 	q, _ = search.Parse(`-from:alice -"!"`)
-	deleted, _, err = search.DeleteMessagesByQuery(ctx, st, proj.ID, q, now)
+	deleted, _, err = search.DeleteMessagesByQuery(ctx, st, proj.ID, q, nil, now)
 	if err != nil {
 		t.Fatalf("DeleteMessagesByQuery(-from:alice): %v", err)
 	}

@@ -476,9 +476,19 @@ paths:
         - name: query
           in: query
           required: false
-          description: Optional search query filter (SPEC FR-081); absent deletes all messages
+          description: >-
+            Optional search query filter (SPEC FR-081). With neither query nor credential,
+            deletes all messages. Returns 400 when the query does not narrow the selection (SPEC FR-082).
           schema:
             type: string
+        - name: credential
+          in: query
+          required: false
+          description: Only delete messages received via the given SMTP credential ID (combined with query)
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
       responses:
         "200":
           description: Number of deleted messages

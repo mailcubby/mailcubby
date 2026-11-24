@@ -651,6 +651,7 @@ export function InboxLayout() {
       searchQuery={searchQuery}
       {...(activeTag ? { activeTag } : {})}
       {...(activeCredentialLabel ? { activeCredentialLabel } : {})}
+      {...(activeCredentialId !== undefined ? { activeCredentialId } : {})}
       searchInputRef={searchInputRef}
       onChangeQuery={handleChangeQuery}
       onClearTag={handleClearTag}

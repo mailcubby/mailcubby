@@ -65,10 +65,11 @@ func Build(projectID int64, q Query, opts BuildOptions) (string, []any) {
 }
 
 // BuildDeleteSelect constructs a parameterized SELECT statement returning
-// (pk, id, blob_path, size_bytes, seen) for all messages in projectID matching q.
-// Used by filtered delete-all (DELETE /api/v1/projects/{project}/messages?query=...).
-func BuildDeleteSelect(projectID int64, q Query) (string, []any) {
-	return buildQuery("SELECT m.pk, m.id, m.blob_path, m.size_bytes, m.seen", projectID, q, BuildOptions{}, false)
+// (pk, id, blob_path, size_bytes, seen) for all messages in projectID matching q
+// and, when credentialID is non-nil, received via that SMTP credential.
+// Used by filtered delete-all (DELETE /api/v1/projects/{project}/messages?query=...&credential=...).
+func BuildDeleteSelect(projectID int64, q Query, credentialID *int64) (string, []any) {
+	return buildQuery("SELECT m.pk, m.id, m.blob_path, m.size_bytes, m.seen", projectID, q, BuildOptions{CredentialID: credentialID}, false)
 }
 
 func buildQuery(selectClause string, projectID int64, q Query, opts BuildOptions, ordered bool) (string, []any) {

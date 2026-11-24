@@ -406,7 +406,10 @@ export function applyAutocompleteSuggestion(
 
 /**
  * Combines the search query bar value with optional sidebar tag and credential
- * filters into a single FR-081 query string (e.g. for filtered DELETE /messages?query=...).
+ * filters into a single FR-081 query string for display (e.g. the "Delete
+ * matching" confirmation). Requests must use deleteAllFilterParams instead:
+ * credential labels are not unique, so `credential:<label>` can match other
+ * credentials.
  */
 export function combineQueryAndTag(q: string, tag?: string, credentialLabel?: string): string {
   const parts: string[] = [];
@@ -423,4 +426,26 @@ export function combineQueryAndTag(q: string, tag?: string, credentialLabel?: st
     parts.push(`credential:${formatOperatorValue(trimmedCred)}`);
   }
   return parts.join(" ");
+}
+
+export interface DeleteAllFilterParams {
+  query?: string;
+  credential?: number;
+}
+
+/**
+ * Builds the query parameters for a filtered DELETE /messages ("Delete
+ * matching"). The sidebar credential filter is sent as the credential ID, like
+ * the list request, never as a `credential:<label>` term (FR-021, FR-082).
+ */
+export function deleteAllFilterParams(
+  q: string,
+  tag?: string,
+  credentialId?: number,
+): DeleteAllFilterParams {
+  const query = combineQueryAndTag(q, tag);
+  return {
+    ...(query ? { query } : {}),
+    ...(credentialId !== undefined ? { credential: credentialId } : {}),
+  };
 }
