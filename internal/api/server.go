@@ -9,11 +9,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/blob"
 	"github.com/mailcubby/mailcubby/internal/clock"
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
 	"github.com/mailcubby/mailcubby/internal/ingest"
+	"github.com/mailcubby/mailcubby/internal/ratelimit"
 	"github.com/mailcubby/mailcubby/internal/render"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
@@ -25,7 +27,18 @@ const (
 	httpIdleTimeout       = 120 * time.Second
 	httpMaxHeaderBytes    = 64 << 10
 	sparklineCacheTTL     = 30 * time.Second
+	resetRateLimitCount   = 20
+	resetRateLimitWindow  = 15 * time.Minute
+	loginIPRateMultiplier = 5
 )
+
+// PasswordHasher performs argon2id password hashing and verification (SPEC FR-042).
+// Defaults to auth.NewHasher(); tests may inject an instrumented implementation.
+type PasswordHasher interface {
+	Hash(ctx context.Context, password string) (string, error)
+	Verify(ctx context.Context, password, encodedHash string) (ok bool, needsRehash bool, err error)
+	VerifyDummy(ctx context.Context, password string) error
+}
 
 // Options configures optional dependencies for constructing an API Server.
 type Options struct {
@@ -34,6 +47,7 @@ type Options struct {
 	Logger         *slog.Logger
 	Ingestor       *ingest.Ingestor
 	Renderer       *render.Renderer
+	Hasher         PasswordHasher
 	WebHandler     http.Handler
 	ListenersReady func() bool
 }
@@ -46,11 +60,16 @@ type Server struct {
 	bus            *events.Bus
 	ingestor       *ingest.Ingestor
 	renderer       *render.Renderer
+	hasher         PasswordHasher
 	clk            clock.Clock
 	log            *slog.Logger
 	version        string
 	webHandler     http.Handler
 	listenersReady func() bool
+
+	loginKeyLimiter *ratelimit.SlidingWindow
+	loginIPLimiter  *ratelimit.SlidingWindow
+	resetIPLimiter  *ratelimit.SlidingWindow
 
 	routes  []Route
 	handler http.Handler
@@ -96,22 +115,33 @@ func New(cfg config.Config, st *store.Store, blobs *blob.Store, bus *events.Bus,
 	if rend == nil && blobs != nil {
 		rend = render.New(blobs)
 	}
+	hasher := opts.Hasher
+	if hasher == nil {
+		hasher = auth.NewHasher()
+	}
+
+	loginLimit := cfg.LoginRateLimit.Count
+	loginWindow := cfg.LoginRateLimit.Window
 
 	s := &Server{
-		cfg:            cfg,
-		store:          st,
-		blobs:          blobs,
-		bus:            bus,
-		ingestor:       ing,
-		renderer:       rend,
-		clk:            clk,
-		log:            log,
-		version:        ver,
-		webHandler:     opts.WebHandler,
-		listenersReady: opts.ListenersReady,
-		sse:            newSSETracker(cfg.SSEMaxConnectionsPerUser),
-		sparkCache:     make(map[int64]sparklineEntry),
-		shutdownCh:     make(chan struct{}),
+		cfg:             cfg,
+		store:           st,
+		blobs:           blobs,
+		bus:             bus,
+		ingestor:        ing,
+		renderer:        rend,
+		hasher:          hasher,
+		clk:             clk,
+		log:             log,
+		version:         ver,
+		webHandler:      opts.WebHandler,
+		listenersReady:  opts.ListenersReady,
+		loginKeyLimiter: ratelimit.NewSlidingWindow(loginLimit, loginWindow, clk),
+		loginIPLimiter:  ratelimit.NewSlidingWindow(loginLimit*loginIPRateMultiplier, loginWindow, clk),
+		resetIPLimiter:  ratelimit.NewSlidingWindow(resetRateLimitCount, resetRateLimitWindow, clk),
+		sse:             newSSETracker(cfg.SSEMaxConnectionsPerUser),
+		sparkCache:      make(map[int64]sparklineEntry),
+		shutdownCh:      make(chan struct{}),
 	}
 	s.routes = s.buildRoutes()
 	s.handler = s.withMiddleware(s.buildMux())

@@ -98,6 +98,13 @@ type deleteProjectRequest struct {
 }
 
 func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
+	principal := PrincipalFromContext(r.Context())
+	// TODO(phase-7a): list projects where user is a member instead of admin-only.
+	if s.cfg.Mode == config.ModeServer && !principal.IsAdmin {
+		writeJSON(w, http.StatusOK, []projectSummaryResponse{})
+		return
+	}
+
 	projects, err := s.store.ListProjects(r.Context())
 	if err != nil {
 		s.log.Error("list projects failed",

@@ -62,6 +62,76 @@ paths:
               schema:
                 $ref: "#/components/schemas/MetaResponse"
 
+  /api/v1/setup:
+    post:
+      operationId: completeSetup
+      summary: Complete first-run instance setup and sign in as the initial admin (server mode)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupRequest"
+      responses:
+        "201":
+          description: Initial admin created and session cookie set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/auth/login:
+    post:
+      operationId: authLogin
+      summary: Authenticate with email and password and start a session (server mode)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authenticated user with session cookie set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/auth/logout:
+    post:
+      operationId: authLogout
+      summary: Revoke the current session and clear the session cookie (server mode)
+      responses:
+        "204":
+          description: Logged out
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/auth/me:
     get:
       operationId: getAuthMe
@@ -73,6 +143,104 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuthMeResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+    patch:
+      operationId: updateAuthMe
+      summary: Update current user display name or password (server mode)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchAuthMeRequest"
+      responses:
+        "200":
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/auth/sessions:
+    get:
+      operationId: listAuthSessions
+      summary: List active browser sessions for the current user (server mode)
+      responses:
+        "200":
+          description: Active sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionSummary"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/auth/sessions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: deleteAuthSession
+      summary: Revoke one of the current user's sessions (server mode)
+      responses:
+        "204":
+          description: Session revoked
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/password-reset/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: completePasswordReset
+      summary: Reset password using a single-use admin-issued token (server mode)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequest"
+      responses:
+        "204":
+          description: Password updated and all sessions revoked
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "410":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
 
   /api/v1/projects:
     get:
@@ -743,25 +911,101 @@ components:
               type: string
               enum: [starttls, tls, none]
 
+    AuthUser:
+      type: object
+      required: [id, email, name, is_admin, can_create_projects]
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+        name:
+          type: string
+        is_admin:
+          type: boolean
+        can_create_projects:
+          type: boolean
+
+    SetupRequest:
+      type: object
+      required: [setup_token, email, name, password]
+      properties:
+        setup_token:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        password:
+          type: string
+          minLength: 10
+          maxLength: 256
+        instance_name:
+          type: string
+          maxLength: 80
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    PatchAuthMeRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        current_password:
+          type: string
+        new_password:
+          type: string
+          minLength: 10
+          maxLength: 256
+
+    SessionSummary:
+      type: object
+      required: [id, created_at, last_seen_at, ip, user_agent, current]
+      properties:
+        id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        ip:
+          type: string
+        user_agent:
+          type: string
+        current:
+          type: boolean
+
+    PasswordResetRequest:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+          minLength: 10
+          maxLength: 256
+
     AuthMeResponse:
       type: object
       required: [user, csrf_token, memberships]
       properties:
         user:
-          type: object
-          required: [id, email, name, is_admin, can_create_projects]
-          properties:
-            id:
-              type: integer
-              format: int64
-            email:
-              type: string
-            name:
-              type: string
-            is_admin:
-              type: boolean
-            can_create_projects:
-              type: boolean
+          $ref: "#/components/schemas/AuthUser"
         csrf_token:
           type: string
         memberships:

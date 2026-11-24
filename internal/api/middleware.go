@@ -13,6 +13,8 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"github.com/mailcubby/mailcubby/internal/auth"
+	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
@@ -31,29 +33,30 @@ type ctxKey int
 const (
 	ctxKeyRequestID ctxKey = iota + 1
 	ctxKeyClientIP
-	ctxKeyPrincipal
 	ctxKeyProject
+	ctxKeyLogMeta
 )
 
+type requestLogMeta struct {
+	principalKind auth.PrincipalKind
+}
+
 // PrincipalKind identifies how an HTTP request was authenticated.
-type PrincipalKind string
+type PrincipalKind = auth.PrincipalKind
+
+// Principal holds the authenticated caller identity in the request context.
+type Principal = auth.Principal
 
 const (
 	// PrincipalLocal represents the implicit operator in local mode (SPEC 5.1).
-	PrincipalLocal PrincipalKind = "local"
+	PrincipalLocal = auth.PrincipalLocal
+	// PrincipalUser represents a browser session authenticated via cookie (SPEC FR-044).
+	PrincipalUser = auth.PrincipalUser
+	// PrincipalToken represents an API bearer token caller (SPEC FR-065).
+	PrincipalToken = auth.PrincipalToken
 	// PrincipalAnonymous represents an unauthenticated caller.
-	PrincipalAnonymous PrincipalKind = "anonymous"
+	PrincipalAnonymous = auth.PrincipalAnonymous
 )
-
-// Principal holds the authenticated caller identity in the request context.
-type Principal struct {
-	Kind              PrincipalKind
-	UserID            int64
-	Email             string
-	Name              string
-	IsAdmin           bool
-	CanCreateProjects bool
-}
 
 // ProjectContext holds the resolved project and effective role for a project-scoped route.
 type ProjectContext struct {
@@ -75,11 +78,7 @@ func ClientIPFromContext(ctx context.Context) string {
 
 // PrincipalFromContext returns the Principal attached by middleware.
 func PrincipalFromContext(ctx context.Context) Principal {
-	v, ok := ctx.Value(ctxKeyPrincipal).(Principal)
-	if !ok {
-		return Principal{Kind: PrincipalAnonymous}
-	}
-	return v
+	return auth.PrincipalFromContext(ctx)
 }
 
 // ProjectFromContext returns the ProjectContext attached by project-resolution middleware.
@@ -113,7 +112,8 @@ func isSensitiveHeader(name string) bool {
 
 func (s *Server) withMiddleware(next http.Handler) http.Handler {
 	h := next
-	h = s.localPrincipalMiddleware(h)
+	h = s.csrfMiddleware(h)
+	h = s.authenticateMiddleware(h)
 	h = s.bodyLimitMiddleware(h)
 	h = s.accessLogMiddleware(h)
 	h = s.securityHeadersMiddleware(h)
@@ -181,7 +181,9 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := s.clk.Now()
 		rw := newTrackedResponseWriter(w)
-		next.ServeHTTP(rw, r)
+		meta := &requestLogMeta{principalKind: auth.PrincipalAnonymous}
+		ctx := context.WithValue(r.Context(), ctxKeyLogMeta, meta)
+		next.ServeHTTP(rw, r.WithContext(ctx))
 
 		status := rw.status
 		if status == 0 {
@@ -196,7 +198,6 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Log path without query string and never log Authorization/Cookie/X-CSRF-Token.
-		principal := PrincipalFromContext(r.Context())
 		s.log.Log(r.Context(), level, "http request",
 			"request_id", RequestIDFromContext(r.Context()),
 			"method", r.Method,
@@ -205,7 +206,7 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 			"bytes", rw.bytes,
 			"duration_ms", duration.Milliseconds(),
 			"remote_ip", ClientIPFromContext(r.Context()),
-			"principal", string(principal.Kind),
+			"principal", string(meta.principalKind),
 		)
 	})
 }
@@ -219,23 +220,154 @@ func (s *Server) bodyLimitMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) localPrincipalMiddleware(next http.Handler) http.Handler {
-	localOp := Principal{
-		Kind:              PrincipalLocal,
-		UserID:            0,
-		Email:             "local@localhost",
-		Name:              "Local Operator",
-		IsAdmin:           true,
-		CanCreateProjects: true,
-	}
+func (s *Server) authenticateMiddleware(next http.Handler) http.Handler {
+	localOp := auth.LocalPrincipal()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), ctxKeyPrincipal, localOp)
+		var principal auth.Principal
+		if s.cfg.Mode == config.ModeLocal {
+			principal = localOp
+		} else {
+			principal = s.authenticateServerRequest(r)
+		}
+		if meta, ok := r.Context().Value(ctxKeyLogMeta).(*requestLogMeta); ok {
+			meta.principalKind = principal.Kind
+		}
+		ctx := auth.WithPrincipal(r.Context(), principal)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
+func (s *Server) authenticateServerRequest(r *http.Request) auth.Principal {
+	if s.store == nil {
+		return auth.Principal{Kind: auth.PrincipalAnonymous}
+	}
+	cookie, err := r.Cookie(auth.SessionCookieName)
+	if err != nil || strings.TrimSpace(cookie.Value) == "" {
+		return auth.Principal{Kind: auth.PrincipalAnonymous}
+	}
+
+	sessionID := auth.HashToken(cookie.Value)
+	sess, err := s.store.GetSessionByID(r.Context(), sessionID)
+	if err != nil {
+		return auth.Principal{Kind: auth.PrincipalAnonymous}
+	}
+
+	now := s.clk.Now().UTC()
+	if auth.IsSessionExpired(now, sess.LastSeenAt, sess.ExpiresAt, s.cfg.SessionIdleTimeout) {
+		_ = s.store.DeleteSessionByID(r.Context(), sess.ID)
+		return auth.Principal{Kind: auth.PrincipalAnonymous}
+	}
+
+	user, err := s.store.GetUserByID(r.Context(), sess.UserID)
+	if err != nil || user.DisabledAt != nil {
+		return auth.Principal{Kind: auth.PrincipalAnonymous}
+	}
+
+	if auth.NeedsSessionTouch(now, sess.LastSeenAt) {
+		if err := s.store.TouchSession(r.Context(), sess.ID, now); err != nil {
+			s.log.Warn("failed to update session last_seen_at",
+				"request_id", RequestIDFromContext(r.Context()),
+				"error", err,
+			)
+		}
+	}
+
+	return auth.Principal{
+		Kind:              auth.PrincipalUser,
+		UserID:            user.ID,
+		Email:             user.Email,
+		Name:              user.Name,
+		IsAdmin:           user.IsAdmin,
+		CanCreateProjects: user.CanCreateProjects,
+		SessionID:         sess.ID,
+		CSRFToken:         sess.CSRFToken,
+	}
+}
+
+// csrfMiddleware enforces SPEC FR-045 in server mode:
+//   - All unsafe requests require Origin (or Referer fallback) matching MAILCUBBY_BASE_URL.
+//   - Cookie-authenticated unsafe requests additionally require X-CSRF-Token.
+//   - Bearer-token requests (Phase 9) are exempt.
+func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.Mode != config.ModeServer || !auth.IsUnsafeMethod(r.Method) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		principal := PrincipalFromContext(r.Context())
+		if principal.Kind == auth.PrincipalToken {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !auth.CheckOrigin(r, s.cfg.BaseURL) {
+			writeError(w, http.StatusForbidden, ErrCodeForbidden, "invalid request origin", nil)
+			return
+		}
+		if principal.Kind == auth.PrincipalUser {
+			got := r.Header.Get(auth.CSRFHeaderName)
+			if !auth.CheckCSRFToken(got, principal.CSRFToken) {
+				writeError(w, http.StatusForbidden, ErrCodeForbidden, "invalid CSRF token", nil)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) authorizeRouteMiddleware(rt Route, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if rt.ServerOnly && s.cfg.Mode == config.ModeLocal {
+			writeError(w, http.StatusNotFound, ErrCodeNotFound, "endpoint not found", nil)
+			return
+		}
+		if s.cfg.Mode == config.ModeLocal {
+			next(w, r)
+			return
+		}
+
+		principal := PrincipalFromContext(r.Context())
+		switch rt.Need {
+		case PermPublic:
+			next(w, r)
+			return
+		case PermSession:
+			if principal.Kind != auth.PrincipalUser {
+				writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "authentication required", nil)
+				return
+			}
+		case PermUser:
+			if !principal.IsAuthenticated() {
+				writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "authentication required", nil)
+				return
+			}
+		case PermProjectCreate:
+			if !principal.IsAuthenticated() {
+				writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "authentication required", nil)
+				return
+			}
+			if !principal.IsAdmin && !principal.CanCreateProjects {
+				writeError(w, http.StatusForbidden, ErrCodeForbidden, "insufficient permissions", nil)
+				return
+			}
+		case PermViewer, PermViewerTech, PermMember, PermOwner:
+			if !principal.IsAuthenticated() {
+				writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "authentication required", nil)
+				return
+			}
+		}
+		next(w, r)
+	}
+}
+
 func (s *Server) resolveProjectMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		principal := PrincipalFromContext(r.Context())
+		// TODO(phase-7a): replace admin-only server-mode gate with per-project membership resolution (FR-050).
+		if s.cfg.Mode == config.ModeServer && !principal.IsAdmin {
+			writeError(w, http.StatusNotFound, ErrCodeNotFound, "project not found", nil)
+			return
+		}
+
 		slug := r.PathValue("project")
 		if slug == "" {
 			writeError(w, http.StatusNotFound, ErrCodeNotFound, "project not found", nil)
@@ -257,7 +389,7 @@ func (s *Server) resolveProjectMiddleware(next http.HandlerFunc) http.HandlerFun
 		}
 		pctx := ProjectContext{
 			Project: proj,
-			Role:    "owner", // Local operator has owner rights on all projects (SPEC 5.1).
+			Role:    "owner",
 		}
 		ctx := context.WithValue(r.Context(), ctxKeyProject, pctx)
 		next(w, r.WithContext(ctx))

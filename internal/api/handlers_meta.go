@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
@@ -71,12 +72,25 @@ func (s *Server) handleOpenAPI(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	instanceName := s.resolveInstanceName(r.Context())
+	setupRequired := false
+	if s.cfg.Mode == config.ModeServer && s.store != nil {
+		count, err := s.store.CountUsers(r.Context())
+		if err != nil {
+			s.log.Error("count users for meta failed",
+				"request_id", RequestIDFromContext(r.Context()),
+				"error", err,
+			)
+			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+			return
+		}
+		setupRequired = count == 0
+	}
 
 	resp := metaResponse{
 		Mode:          string(s.cfg.Mode),
 		Version:       s.version,
 		InstanceName:  instanceName,
-		SetupRequired: false,
+		SetupRequired: setupRequired,
 		BaseURL:       s.cfg.BaseURL,
 		Features: metaFeatures{
 			RemoteImages:     string(s.cfg.RenderRemoteImages),
@@ -90,22 +104,25 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 	principal := PrincipalFromContext(r.Context())
-	projects, err := s.store.ListProjects(r.Context())
-	if err != nil {
-		s.log.Error("list projects for auth/me failed",
-			"request_id", RequestIDFromContext(r.Context()),
-			"error", err,
-		)
-		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
-		return
-	}
 
-	memberships := make([]authMembershipResponse, 0, len(projects))
-	for _, p := range projects {
-		memberships = append(memberships, authMembershipResponse{
-			Project: p.Slug,
-			Role:    "owner",
-		})
+	memberships := make([]authMembershipResponse, 0)
+	if s.cfg.Mode == config.ModeLocal || principal.IsAdmin {
+		projects, err := s.store.ListProjects(r.Context())
+		if err != nil {
+			s.log.Error("list projects for auth/me failed",
+				"request_id", RequestIDFromContext(r.Context()),
+				"error", err,
+			)
+			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+			return
+		}
+		memberships = make([]authMembershipResponse, 0, len(projects))
+		for _, p := range projects {
+			memberships = append(memberships, authMembershipResponse{
+				Project: p.Slug,
+				Role:    "owner",
+			})
+		}
 	}
 
 	writeJSON(w, http.StatusOK, authMeResponse{
@@ -116,7 +133,7 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 			IsAdmin:           principal.IsAdmin,
 			CanCreateProjects: principal.CanCreateProjects,
 		},
-		CSRFToken:   "",
+		CSRFToken:   principal.CSRFToken,
 		Memberships: memberships,
 	})
 }

@@ -12,6 +12,8 @@ type Permission string
 const (
 	// PermPublic requires no authentication.
 	PermPublic Permission = "public"
+	// PermSession requires a cookie-authenticated browser session (server mode).
+	PermSession Permission = "session"
 	// PermUser requires any authenticated principal (session, token, or local operator).
 	PermUser Permission = "user"
 	// PermProjectCreate requires admin or can_create_projects (or local operator).
@@ -28,10 +30,11 @@ const (
 
 // Route declares one HTTP endpoint in the single source-of-truth route table.
 type Route struct {
-	Method  string
-	Pattern string
-	Need    Permission
-	Handler http.HandlerFunc
+	Method     string
+	Pattern    string
+	Need       Permission
+	ServerOnly bool
+	Handler    http.HandlerFunc
 }
 
 func (s *Server) buildRoutes() []Route {
@@ -41,9 +44,16 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodGet, Pattern: "/readyz", Need: PermPublic, Handler: s.handleReadyz},
 		{Method: http.MethodGet, Pattern: "/api/v1/openapi.yaml", Need: PermPublic, Handler: s.handleOpenAPI},
 
-		// Meta & Auth (SPEC 8.2)
+		// Meta, Setup & Auth (SPEC 8.2)
 		{Method: http.MethodGet, Pattern: "/api/v1/meta", Need: PermPublic, Handler: s.handleMeta},
+		{Method: http.MethodPost, Pattern: "/api/v1/setup", Need: PermPublic, ServerOnly: true, Handler: s.handleSetup},
+		{Method: http.MethodPost, Pattern: "/api/v1/auth/login", Need: PermPublic, ServerOnly: true, Handler: s.handleAuthLogin},
+		{Method: http.MethodPost, Pattern: "/api/v1/auth/logout", Need: PermSession, ServerOnly: true, Handler: s.handleAuthLogout},
 		{Method: http.MethodGet, Pattern: "/api/v1/auth/me", Need: PermUser, Handler: s.handleAuthMe},
+		{Method: http.MethodPatch, Pattern: "/api/v1/auth/me", Need: PermSession, ServerOnly: true, Handler: s.handleUpdateAuthMe},
+		{Method: http.MethodGet, Pattern: "/api/v1/auth/sessions", Need: PermSession, ServerOnly: true, Handler: s.handleListAuthSessions},
+		{Method: http.MethodDelete, Pattern: "/api/v1/auth/sessions/{id}", Need: PermSession, ServerOnly: true, Handler: s.handleDeleteAuthSession},
+		{Method: http.MethodPost, Pattern: "/api/v1/password-reset/{token}", Need: PermPublic, ServerOnly: true, Handler: s.handlePasswordReset},
 
 		// Projects (SPEC 8.3)
 		{Method: http.MethodGet, Pattern: "/api/v1/projects", Need: PermUser, Handler: s.handleListProjects},
@@ -86,6 +96,7 @@ func (s *Server) buildMux() http.Handler {
 		if strings.Contains(rt.Pattern, "{project}") {
 			h = s.resolveProjectMiddleware(h)
 		}
+		h = s.authorizeRouteMiddleware(rt, h)
 		apiMux.HandleFunc(rt.Method+" "+rt.Pattern, h)
 	}
 

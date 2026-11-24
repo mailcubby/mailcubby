@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
@@ -88,8 +89,16 @@ func (t *sseTracker) register(key string) (<-chan struct{}, func()) {
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	principal := PrincipalFromContext(r.Context())
 	filter := events.AllFilter()
-	if rawSlug := strings.TrimSpace(r.URL.Query().Get("project")); rawSlug != "" {
+	// TODO(phase-7a): replace admin-only SSE filtering with live membership filtering (FR-091).
+	if s.cfg.Mode == config.ModeServer && !principal.IsAdmin {
+		if strings.TrimSpace(r.URL.Query().Get("project")) != "" {
+			writeError(w, http.StatusNotFound, ErrCodeNotFound, "project not found", nil)
+			return
+		}
+		filter = func(events.Event) bool { return false }
+	} else if rawSlug := strings.TrimSpace(r.URL.Query().Get("project")); rawSlug != "" {
 		proj, err := s.store.GetProjectBySlug(r.Context(), rawSlug)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
@@ -107,7 +116,6 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		filter = events.ProjectFilter(proj.ID)
 	}
 
-	principal := PrincipalFromContext(r.Context())
 	connKey := fmt.Sprintf("%s:%d", principal.Kind, principal.UserID)
 	evictCh, unregister := s.sse.register(connKey)
 	defer unregister()
