@@ -120,7 +120,7 @@ Routing rules are defined precisely in section 7.
 **FR-020 Project resolution.** Every accepted message is stored in exactly the project(s) resolved by section 7, or rejected with the codes listed there.
 - AC: table-driven tests cover every row of the routing table in section 7.2 in both modes.
 
-**FR-021 Credential attribution.** Messages accepted via an SMTP credential record `smtp_credential_id`; the UI can filter by credential (useful when one project has separate credentials per environment). The list API filter is `?credential=<credential id>`; the search operator `credential:<label>` matches by label.
+**FR-021 Credential attribution.** Messages accepted via an SMTP credential record `smtp_credential_id`; the UI can filter by credential (useful when one project has separate credentials per environment). The list and delete-all API filter is `?credential=<credential id>`; the search operator `credential:<label>` matches by label (labels are not unique, so the UI's "Delete matching" sends the sidebar credential as `?credential=<id>`, never as `credential:<label>`).
 
 ### 6.3 Projects
 
@@ -271,6 +271,7 @@ Unknown operators are treated as plain text. The parser MUST produce parameteris
 - AC: fuzz test of the parser never panics and never produces SQL containing user text outside bind parameters.
 
 **FR-082 Search API.** `query` parameter on the list, delete-all and wait endpoints.
+- Delete-all with a `query` returns `400 bad_request` and deletes nothing when the query does not narrow the selection: it parses to zero terms, every term is a negated full-text term without indexable tokens (e.g. `-"!"`), or it consists only of exclusions (negated text, `from:`, `to:`, `subject:`, `tag:`, `credential:` terms) that exclude no message in the project. A `credential=<id>` filter counts as narrowing, so delete-all with only `credential` deletes that credential's messages. To delete every message, omit `query` and `credential`. List and wait treat such no-op terms as matching everything.
 
 ### 6.11 Tags
 

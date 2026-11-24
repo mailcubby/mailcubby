@@ -28,7 +28,11 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SearchBar } from "@/features/inbox/SearchBar";
-import { combineQueryAndTag } from "@/features/inbox/searchQuery";
+import {
+  combineQueryAndTag,
+  type DeleteAllFilterParams,
+  deleteAllFilterParams,
+} from "@/features/inbox/searchQuery";
 import { TagPickerPopover } from "@/features/inbox/TagPickerPopover";
 import {
   api,
@@ -70,6 +74,7 @@ export interface MessageListPaneProps {
   searchQuery: string;
   activeTag?: string;
   activeCredentialLabel?: string;
+  activeCredentialId?: number;
   searchInputRef: RefObject<HTMLInputElement | null>;
   onChangeQuery: (next: string) => void;
   onClearTag: () => void;
@@ -102,6 +107,7 @@ export function MessageListPane({
   searchQuery,
   activeTag,
   activeCredentialLabel,
+  activeCredentialId,
   searchInputRef,
   onChangeQuery,
   onClearTag,
@@ -262,12 +268,12 @@ export function MessageListPane({
   });
 
   const deleteAllMutation = useMutation({
-    mutationFn: async (queryFilter: string) =>
+    mutationFn: async (filterParams: DeleteAllFilterParams) =>
       unwrap(
         await api.DELETE("/api/v1/projects/{project}/messages", {
           params: {
             path: { project: project.slug },
-            ...(queryFilter ? { query: { query: queryFilter } } : {}),
+            ...(Object.keys(filterParams).length > 0 ? { query: filterParams } : {}),
           },
         }),
       ),
@@ -969,7 +975,11 @@ export function MessageListPane({
         confirmLabel={hasActiveFilter ? "Delete matching" : "Delete all"}
         destructive
         pending={deleteAllMutation.isPending}
-        onConfirm={() => deleteAllMutation.mutate(activeFilterQuery)}
+        onConfirm={() =>
+          deleteAllMutation.mutate(
+            deleteAllFilterParams(searchQuery, activeTag, activeCredentialId),
+          )
+        }
       />
     </section>
   );

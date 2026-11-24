@@ -34,10 +34,23 @@ func Messages(ctx context.Context, st *store.Store, projectID int64, q Query, op
 	return out, nil
 }
 
-// DeleteMessagesByQuery deletes all messages in projectID matching q inside a
-// single write transaction, updating project counters and last_message_at (FR-034, FR-076, FR-082).
-func DeleteMessagesByQuery(ctx context.Context, st *store.Store, projectID int64, q Query, now time.Time) ([]store.DeletedMessage, store.Project, error) {
-	selectSQL, args := BuildDeleteSelect(projectID, q)
+// DeleteMessagesByQuery deletes all messages in projectID matching q (and, when
+// credentialID is non-nil, received via that SMTP credential) inside a single
+// write transaction, updating project counters and last_message_at (FR-034, FR-076, FR-082).
+// It returns ErrNoEffectiveFilter, deleting nothing, when neither q nor
+// credentialID adds a predicate, or when the filter consists only of exclusions
+// (negated text, from, to, subject, tag or credential terms) that exclude no
+// message, so a typo or a no-op term can never turn a filtered delete into a
+// delete of the whole project.
+func DeleteMessagesByQuery(ctx context.Context, st *store.Store, projectID int64, q Query, credentialID *int64, now time.Time) ([]store.DeletedMessage, store.Project, error) {
+	narrows, exclusionsOnly := filterShape(q)
+	if credentialID != nil {
+		narrows, exclusionsOnly = true, false
+	}
+	if !narrows {
+		return nil, store.Project{}, ErrNoEffectiveFilter
+	}
+	selectSQL, args := BuildDeleteSelect(projectID, q, credentialID)
 
 	var (
 		deleted []store.DeletedMessage
@@ -74,6 +87,16 @@ func DeleteMessagesByQuery(ctx context.Context, st *store.Store, projectID int64
 		}
 		if closeErr := rows.Close(); closeErr != nil {
 			return fmt.Errorf("search: close delete candidates: %w", closeErr)
+		}
+
+		if exclusionsOnly && len(targets) > 0 {
+			var total int
+			if countErr := tx.SQLTx().QueryRowContext(ctx, "SELECT COUNT(*) FROM messages WHERE project_id = ?", projectID).Scan(&total); countErr != nil {
+				return fmt.Errorf("search: count messages in project %d: %w", projectID, countErr)
+			}
+			if len(targets) == total {
+				return ErrNoEffectiveFilter
+			}
 		}
 
 		deleted, proj, txErr = tx.DeleteMessagesAndUpdateCountersTx(ctx, projectID, targets, now)

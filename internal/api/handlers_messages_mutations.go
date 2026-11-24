@@ -291,18 +291,31 @@ func (s *Server) handleDeleteAllMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	rawQuery := strings.TrimSpace(r.URL.Query().Get("query"))
-	if rawQuery != "" {
+	var credentialID *int64
+	if rawCred := strings.TrimSpace(r.URL.Query().Get("credential")); rawCred != "" {
+		parsedCred, credErr := parsePositiveInt64Param(rawCred)
+		if credErr != nil {
+			writeError(w, http.StatusBadRequest, ErrCodeBadRequest, "credential must be a positive integer", nil)
+			return
+		}
+		credentialID = &parsedCred
+	}
+	if rawQuery != "" || credentialID != nil {
 		parsedQuery, parseErr := search.Parse(rawQuery)
 		if parseErr != nil {
 			writeError(w, http.StatusBadRequest, ErrCodeBadRequest, parseErr.Error(), nil)
 			return
 		}
-		if parsedQuery.IsEmpty() {
+		if rawQuery != "" && parsedQuery.IsEmpty() {
 			writeError(w, http.StatusBadRequest, ErrCodeBadRequest, "query must contain at least one search term", nil)
 			return
 		}
 
-		deleted, proj, delErr := search.DeleteMessagesByQuery(r.Context(), s.store, pctx.Project.ID, parsedQuery, s.clk.Now().UTC())
+		deleted, proj, delErr := search.DeleteMessagesByQuery(r.Context(), s.store, pctx.Project.ID, parsedQuery, credentialID, s.clk.Now().UTC())
+		if errors.Is(delErr, search.ErrNoEffectiveFilter) {
+			writeError(w, http.StatusBadRequest, ErrCodeBadRequest, "query must narrow the selection; omit the query to delete all messages", nil)
+			return
+		}
 		if delErr != nil {
 			s.log.Error("delete messages by query failed",
 				"request_id", RequestIDFromContext(r.Context()),
