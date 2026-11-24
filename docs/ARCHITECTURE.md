@@ -390,3 +390,51 @@ Internet --587--> mailcubby:1025 (STARTTLS, cert files from Caddy's volume, read
 - Logs: `log/slog` to stdout, `text` or `json`. Each HTTP request logs method, route pattern, status, duration, request ID, principal kind; each SMTP session logs remote IP, auth user, recipients count, result code, message IDs.
 - Backups: documented in README (SQLite `.backup` + blobs copy, or stop and copy the volume).
 - Upgrades: migrations run automatically; downgrades are not supported (restore from backup).
+
+## 10. Threat model
+
+Mailcubby is designed to capture untrusted email from staging/development applications and serve it safely to multi-tenant teams and external client viewers. This section summarizes the security assets, actors, primary threats, implemented mitigations, and residual risks.
+
+### 10.1 Assets
+
+| Asset | Sensitivity | Storage |
+|---|---|---|
+| Captured messages & attachments | High (often contain PII, password-reset links, magic links, invoices) | SQLite metadata + zstd `.eml` blobs (`0600`) |
+| User passwords & sessions | Critical | Argon2id PHC hashes; session tokens stored as SHA-256 only |
+| Invite & password-reset tokens | Critical | SHA-256 hashes only; single-use with expiry |
+| Personal API tokens | High | SHA-256 hashes only (`mailcubby_` + 40 base62 chars) |
+| Project SMTP credentials | High | AES-256-GCM encrypted under HKDF subkey of `MAILCUBBY_APP_KEY` with username AAD |
+| `MAILCUBBY_APP_KEY` | Critical | Env var / `_FILE` (server mode) or `$DATA_DIR/app.key` (`0600`, local mode) |
+| Audit trail (`audit_log`) | Medium | SQLite (retention `MAILCUBBY_AUDIT_RETENTION`, never holds secrets) |
+
+### 10.2 Actors and trust boundaries
+
+1. **Unauthenticated network attacker**: can reach public HTTP endpoints (`/healthz`, `/readyz`, `/api/v1/meta`, `/setup`, `/auth/login`, `/invites/{token}`, `/password-reset/{token}`) and the SMTP listener (`:1025` / `:1465`).
+2. **Untrusted email sender / hostile email payload**: controls raw RFC 5322 bytes, HTML, CSS, headers (`X-Tags`, `Subject`, `From`), and attachment filenames/MIME types.
+3. **Client viewer**: authenticated lowest-privilege tenant user scoped to assigned project(s); must be read-only, isolated from other projects, prevented from seeing SMTP usernames/credentials, and blocked from technical views when `viewer_hide_technical` is enabled.
+4. **Project member / owner**: authenticated tenant user; members can manage messages/tags and read SMTP info (revealing passwords only if `members_can_reveal_smtp` is enabled); owners manage project settings, members, invites, credentials, and project audit log; neither can access other projects or admin routes.
+5. **API token bearer**: automated CI/test client restricted to `read` or `write` scope (never owner/admin/management endpoints) and optionally pinned to one project.
+6. **Instance administrator**: trusted for user/instance management; implicit access to non-member projects is audited (`project.admin_access`).
+
+### 10.3 Threats and mitigations
+
+| Threat | Mitigation | Verification |
+|---|---|---|
+| **XSS / script execution / origin escape via email HTML** | Email HTML is never inserted into the app DOM (`noDangerouslySetInnerHtml` Biome error). Served exclusively from `GET /render/{project}/{id}` inside `<iframe sandbox="allow-popups allow-popups-to-escape-sandbox">` with SPEC 12.1 CSP (`sandbox` without `allow-scripts`/`allow-same-origin`/`allow-forms`, `default-src 'none'`, `form-action 'none'`, `base-uri 'none'`). `internal/render` rewrites via `golang.org/x/net/html` (injects `no-referrer` + `<base target="_blank">`, drops `<base>`, `<meta http-equiv="refresh">`, prefetch/preload `<link>`, and recursively rewrites `<noscript>`, `<svg>`/`<math>` raw-text elements, and `iframe srcdoc`). | `internal/render/render_test.go`, `testdata/hostile/` corpus, `web/e2e/hostile-render.spec.ts` |
+| **Remote tracking pixel / CSS exfiltration** | Render CSP defaults to `img-src data: cid:` (blocking external images, fonts, stylesheets, frames, objects). Remote image loading is per-message opt-in (`?images=1`, disabled when `MAILCUBBY_RENDER_REMOTE_IMAGES=off`). `Referrer-Policy: no-referrer` and `X-DNS-Prefetch-Control: off` prevent referrer and DNS leaks. | `internal/api/headers_test.go`, `web/e2e/hostile-render.spec.ts` |
+| **Active content execution via downloads / attachments** | Attachments and `.eml` downloads force `Content-Disposition: attachment` (inline only for raster PNG/JPEG/GIF/WebP with `?inline=1`), `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox; default-src 'none'`, and coerce HTML/XHTML/SVG/XML/JS/multipart to `application/octet-stream`. Raw/HTML sources are served as `text/plain; charset=utf-8` with `nosniff` and attachment CSP. | `internal/api/headers_test.go`, `internal/api/api_test.go` |
+| **Cross-tenant data leakage** | Every tenant store method takes `projectID` explicitly and filters every referenced tenant table (`isolation_test.go` SQL lint). Middleware resolves `{project}` once per request and returns `404` on inaccessible projects. `projects.id` is `AUTOINCREMENT` (migration 00003) so deleted IDs are never reused. SSE filters by live membership set, drops deleted project IDs immediately, and closes streams on logout/revocation/disable/delete. Viewers never see `envelope.auth_user`. | `internal/store/isolation_test.go`, `internal/api/isolation_test.go`, `internal/api/project_id_reuse_test.go`, `internal/api/viewer_test.go` |
+| **Privilege escalation & broken access control** | Single route table (`internal/api/routes.go`) mapped to `internal/auth/permissions.go` (`Allowed`, `EffectiveTokenRole`, `CanReadTechnical`). Last active admin (with password) and sole project owner cannot be removed/deleted (`409`). Project invites cannot set passwords on existing accounts (`409 login_required`). | `internal/api/authz_matrix_test.go`, `internal/api/members_invites_test.go`, `internal/api/log_redaction_test.go` |
+| **CSRF & session hijacking** | `HttpOnly`, `SameSite=Lax`, `Secure` (on `https://`) session cookies; idle and absolute expiry enforced; unsafe cookie requests require both matching `Origin`/`Referer` and `X-CSRF-Token` (kept in memory, never `localStorage`). Password change/reset revokes other/all sessions, outstanding reset tokens, and open SSE streams. Post-login `returnTo` rejects external origins, backslashes, control chars, and protocol-relative paths. | `internal/api/auth_test.go`, `internal/api/log_redaction_test.go`, `web/src/features/auth/auth.test.tsx` |
+| **Credential brute force & enumeration** | Argon2id (`m=19456, t=2, p=1`, semaphore of 2) with dummy-hash verification for unknown/disabled/passwordless users. Atomic `Reserve`/`Cancel` rate limits on HTTP login (`MAILCUBBY_LOGIN_RATE_LIMIT` per IP+email and 5x per IP) and SMTP AUTH (`MAILCUBBY_SMTP_AUTH_MAX_FAILURES` per IP/username, 1 s failure delay, `smtp.auth_lockout` audit). `20/15m` per-IP limits on invite and password-reset endpoints; `MAILCUBBY_API_RATE_LIMIT` token bucket per session/token in server mode. Server-mode SMTP requires TLS before AUTH unless `MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH=true`. | `internal/ratelimit/*_test.go`, `internal/api/rate_limit_test.go`, `internal/smtpd/server_mode_test.go` |
+| **Resource exhaustion / DoS** | SMTP total and per-IP connection limits (`limitListener`), `MaxMessageBytes` (25 MiB default, max 100 MiB), `MaxRecipients` (100), bounded parse semaphore (`2 * GOMAXPROCS`), 50 auto-tag cap per message, 10 MiB `cid:` inline render cap, per-project SMTP rate limit (`450`), instance storage quota (`452`), retention sweeper and orphan blob GC, 1 MiB JSON request body cap, HTTP server timeouts, SSE per-user connection cap (10) and slow-consumer disconnect (256 buffer). | `internal/smtpd/limit_listener_test.go`, `internal/ingest/ingest_test.go`, `internal/app/retention_quota_test.go`, `internal/retention/*_test.go` |
+| **SQL injection & path traversal** | All SQL is sqlc-generated parameterized queries or `internal/search` fixed fragments + bind parameters (fuzz-tested). Blob paths are built solely from integer project IDs and ULIDs with strict validation (`internal/blob`). | `internal/search/search_test.go` (fuzz), `internal/blob/blob_test.go` |
+| **Secret leakage in logs or storage** | Access and panic logs never log query strings, redact `Authorization`/`Cookie`/`Set-Cookie`/`X-CSRF-Token`, and replace token segments in `/api/v1/invites/*`, `/api/v1/password-reset/*`, `/invite/*`, `/reset/*` with `[REDACTED]`. Decrypted SMTP passwords are never logged or stored in plaintext. `app.key` is created atomically with `0600`. Static analysis (`gosec`) and CI vulnerability scanning (`govulncheck`). | `internal/api/log_redaction_test.go`, `internal/secrets/secrets_test.go`, `.github/workflows/ci.yml` |
+
+### 10.4 Residual risks and operator responsibilities
+
+- **Local mode has no authentication**: `MAILCUBBY_MODE=local` is strictly for local development and must never be exposed to untrusted networks.
+- **In-memory rate limiting**: sliding-window and token-bucket counters live in process memory and reset on restart.
+- **Reverse proxy configuration**: operators running behind Caddy/Traefik/nginx must set `MAILCUBBY_TRUSTED_PROXIES` accurately so client IP extraction for rate limiting and audit logs cannot be spoofed via `X-Forwarded-For`, and must terminate HTTPS with `MAILCUBBY_BASE_URL=https://...` so `Secure` cookies and HSTS apply.
+- **Server-mode recipient routing**: enabling `recipient_routing_enabled` on a project permits unauthenticated SMTP delivery to routed addresses; operators enabling it should firewall SMTP access to trusted networks.
+- **Database host security**: compromise of both `MAILCUBBY_APP_KEY` and `app.db` allows decrypting stored SMTP credentials; keep `MAILCUBBY_APP_KEY` outside backups or in a secret manager.
