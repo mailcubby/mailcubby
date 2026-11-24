@@ -55,6 +55,7 @@ var ErrRateLimited = errors.New("smtpd: project rate limit exceeded")
 type Server struct {
 	cfg        config.Config
 	smtp       *smtp.Server
+	be         *backend
 	log        *slog.Logger
 	lookup     ProjectLookup
 	shutdownCh chan struct{}
@@ -139,6 +140,7 @@ func newServer(
 	return &Server{
 		cfg:        cfg,
 		smtp:       s,
+		be:         be,
 		log:        log,
 		lookup:     lookup,
 		shutdownCh: shutdownCh,
@@ -171,12 +173,28 @@ func (s *Server) Serve(ln net.Listener) error {
 	return nil
 }
 
-// Shutdown gracefully stops accepting new connections and waits for active SMTP
-// transactions until ctx expires.
+// Shutdown stops accepting new connections, closes idle connections at once
+// and waits until ctx expires for in-flight DATA transactions, then closes the
+// rest (ARCHITECTURE 3.1). It returns only after every session has ended, so
+// callers may close the store afterwards.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.signalShutdown()
-	s.closeListeners()
-	if err := s.smtp.Shutdown(ctx); err != nil {
+	s.be.beginDrain()
+	listeners := s.closeListeners()
+	for _, l := range listeners {
+		l.closeIdle()
+	}
+	err := s.smtp.Shutdown(ctx)
+	if err != nil {
+		// go-smtp's Close is a no-op after Shutdown, so force-close through
+		// our own connection tracking.
+		for _, l := range listeners {
+			l.closeAll()
+		}
+	}
+	// Every connection is closed by now, so remaining sessions end promptly.
+	s.be.active.Wait()
+	if err != nil {
 		return fmt.Errorf("smtpd: shutdown: %w", err)
 	}
 	return nil
@@ -198,7 +216,7 @@ func (s *Server) signalShutdown() {
 	})
 }
 
-func (s *Server) closeListeners() {
+func (s *Server) closeListeners() []*LimitListener {
 	s.mu.Lock()
 	s.closed = true
 	listeners := append([]*LimitListener(nil), s.listeners...)
@@ -208,6 +226,7 @@ func (s *Server) closeListeners() {
 	for _, l := range listeners {
 		_ = l.Close()
 	}
+	return listeners
 }
 
 type backend struct {
@@ -224,9 +243,36 @@ type backend struct {
 
 	touchMu     sync.Mutex
 	lastTouched map[int64]time.Time
+
+	// active counts live sessions and running Data calls so Shutdown can wait
+	// for them before the store is closed; draining refuses new ones.
+	activeMu sync.Mutex
+	draining bool
+	active   sync.WaitGroup
+}
+
+// beginActivity registers a session or Data call, or returns false once
+// shutdown has started.
+func (b *backend) beginActivity() bool {
+	b.activeMu.Lock()
+	defer b.activeMu.Unlock()
+	if b.draining {
+		return false
+	}
+	b.active.Add(1)
+	return true
+}
+
+func (b *backend) beginDrain() {
+	b.activeMu.Lock()
+	b.draining = true
+	b.activeMu.Unlock()
 }
 
 func (b *backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
+	if !b.beginActivity() {
+		return nil, errTempFailure
+	}
 	remoteIP := ""
 	if addr := c.Conn().RemoteAddr(); addr != nil {
 		if ip, ok := extractRemoteIP(addr); ok {
@@ -242,6 +288,7 @@ func (b *backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 		remoteIP: remoteIP,
 		helo:     c.Hostname(),
 		tls:      isTLS,
+		active:   true,
 	}, nil
 }
 
@@ -267,6 +314,7 @@ type session struct {
 	remoteIP string
 	helo     string
 	tls      bool
+	active   bool // registered in be.active until Logout
 
 	auth     AuthResult
 	mailFrom string
@@ -497,6 +545,15 @@ func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
 }
 
 func (s *session) Data(r io.Reader) error {
+	if !s.be.beginActivity() {
+		return errTempFailure
+	}
+	defer s.be.active.Done()
+	// Cleared in Reset, which go-smtp calls after writing the DATA reply.
+	if tc := trackedFromSMTP(s.conn); tc != nil {
+		tc.beginTransaction()
+	}
+
 	if len(s.targets) == 0 {
 		_, _ = io.Copy(io.Discard, r)
 		return errNoValidRecipients
@@ -568,9 +625,16 @@ func (s *session) Reset() {
 	s.mailFrom = ""
 	s.rcpts = nil
 	s.targets = nil
+	if tc := trackedFromSMTP(s.conn); tc != nil {
+		tc.endTransaction()
+	}
 }
 
 func (s *session) Logout() error {
+	if s.active {
+		s.active = false
+		s.be.active.Done()
+	}
 	return nil
 }
 
