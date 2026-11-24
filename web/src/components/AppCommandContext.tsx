@@ -1,9 +1,11 @@
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
-import type { MessageSummary, TagSummary } from "@/lib/api";
+import type { MessageSummary, ProjectRole, TagSummary } from "@/lib/api";
 
 export interface ActiveInboxActions {
   projectSlug: string;
   projectName: string;
+  actualRole: ProjectRole;
+  effectiveRole: ProjectRole;
   messageCount: number;
   messages: ReadonlyArray<MessageSummary>;
   tags: ReadonlyArray<TagSummary>;
@@ -24,6 +26,9 @@ export interface AppCommandContextValue {
   createProjectOpen: boolean;
   setCreateProjectOpen: (open: boolean) => void;
   openCreateProject: () => void;
+  previewAsViewer: boolean;
+  setPreviewAsViewer: (active: boolean) => void;
+  togglePreviewAsViewer: () => void;
   activeInbox: ActiveInboxActions | null;
   setActiveInbox: (actions: ActiveInboxActions | null) => void;
 }
@@ -40,6 +45,9 @@ const NOOP_CONTEXT: AppCommandContextValue = {
   createProjectOpen: false,
   setCreateProjectOpen: () => {},
   openCreateProject: () => {},
+  previewAsViewer: false,
+  setPreviewAsViewer: () => {},
+  togglePreviewAsViewer: () => {},
   activeInbox: null,
   setActiveInbox: () => {},
 };
@@ -52,6 +60,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [previewAsViewer, setPreviewAsViewer] = useState(false);
   const [activeInbox, setActiveInbox] = useState<ActiveInboxActions | null>(null);
 
   const openPalette = useCallback(() => {
@@ -69,6 +78,10 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     setCreateProjectOpen(true);
   }, []);
 
+  const togglePreviewAsViewer = useCallback(() => {
+    setPreviewAsViewer((prev) => !prev);
+  }, []);
+
   const value = useMemo<AppCommandContextValue>(
     () => ({
       paletteOpen,
@@ -80,6 +93,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       createProjectOpen,
       setCreateProjectOpen,
       openCreateProject,
+      previewAsViewer,
+      setPreviewAsViewer,
+      togglePreviewAsViewer,
       activeInbox,
       setActiveInbox,
     }),
@@ -90,6 +106,8 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       openShortcuts,
       createProjectOpen,
       openCreateProject,
+      previewAsViewer,
+      togglePreviewAsViewer,
       activeInbox,
     ],
   );

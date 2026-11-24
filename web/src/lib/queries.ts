@@ -53,6 +53,46 @@ export function projectQueryOptions(project: string) {
   });
 }
 
+export function projectMembersQueryOptions(project: string) {
+  return queryOptions({
+    queryKey: queryKeys.projectMembers(project),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/projects/{project}/members", {
+          params: { path: { project } },
+        }),
+      ),
+    staleTime: 10_000,
+  });
+}
+
+export function projectInvitesQueryOptions(project: string) {
+  return queryOptions({
+    queryKey: queryKeys.projectInvites(project),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/projects/{project}/invites", {
+          params: { path: { project } },
+        }),
+      ),
+    staleTime: 10_000,
+  });
+}
+
+export function invitePreviewQueryOptions(token: string) {
+  return queryOptions({
+    queryKey: queryKeys.invitePreview(token),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/invites/{token}", {
+          params: { path: { token } },
+        }),
+      ),
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
 export function projectTagsQueryOptions(project: string) {
   return queryOptions({
     queryKey: queryKeys.tags(project),
@@ -82,5 +122,13 @@ export function messageDetailQueryOptions(project: string, messageId: string) {
       }
       return count < 1;
     },
+  });
+}
+
+export function adminProjectsQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.adminProjects(),
+    queryFn: async () => unwrap(await api.GET("/api/v1/admin/projects")),
+    staleTime: 10_000,
   });
 }

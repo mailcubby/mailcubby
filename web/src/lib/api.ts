@@ -43,6 +43,26 @@ export type ProjectSummary = components["schemas"]["ProjectSummary"];
 export type ProjectDetail = components["schemas"]["ProjectDetail"];
 export type ProjectSettings = components["schemas"]["ProjectSettings"];
 export type CreateProjectRequest = components["schemas"]["CreateProjectRequest"];
+export type UpdateProjectRequest = components["schemas"]["UpdateProjectRequest"];
+export type DeleteProjectRequest = components["schemas"]["DeleteProjectRequest"];
+export type MemberUser = components["schemas"]["MemberUser"];
+export type ProjectMember = components["schemas"]["ProjectMember"];
+export type UpdateProjectMemberRequest = components["schemas"]["UpdateProjectMemberRequest"];
+export type InviteStatus = components["schemas"]["InviteStatus"];
+export type ProjectInvite = components["schemas"]["ProjectInvite"];
+export type CreateProjectInviteRequest = components["schemas"]["CreateProjectInviteRequest"];
+export type CreateProjectInviteResponse = components["schemas"]["CreateProjectInviteResponse"];
+export type InviteProjectPreview = components["schemas"]["InviteProjectPreview"];
+export type InvitePreview = components["schemas"]["InvitePreview"];
+export type AcceptInviteRequest = components["schemas"]["AcceptInviteRequest"];
+export type AcceptInviteResponse = components["schemas"]["AcceptInviteResponse"];
+export type AdminUser = components["schemas"]["AdminUser"];
+export type AdminUserListResponse = components["schemas"]["AdminUserListResponse"];
+export type AdminCreateUserRequest = components["schemas"]["AdminCreateUserRequest"];
+export type AdminCreateUserResponse = components["schemas"]["AdminCreateUserResponse"];
+export type AdminUpdateUserRequest = components["schemas"]["AdminUpdateUserRequest"];
+export type AdminPasswordResetResponse = components["schemas"]["AdminPasswordResetResponse"];
+export type AdminProject = components["schemas"]["AdminProject"];
 export type Address = components["schemas"]["Address"];
 export type Header = components["schemas"]["Header"];
 export type AttachmentSummary = components["schemas"]["AttachmentSummary"];
@@ -183,6 +203,7 @@ export function handleUnauthorizedRedirect(error: unknown): boolean {
     if (
       !pathname.startsWith("/login") &&
       !pathname.startsWith("/setup") &&
+      !pathname.startsWith("/invite/") &&
       !pathname.startsWith("/reset/")
     ) {
       const returnTo = `${pathname}${window.location.search}`;

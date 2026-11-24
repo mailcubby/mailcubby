@@ -10,10 +10,11 @@ import { ProjectCard } from "@/features/projects/ProjectCard";
 import { getApiErrorMessage } from "@/lib/api";
 import { copyToClipboard } from "@/lib/clipboard";
 import { useClock24hPreference, useSingleKeyShortcutsPreference } from "@/lib/preferences";
-import { metaQueryOptions, projectsQueryOptions } from "@/lib/queries";
+import { authMeQueryOptions, metaQueryOptions, projectsQueryOptions } from "@/lib/queries";
 import { type KeyShortcutBinding, useKeyShortcuts } from "@/lib/shortcuts";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { cn } from "@/lib/utils";
+import { canUserCreateProjects } from "@/lib/viewerPreview";
 
 const SKELETON_CARD_IDS = ["s1", "s2", "s3", "s4", "s5", "s6"] as const;
 
@@ -37,7 +38,9 @@ export function ProjectsHome() {
   const [clock24h] = useClock24hPreference();
 
   const { data: meta } = useQuery(metaQueryOptions());
+  const { data: me } = useQuery(authMeQueryOptions());
   const { data: projects, isPending, error, refetch } = useQuery(projectsQueryOptions());
+  const canCreateProjects = canUserCreateProjects(meta?.mode, me?.user);
 
   useEffect(() => {
     const instanceName = meta?.instance_name || "Mailcubby";
@@ -92,6 +95,7 @@ export function ProjectsHome() {
       },
       {
         keys: "n",
+        enabled: canCreateProjects,
         handler: () => openCreateProject(),
       },
       {
@@ -111,7 +115,7 @@ export function ProjectsHome() {
         handler: () => moveCardFocus(-1),
       },
     ],
-    [moveCardFocus, openCreateProject],
+    [canCreateProjects, moveCardFocus, openCreateProject],
   );
 
   useKeyShortcuts(bindings, { singleKeyEnabled });
@@ -130,10 +134,12 @@ export function ProjectsHome() {
               Select a project inbox or send mail over SMTP to capture messages.
             </p>
           </div>
-          <Button variant="default" size="sm" onClick={openCreateProject}>
-            <Plus className="size-3.5" aria-hidden="true" />
-            <span>New project</span>
-          </Button>
+          {canCreateProjects ? (
+            <Button variant="default" size="sm" onClick={openCreateProject}>
+              <Plus className="size-3.5" aria-hidden="true" />
+              <span>New project</span>
+            </Button>
+          ) : null}
         </div>
 
         {meta?.mode === "local" ? (
@@ -265,19 +271,21 @@ export function ProjectsHome() {
               <p className="text-[13px] text-muted-foreground">
                 {projects && projects.length > 0
                   ? `No projects match "${filter}". Try a different filter.`
-                  : "Projects isolate captured emails per app or environment. Create one below or send mail via SMTP."}
+                  : canCreateProjects
+                    ? "Projects isolate captured emails per app or environment. Create one below or send mail via SMTP."
+                    : "You do not belong to any projects yet. Ask an admin to add you to a project."}
               </p>
             </div>
             {projects && projects.length > 0 ? (
               <Button variant="outline" size="sm" onClick={() => setFilter("")}>
                 Clear filter
               </Button>
-            ) : (
+            ) : canCreateProjects ? (
               <Button variant="default" size="sm" onClick={openCreateProject}>
                 <Plus className="size-3.5" aria-hidden="true" />
                 <span>New project</span>
               </Button>
-            )}
+            ) : null}
           </div>
         ) : viewMode === "list" ? (
           <div className="flex flex-col gap-1.5">

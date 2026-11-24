@@ -272,7 +272,7 @@ Acceptance:
 **Goal**: the UI for multi-tenant projects.
 
 Tasks:
-- [ ] Projects home with roles and "New project" (when allowed); project settings shell (UI 3.6) with General and Members and invites sections.
+- [x] Projects home with roles and "New project" (when allowed); project settings shell (UI 3.6) with General and Members and invites sections.
 - [ ] Invite accept page (`/invite/$token`) for all FR-056 cases; reset page (`/reset/$token`).
 - [ ] Admin users and projects pages (UI 3.7).
 - [ ] Viewer UI restrictions (UI 3.8) and "Preview as viewer" toggle.

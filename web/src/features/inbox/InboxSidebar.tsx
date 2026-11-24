@@ -10,6 +10,7 @@ import {
   PanelLeftClose,
   Plus,
   Search,
+  Settings,
   Trash2,
 } from "lucide-react";
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -427,7 +428,22 @@ export function InboxSidebar({
           )}
         </section>
 
-        <div className="mt-6 border-t border-border pt-3">
+        <div className="mt-6 flex flex-col gap-0.5 border-t border-border pt-3">
+          {project.role !== "viewer" ? (
+            <Link
+              to={
+                project.role === "owner"
+                  ? "/p/$project/settings/general"
+                  : "/p/$project/settings/members"
+              }
+              params={{ project: project.slug }}
+              onClick={onCloseDrawer}
+              className="flex h-7 items-center gap-2 rounded-md px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Settings className="size-3.5" aria-hidden="true" />
+              <span>Settings</span>
+            </Link>
+          ) : null}
           <Link
             to="/"
             onClick={onCloseDrawer}

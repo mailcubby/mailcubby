@@ -174,6 +174,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             predicate: (q) => isFilteredMessageListKey(q.queryKey, slug),
           });
         }
+        if (event.type === "membership.changed") {
+          void queryClient.invalidateQueries({ queryKey: queryKeys.authMe() });
+        }
         if (event.type === "message.created" && result.insertedMessage) {
           const { project, message } = event.payload;
           flashHighlight(project, message.id);

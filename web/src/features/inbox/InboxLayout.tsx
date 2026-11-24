@@ -491,6 +491,8 @@ export function InboxLayout() {
     setActiveInbox({
       projectSlug: project.slug,
       projectName: project.name,
+      actualRole: project.role,
+      effectiveRole: project.role,
       messageCount: project.message_count,
       messages: visibleMessages,
       tags: projectTags,

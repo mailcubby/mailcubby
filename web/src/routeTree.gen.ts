@@ -19,6 +19,9 @@ import { Route as PProjectRouteImport } from './routes/p.$project'
 import { Route as ResetTokenRouteImport } from './routes/reset.$token'
 import { Route as PProjectIndexRouteImport } from './routes/p.$project.index'
 import { Route as PProjectMMessageIdRouteImport } from './routes/p.$project.m.$messageId'
+import { Route as PProjectSettingsIndexRouteImport } from './routes/p.$project_.settings.index'
+import { Route as PProjectSettingsGeneralRouteImport } from './routes/p.$project_.settings.general'
+import { Route as PProjectSettingsMembersRouteImport } from './routes/p.$project_.settings.members'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -70,6 +73,21 @@ const PProjectMMessageIdRoute = PProjectMMessageIdRouteImport.update({
   path: '/m/$messageId',
   getParentRoute: () => PProjectRoute,
 } as any)
+const PProjectSettingsIndexRoute = PProjectSettingsIndexRouteImport.update({
+  id: '/p/$project_/settings/',
+  path: '/p/$project/settings/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PProjectSettingsGeneralRoute = PProjectSettingsGeneralRouteImport.update({
+  id: '/p/$project_/settings/general',
+  path: '/p/$project/settings/general',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PProjectSettingsMembersRoute = PProjectSettingsMembersRouteImport.update({
+  id: '/p/$project_/settings/members',
+  path: '/p/$project/settings/members',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -82,6 +100,9 @@ export interface FileRoutesByFullPath {
   '/reset/$token': typeof ResetTokenRoute
   '/p/$project/': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
+  '/p/$project/settings/general': typeof PProjectSettingsGeneralRoute
+  '/p/$project/settings/members': typeof PProjectSettingsMembersRoute
+  '/p/$project/settings/': typeof PProjectSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -93,6 +114,9 @@ export interface FileRoutesByTo {
   '/reset/$token': typeof ResetTokenRoute
   '/p/$project': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
+  '/p/$project/settings/general': typeof PProjectSettingsGeneralRoute
+  '/p/$project/settings/members': typeof PProjectSettingsMembersRoute
+  '/p/$project/settings': typeof PProjectSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -106,6 +130,9 @@ export interface FileRoutesById {
   '/reset/$token': typeof ResetTokenRoute
   '/p/$project/': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
+  '/p/$project_/settings/general': typeof PProjectSettingsGeneralRoute
+  '/p/$project_/settings/members': typeof PProjectSettingsMembersRoute
+  '/p/$project_/settings/': typeof PProjectSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -120,6 +147,9 @@ export interface FileRouteTypes {
     | '/reset/$token'
     | '/p/$project/'
     | '/p/$project/m/$messageId'
+    | '/p/$project/settings/general'
+    | '/p/$project/settings/members'
+    | '/p/$project/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -131,6 +161,9 @@ export interface FileRouteTypes {
     | '/reset/$token'
     | '/p/$project'
     | '/p/$project/m/$messageId'
+    | '/p/$project/settings/general'
+    | '/p/$project/settings/members'
+    | '/p/$project/settings'
   id:
     | '__root__'
     | '/'
@@ -143,6 +176,9 @@ export interface FileRouteTypes {
     | '/reset/$token'
     | '/p/$project/'
     | '/p/$project/m/$messageId'
+    | '/p/$project_/settings/general'
+    | '/p/$project_/settings/members'
+    | '/p/$project_/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -154,6 +190,9 @@ export interface RootRouteChildren {
   AccountSecurityRoute: typeof AccountSecurityRoute
   PProjectRoute: typeof PProjectRouteWithChildren
   ResetTokenRoute: typeof ResetTokenRoute
+  PProjectSettingsGeneralRoute: typeof PProjectSettingsGeneralRoute
+  PProjectSettingsMembersRoute: typeof PProjectSettingsMembersRoute
+  PProjectSettingsIndexRoute: typeof PProjectSettingsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -228,6 +267,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PProjectMMessageIdRouteImport
       parentRoute: typeof PProjectRoute
     }
+    '/p/$project_/settings/': {
+      id: '/p/$project_/settings/'
+      path: '/p/$project/settings'
+      fullPath: '/p/$project/settings/'
+      preLoaderRoute: typeof PProjectSettingsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/p/$project_/settings/general': {
+      id: '/p/$project_/settings/general'
+      path: '/p/$project/settings/general'
+      fullPath: '/p/$project/settings/general'
+      preLoaderRoute: typeof PProjectSettingsGeneralRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/p/$project_/settings/members': {
+      id: '/p/$project_/settings/members'
+      path: '/p/$project/settings/members'
+      fullPath: '/p/$project/settings/members'
+      preLoaderRoute: typeof PProjectSettingsMembersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -254,6 +314,9 @@ const rootRouteChildren: RootRouteChildren = {
   AccountSecurityRoute: AccountSecurityRoute,
   PProjectRoute: PProjectRouteWithChildren,
   ResetTokenRoute: ResetTokenRoute,
+  PProjectSettingsGeneralRoute: PProjectSettingsGeneralRoute,
+  PProjectSettingsMembersRoute: PProjectSettingsMembersRoute,
+  PProjectSettingsIndexRoute: PProjectSettingsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
