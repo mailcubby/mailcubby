@@ -338,7 +338,7 @@ Tasks:
 - [x] `internal/retention`: sweeper (FR-095) with effective limits resolution (project, instance setting, env), batches, nudges from ingest; counters and `message.deleted` events for deletions.
 - [x] Instance quota `452` (FR-096) and per-project SMTP rate limit `450` (FR-097).
 - [x] Orphan blob GC, tmp cleanup, project directory removal (replaces the Phase 3a synchronous walk), incremental vacuum (FR-098).
-- [ ] Housekeeping (FR-099).
+- [x] Housekeeping (FR-099).
 - [ ] Admin instance settings endpoints and UI for defaults (FR-102), admin stats endpoint and page (FR-103).
 - [ ] Retention settings UI (UI 3.6.4).
 
