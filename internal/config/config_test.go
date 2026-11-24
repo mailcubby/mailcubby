@@ -301,6 +301,8 @@ func TestLoadServerDefaultsAndOverrides(t *testing.T) {
 		"MAILCUBBY_MODE":            "server",
 		"MAILCUBBY_BASE_URL":        "https://mail.example.com/",
 		"MAILCUBBY_APP_KEY":         testAppKeyBase64(),
+		"MAILCUBBY_SMTP_TLS_CERT":   "/etc/mailcubby/cert.pem",
+		"MAILCUBBY_SMTP_TLS_KEY":    "/etc/mailcubby/key.pem",
 		"MAILCUBBY_TRUSTED_PROXIES": "10.0.0.0/8, 172.16.0.0/12",
 		"MAILCUBBY_INBOX_DOMAIN":    "Staging.Example.Test",
 		"MAILCUBBY_LOG_LEVEL":       "debug",
@@ -358,11 +360,12 @@ func TestLoadSecretFiles(t *testing.T) {
 	}
 
 	cfg, err := Load(mapLookup(map[string]string{
-		"MAILCUBBY_MODE":                "server",
-		"MAILCUBBY_BASE_URL":            "https://mail.example.com",
-		"MAILCUBBY_APP_KEY_FILE":        keyPath,
-		"MAILCUBBY_ADMIN_EMAIL":         "admin@example.com",
-		"MAILCUBBY_ADMIN_PASSWORD_FILE": passPath,
+		"MAILCUBBY_MODE":                     "server",
+		"MAILCUBBY_BASE_URL":                 "https://mail.example.com",
+		"MAILCUBBY_APP_KEY_FILE":             keyPath,
+		"MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH": "true",
+		"MAILCUBBY_ADMIN_EMAIL":              "admin@example.com",
+		"MAILCUBBY_ADMIN_PASSWORD_FILE":      passPath,
 	}))
 	if err != nil {
 		t.Fatalf("Load with _FILE secrets failed: %v", err)
@@ -394,9 +397,18 @@ func TestLoadValidationErrors(t *testing.T) {
 			wantVars: []string{"MAILCUBBY_SMTP_MAX_MESSAGE_BYTES"},
 		},
 		{
-			name:     "server mode missing base url and app key",
+			name:     "server mode missing base url, app key, and tls",
 			env:      map[string]string{"MAILCUBBY_MODE": "server"},
-			wantVars: []string{"MAILCUBBY_BASE_URL", "MAILCUBBY_APP_KEY"},
+			wantVars: []string{"MAILCUBBY_BASE_URL", "MAILCUBBY_APP_KEY", "MAILCUBBY_SMTP_TLS_CERT", "MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH"},
+		},
+		{
+			name: "server mode without tls or allow insecure auth",
+			env: map[string]string{
+				"MAILCUBBY_MODE":     "server",
+				"MAILCUBBY_BASE_URL": "https://mail.example.com",
+				"MAILCUBBY_APP_KEY":  testAppKeyBase64(),
+			},
+			wantVars: []string{"MAILCUBBY_SMTP_TLS_CERT", "MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH"},
 		},
 		{
 			name: "server mode base url with subpath",

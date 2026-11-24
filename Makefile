@@ -11,8 +11,10 @@ DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 
-# Deterministic dev key (32 zero bytes base64) for local server-mode development only.
+# Deterministic dev key (32 zero bytes base64) and bootstrap admin for local server-mode development only.
 DEV_APP_KEY := AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+DEV_ADMIN_EMAIL ?= admin@example.test
+DEV_ADMIN_PASSWORD ?= devpassword123
 
 MODE ?= local
 SMTP ?= localhost:1025
@@ -109,6 +111,8 @@ run-server: ## Run Mailcubby in server mode for development (data in ./data-serv
 	MAILCUBBY_APP_KEY=$(DEV_APP_KEY) \
 	MAILCUBBY_BASE_URL=http://localhost:8025 \
 	MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH=true \
+	MAILCUBBY_ADMIN_EMAIL=$(DEV_ADMIN_EMAIL) \
+	MAILCUBBY_ADMIN_PASSWORD=$(DEV_ADMIN_PASSWORD) \
 	MAILCUBBY_DATA_DIR=./data-server \
 	go run ./cmd/mailcubby serve
 
@@ -119,6 +123,8 @@ dev: ## Run Go server and Vite dev server on :5173 (MODE=local|server)
 		MAILCUBBY_APP_KEY=$(DEV_APP_KEY) \
 		MAILCUBBY_BASE_URL=http://localhost:5173 \
 		MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH=true \
+		MAILCUBBY_ADMIN_EMAIL=$(DEV_ADMIN_EMAIL) \
+		MAILCUBBY_ADMIN_PASSWORD=$(DEV_ADMIN_PASSWORD) \
 		MAILCUBBY_DATA_DIR=./data-server \
 		go run ./cmd/mailcubby serve & \
 	else \

@@ -528,7 +528,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		}
 	}
 
-	// Server mode checks that do not require TLS (SPEC 5.2; TLS check added in Phase 6).
+	// Server mode startup checks (SPEC 5.2).
 	if cfg.Mode == ModeServer {
 		if _, hasBase := get("MAILCUBBY_BASE_URL"); !hasBase {
 			addErr("MAILCUBBY_BASE_URL", errors.New("required in server mode"))
@@ -537,6 +537,9 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		_, hasKeyFile := lookup("MAILCUBBY_APP_KEY_FILE")
 		if len(cfg.AppKey) == 0 && !hasKey && !hasKeyFile {
 			addErr("MAILCUBBY_APP_KEY", errors.New("required in server mode (or set MAILCUBBY_APP_KEY_FILE)"))
+		}
+		if cfg.SMTPTLSCert == "" && cfg.SMTPTLSKey == "" && !cfg.SMTPAllowInsecureAuth {
+			addErr("MAILCUBBY_SMTP_TLS_CERT", errors.New("required in server mode unless MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH=true"))
 		}
 	}
 

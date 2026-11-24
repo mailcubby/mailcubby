@@ -92,7 +92,7 @@ func TestAppRunImmediateShutdown(t *testing.T) {
 	}
 }
 
-func TestServeRejectsServerMode(t *testing.T) {
+func TestServeServerModeRequiresTLSOrAllowInsecure(t *testing.T) {
 	t.Parallel()
 
 	env := map[string]string{
@@ -108,8 +108,8 @@ func TestServeRejectsServerMode(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("expected exit code 1, got %d", code)
 	}
-	if !strings.Contains(stderr.String(), "server mode is not implemented yet") {
-		t.Fatalf("expected server mode error, got %q", stderr.String())
+	if !strings.Contains(stderr.String(), "MAILCUBBY_SMTP_TLS_CERT") {
+		t.Fatalf("expected TLS validation error, got %q", stderr.String())
 	}
 }
 

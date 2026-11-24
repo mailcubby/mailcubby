@@ -4,6 +4,7 @@ package smtpd
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -87,6 +88,12 @@ func NewWithLookup(cfg config.Config, lookup ProjectLookup, ing Ingestor, log *s
 		log:    log,
 		lookup: lookup,
 	}
+}
+
+// SetTLSConfig configures TLS (STARTTLS) on the underlying SMTP server.
+// Must be called before Serve.
+func (s *Server) SetTLSConfig(tlsCfg *tls.Config) {
+	s.smtp.TLSConfig = tlsCfg
 }
 
 // Serve wraps ln in a LimitListener enforcing total and per-IP connection limits
@@ -221,7 +228,8 @@ func (s *session) Mail(from string, opts *smtp.MailOptions) error {
 	if opts != nil && s.be.cfg.SMTPMaxMessageBytes > 0 && opts.Size > s.be.cfg.SMTPMaxMessageBytes {
 		return smtp.ErrDataTooLarge
 	}
-	if s.be.cfg.Mode == config.ModeServer && !s.auth.Authenticated && s.be.cfg.InboxDomain == "" {
+	if s.be.cfg.Mode == config.ModeServer && !s.auth.Authenticated {
+		// TODO(phase-8): allow unauthenticated MAIL FROM when InboxDomain is set for server-mode recipient routing.
 		return errAuthRequired
 	}
 	s.mailFrom = from

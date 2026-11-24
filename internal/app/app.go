@@ -4,12 +4,15 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,6 +20,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mailcubby/mailcubby/internal/api"
+	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/blob"
 	"github.com/mailcubby/mailcubby/internal/clock"
 	"github.com/mailcubby/mailcubby/internal/config"
@@ -30,8 +34,11 @@ import (
 )
 
 const (
-	shutdownTimeout = 30 * time.Second
-	defaultColor    = "slate"
+	shutdownTimeout      = 30 * time.Second
+	defaultColor         = "slate"
+	settingSetupHashKey  = "setup_token_hash"
+	settingSetupDoneKey  = "setup_completed_at"
+	defaultBootstrapName = "Admin"
 )
 
 // Options customizes dependencies for App construction (defaults are production-ready).
@@ -62,13 +69,9 @@ type App struct {
 	closeOnce      sync.Once
 }
 
-// Open initializes storage, default local project, event bus, ingestor, SMTP
+// Open initializes storage, setup/bootstrap state, event bus, ingestor, SMTP
 // server, HTTP server, and binds both listeners without starting to serve yet.
 func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
-	if cfg.Mode == config.ModeServer {
-		return nil, errors.New("server mode is not implemented yet")
-	}
-
 	clk := opts.Clock
 	if clk == nil {
 		clk = clock.NewReal()
@@ -80,6 +83,26 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 	ver := opts.Version
 	if ver == "" {
 		ver = "dev"
+	}
+
+	var smtpTLSConfig *tls.Config
+	if cfg.SMTPTLSCert != "" && cfg.SMTPTLSKey != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.SMTPTLSCert, cfg.SMTPTLSKey)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"app: load SMTP TLS certificate (MAILCUBBY_SMTP_TLS_CERT=%q, MAILCUBBY_SMTP_TLS_KEY=%q): %w",
+				cfg.SMTPTLSCert,
+				cfg.SMTPTLSKey,
+				err,
+			)
+		}
+		// TODO(phase-12): replace static startup cert with internal/tlsutil.Reloader.
+		smtpTLSConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+				return &cert, nil
+			},
+		}
 	}
 
 	if cfg.Mode == config.ModeLocal {
@@ -108,7 +131,11 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		return nil, fmt.Errorf("app: clean tmp dir: %w", err)
 	}
 
-	if cfg.Mode == config.ModeLocal {
+	switch cfg.Mode {
+	case config.ModeLocal:
+		if userCount, err := st.CountUsers(ctx); err == nil && userCount > 0 {
+			log.Warn("switching from server mode to local mode: all projects are visible without login", "user_count", userCount)
+		}
 		if _, _, err := st.EnsureProject(ctx, store.CreateProjectParams{
 			Slug:     cfg.DefaultProject,
 			Name:     cfg.DefaultProject,
@@ -119,11 +146,19 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 			_ = st.Close()
 			return nil, fmt.Errorf("app: ensure default project %q: %w", cfg.DefaultProject, err)
 		}
+	case config.ModeServer:
+		if err := initServerSetup(ctx, cfg, st, auth.NewHasher(), clk, log); err != nil {
+			_ = st.Close()
+			return nil, err
+		}
 	}
 
 	bus := events.NewBus()
 	ing := ingest.New(st, blobs, clk, bus, log)
 	smtpSrv := smtpd.New(cfg, st, ing, clk, log)
+	if smtpTLSConfig != nil {
+		smtpSrv.SetTLSConfig(smtpTLSConfig)
+	}
 
 	var lc net.ListenConfig
 	smtpLn, err := lc.Listen(ctx, "tcp", cfg.SMTPAddr)
@@ -303,4 +338,105 @@ func (a *App) Ingestor() *ingest.Ingestor {
 // Config returns the resolved application configuration.
 func (a *App) Config() config.Config {
 	return a.cfg
+}
+
+// initServerSetup implements SPEC FR-040: headless bootstrap when
+// MAILCUBBY_ADMIN_EMAIL/PASSWORD are set and no users exist, or fresh random
+// setup token generation on every startup while setup is pending.
+func initServerSetup(
+	ctx context.Context,
+	cfg config.Config,
+	st *store.Store,
+	hasher *auth.Hasher,
+	clk clock.Clock,
+	log *slog.Logger,
+) error {
+	userCount, err := st.CountUsers(ctx)
+	if err != nil {
+		return fmt.Errorf("app: check user count: %w", err)
+	}
+	if userCount > 0 {
+		return nil
+	}
+
+	now := clk.Now().UTC()
+	if cfg.AdminEmail != "" && cfg.AdminPassword != "" {
+		email, err := auth.ValidateEmail(cfg.AdminEmail)
+		if err != nil {
+			return fmt.Errorf("app: invalid MAILCUBBY_ADMIN_EMAIL: %w", err)
+		}
+		passwordHash, err := hasher.Hash(ctx, cfg.AdminPassword)
+		if err != nil {
+			return fmt.Errorf("app: hash MAILCUBBY_ADMIN_PASSWORD: %w", err)
+		}
+
+		completedJSON, err := json.Marshal(now.Format(time.RFC3339Nano))
+		if err != nil {
+			return fmt.Errorf("app: marshal setup timestamp: %w", err)
+		}
+
+		var created bool
+		if err := st.WithTx(ctx, func(tx *store.Tx) error {
+			n, err := tx.CountUsers(ctx)
+			if err != nil {
+				return err
+			}
+			if n > 0 {
+				return nil
+			}
+			user, err := tx.CreateUser(ctx, store.CreateUserParams{
+				Email:             email,
+				Name:              defaultBootstrapName,
+				PasswordHash:      &passwordHash,
+				IsAdmin:           true,
+				CanCreateProjects: true,
+				Now:               now,
+			})
+			if err != nil {
+				return err
+			}
+			if err := tx.SetSetting(ctx, settingSetupDoneKey, string(completedJSON), now); err != nil {
+				return err
+			}
+			if err := tx.DeleteSetting(ctx, settingSetupHashKey); err != nil && !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+			targetType := "user"
+			targetID := strconv.FormatInt(user.ID, 10)
+			if _, err := tx.InsertAudit(ctx, store.InsertAuditParams{
+				At:         now,
+				ActorType:  store.AuditActorSystem,
+				ActorLabel: &email,
+				Action:     "setup.complete",
+				TargetType: &targetType,
+				TargetID:   &targetID,
+				Metadata:   map[string]any{"method": "env_bootstrap"},
+			}); err != nil {
+				return err
+			}
+			created = true
+			return nil
+		}); err != nil {
+			return fmt.Errorf("app: bootstrap admin user: %w", err)
+		}
+		if created {
+			log.Info("bootstrapped initial admin user from environment", "email", email)
+		}
+		return nil
+	}
+
+	token, err := auth.GenerateToken()
+	if err != nil {
+		return fmt.Errorf("app: generate setup token: %w", err)
+	}
+	hashJSON, err := json.Marshal(auth.HashToken(token))
+	if err != nil {
+		return fmt.Errorf("app: marshal setup token hash: %w", err)
+	}
+	if err := st.SetSetting(ctx, settingSetupHashKey, string(hashJSON), now); err != nil {
+		return fmt.Errorf("app: store setup token hash: %w", err)
+	}
+
+	log.Warn("setup token: "+token, "setup_url", cfg.BaseURL+"/setup")
+	return nil
 }

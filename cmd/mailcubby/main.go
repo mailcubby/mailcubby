@@ -44,6 +44,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, lookupEnv fun
 		return cli.RunHealthcheck(context.Background(), subargs, stdout, stderr, lookupEnv)
 	case "migrate":
 		return cli.RunMigrate(context.Background(), subargs, stdout, stderr, lookupEnv)
+	case "admin":
+		return cli.RunAdmin(context.Background(), subargs, stdout, stderr, lookupEnv)
 	case "sendmail":
 		return cli.RunSendmail(subargs, stdin, stdout, stderr, lookupEnv)
 	case "version", "-version", "--version":
@@ -66,6 +68,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  keygen       Generate a base64 MAILCUBBY_APP_KEY")
 	_, _ = fmt.Fprintln(w, "  healthcheck  Check HTTP /readyz endpoint (exit 0 if healthy)")
 	_, _ = fmt.Fprintln(w, "  migrate      Inspect database migration status")
+	_, _ = fmt.Fprintln(w, "  admin        Administrative commands (reset-password)")
 	_, _ = fmt.Fprintln(w, "  sendmail     Submit a message from stdin over SMTP")
 	_, _ = fmt.Fprintln(w, "  version      Print version, commit, and build date")
 }
@@ -102,11 +105,6 @@ func runServe(args []string, stdout, stderr io.Writer, lookupEnv func(string) (s
 	cfg, err := config.Load(lookupEnv)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "invalid configuration:\n%v\n", err)
-		return 1
-	}
-
-	if cfg.Mode == config.ModeServer {
-		_, _ = fmt.Fprintln(stderr, "server mode is not implemented yet")
 		return 1
 	}
 
