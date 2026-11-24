@@ -6,15 +6,18 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"log/slog"
 	"math/big"
+	"net"
 	"net/smtp"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +26,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/clock"
 	"github.com/mailcubby/mailcubby/internal/config"
+	"github.com/mailcubby/mailcubby/internal/tlsutil"
 )
 
 const testServerAppKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
@@ -374,6 +378,144 @@ func TestAppServerModeTLSCertLoad(t *testing.T) {
 	_ = a.Close()
 }
 
+// TestAppSMTPSListenerAndCertReload verifies FR-002 (implicit TLS listener
+// via MAILCUBBY_SMTPS_ADDR) and Phase 12 live certificate reload in App.Serve.
+func TestAppSMTPSListenerAndCertReload(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	t0 := time.Date(2026, 11, 24, 16, 0, 0, 0, time.UTC)
+	certPath, keyPath := writeSelfSignedCertWithSerial(t, dir, "first.mailcubby.test", 10, t0)
+
+	cfg, err := config.Load(func(k string) (string, bool) {
+		switch k {
+		case "MAILCUBBY_MODE":
+			return "local", true
+		case "MAILCUBBY_DATA_DIR":
+			return dir, true
+		case "MAILCUBBY_SMTP_ADDR":
+			return "127.0.0.1:0", true
+		case "MAILCUBBY_SMTPS_ADDR":
+			return "127.0.0.1:0", true
+		case "MAILCUBBY_HTTP_ADDR":
+			return "127.0.0.1:0", true
+		case "MAILCUBBY_SMTP_TLS_CERT":
+			return certPath, true
+		case "MAILCUBBY_SMTP_TLS_KEY":
+			return keyPath, true
+		default:
+			return "", false
+		}
+	})
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+
+	clk := clock.NewFake(t0)
+	ctx, cancel := context.WithCancel(context.Background())
+	a, err := app.Open(ctx, cfg, app.Options{Clock: clk, Version: "test"})
+	if err != nil {
+		cancel()
+		t.Fatalf("app.Open: %v", err)
+	}
+	if a.SMTPSAddr() == "" {
+		cancel()
+		_ = a.Close()
+		t.Fatal("expected non-empty SMTPSAddr when MAILCUBBY_SMTPS_ADDR is configured")
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- a.Serve(ctx) }()
+
+	// Wait for background workers (including TLS reloader) to register tickers.
+	waitUntil := time.Now().Add(2 * time.Second)
+	for clk.TickerCount() < 4 && time.Now().Before(waitUntil) {
+		runtime.Gosched()
+	}
+
+	// Send a message over implicit TLS (FR-002) and verify cert serial 10.
+	dialer := &tls.Dialer{
+		Config: &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: true, //nolint:gosec // test self-signed cert
+		},
+	}
+	rawConn, err := dialer.DialContext(t.Context(), "tcp", a.SMTPSAddr())
+	if err != nil {
+		cancel()
+		t.Fatalf("tls.Dial(%s): %v", a.SMTPSAddr(), err)
+	}
+	conn := rawConn.(*tls.Conn)
+	if got := conn.ConnectionState().PeerCertificates[0].SerialNumber.Int64(); got != 10 {
+		_ = conn.Close()
+		cancel()
+		t.Fatalf("initial SMTPS cert serial = %d, want 10", got)
+	}
+	client, err := smtp.NewClient(conn, "localhost")
+	if err != nil {
+		_ = conn.Close()
+		cancel()
+		t.Fatalf("smtp.NewClient: %v", err)
+	}
+	if err := client.Mail("from@example.test"); err != nil {
+		t.Fatalf("MAIL: %v", err)
+	}
+	if err := client.Rcpt("to@example.test"); err != nil {
+		t.Fatalf("RCPT: %v", err)
+	}
+	w, err := client.Data()
+	if err != nil {
+		t.Fatalf("DATA: %v", err)
+	}
+	_, _ = w.Write([]byte("Subject: App SMTPS\r\n\r\nBody\r\n"))
+	if err := w.Close(); err != nil {
+		t.Fatalf("DATA close: %v", err)
+	}
+	_ = client.Quit()
+
+	// Replace certificate files on disk and advance fake clock past 30s poll interval.
+	writeSelfSignedCertWithSerial(t, dir, "second.mailcubby.test", 20, t0.Add(time.Minute))
+	clk.Advance(tlsutil.DefaultPollInterval)
+
+	// Poll via STARTTLS until the new cert is served without restart.
+	var gotSerial int64
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		c, dialErr := smtp.Dial(a.SMTPAddr())
+		if dialErr != nil {
+			t.Fatalf("smtp.Dial: %v", dialErr)
+		}
+		if err := c.StartTLS(&tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: true, //nolint:gosec // test self-signed cert
+		}); err != nil {
+			_ = c.Close()
+			t.Fatalf("StartTLS: %v", err)
+		}
+		state, _ := c.TLSConnectionState()
+		gotSerial = state.PeerCertificates[0].SerialNumber.Int64()
+		_ = c.Quit()
+		if gotSerial == 20 {
+			break
+		}
+		runtime.Gosched()
+	}
+	if gotSerial != 20 {
+		cancel()
+		t.Fatalf("STARTTLS cert serial after reload = %d, want 20", gotSerial)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve returned error on shutdown: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for graceful shutdown")
+	}
+}
+
 func extractLoggedSetupToken(t *testing.T, logOutput string) string {
 	t.Helper()
 	const marker = "setup token: "
@@ -396,18 +538,24 @@ func extractLoggedSetupToken(t *testing.T, logOutput string) string {
 
 func writeSelfSignedCert(t *testing.T, dir string) (certPath, keyPath string) {
 	t.Helper()
+	return writeSelfSignedCertWithSerial(t, dir, "localhost", 1, time.Time{})
+}
+
+func writeSelfSignedCertWithSerial(t *testing.T, dir, cn string, serial int64, mtime time.Time) (certPath, keyPath string) {
+	t.Helper()
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatalf("generate ecdsa key: %v", err)
 	}
 	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "localhost"},
+		SerialNumber: big.NewInt(serial),
+		Subject:      pkix.Name{CommonName: cn},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost"},
+		DNSNames:     []string{"localhost", cn},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
 	if err != nil {
@@ -425,6 +573,14 @@ func writeSelfSignedCert(t *testing.T, dir string) (certPath, keyPath string) {
 	}
 	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), 0o600); err != nil {
 		t.Fatalf("write key: %v", err)
+	}
+	if !mtime.IsZero() {
+		if err := os.Chtimes(certPath, mtime, mtime); err != nil {
+			t.Fatalf("chtimes cert: %v", err)
+		}
+		if err := os.Chtimes(keyPath, mtime, mtime); err != nil {
+			t.Fatalf("chtimes key: %v", err)
+		}
 	}
 	return certPath, keyPath
 }

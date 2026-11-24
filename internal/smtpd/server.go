@@ -60,6 +60,7 @@ type Server struct {
 	be         *backend
 	log        *slog.Logger
 	lookup     ProjectLookup
+	connLimits *connLimits
 	shutdownCh chan struct{}
 	shutOnce   sync.Once
 
@@ -145,6 +146,7 @@ func newServer(
 		be:         be,
 		log:        log,
 		lookup:     lookup,
+		connLimits: newConnLimits(cfg.SMTPMaxConnections, cfg.SMTPMaxConnectionsPerIP),
 		shutdownCh: shutdownCh,
 	}
 }
@@ -162,7 +164,7 @@ func (s *Server) SetRateLimiter(rl *ratelimit.SlidingWindow) {
 }
 
 // Serve wraps ln in a LimitListener enforcing total and per-IP connection limits
-// and serves SMTP until Shutdown or Close is called.
+// and serves SMTP (with STARTTLS if TLSConfig is set) until Shutdown or Close is called.
 func (s *Server) Serve(ln net.Listener) error {
 	s.mu.Lock()
 	if s.closed {
@@ -170,13 +172,40 @@ func (s *Server) Serve(ln net.Listener) error {
 		_ = ln.Close()
 		return nil
 	}
-	limited := NewLimitListener(ln, s.cfg.SMTPMaxConnections, s.cfg.SMTPMaxConnectionsPerIP)
+	limited := newSharedLimitListener(ln, s.connLimits, true)
 	s.listeners = append(s.listeners, limited)
 	s.mu.Unlock()
 
 	err := s.smtp.Serve(limited)
 	if err != nil && !errors.Is(err, smtp.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
 		return fmt.Errorf("smtpd: serve: %w", err)
+	}
+	return nil
+}
+
+// ServeTLS wraps ln in a LimitListener and a TLS listener using the server's
+// TLSConfig, serving implicit TLS SMTP (FR-002) until Shutdown or Close is called.
+// SetTLSConfig must be called before ServeTLS.
+func (s *Server) ServeTLS(ln net.Listener) error {
+	if s.smtp.TLSConfig == nil {
+		_ = ln.Close()
+		return errors.New("smtpd: serve tls: TLSConfig is not configured")
+	}
+
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		_ = ln.Close()
+		return nil
+	}
+	limited := newSharedLimitListener(ln, s.connLimits, false)
+	s.listeners = append(s.listeners, limited)
+	s.mu.Unlock()
+
+	tlsLn := tls.NewListener(limited, s.smtp.TLSConfig)
+	err := s.smtp.Serve(tlsLn)
+	if err != nil && !errors.Is(err, smtp.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+		return fmt.Errorf("smtpd: serve tls: %w", err)
 	}
 	return nil
 }

@@ -441,6 +441,9 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	if (cfg.SMTPTLSCert != "") != (cfg.SMTPTLSKey != "") {
 		addErr("MAILCUBBY_SMTP_TLS_CERT", errors.New("MAILCUBBY_SMTP_TLS_CERT and MAILCUBBY_SMTP_TLS_KEY must both be set"))
 	}
+	if cfg.SMTPSAddr != "" && (cfg.SMTPTLSCert == "" || cfg.SMTPTLSKey == "") {
+		addErr("MAILCUBBY_SMTPS_ADDR", errors.New("requires MAILCUBBY_SMTP_TLS_CERT and MAILCUBBY_SMTP_TLS_KEY"))
+	}
 
 	if v, ok := get("MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH"); ok {
 		b, err := ParseBool(v)

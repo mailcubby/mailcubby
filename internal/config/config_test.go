@@ -524,6 +524,13 @@ func TestLoadValidationErrors(t *testing.T) {
 			},
 			wantVars: []string{"MAILCUBBY_ADMIN_PASSWORD"},
 		},
+		{
+			name: "smtps addr without tls cert",
+			env: map[string]string{
+				"MAILCUBBY_SMTPS_ADDR": ":1465",
+			},
+			wantVars: []string{"MAILCUBBY_SMTPS_ADDR", "MAILCUBBY_SMTP_TLS_CERT", "MAILCUBBY_SMTP_TLS_KEY"},
+		},
 	}
 
 	for _, tc := range cases {

@@ -18,16 +18,69 @@ const (
 	maxAcceptRetryDelay = time.Second
 )
 
-// LimitListener wraps a net.Listener to enforce total and per-IP concurrent
-// connection limits (SPEC FR-005, ARCHITECTURE 3.3). Excess connections receive
-// "421 4.7.0 Too many connections" and are closed asynchronously without
-// stalling the accept loop. It also tracks admitted connections so shutdown can
-// close idle ones immediately and in-flight DATA ones once their reply is
-// written (ARCHITECTURE 3.1).
-type LimitListener struct {
-	inner    net.Listener
+type connLimits struct {
+	mu       sync.Mutex
 	maxTotal int
 	maxPerIP int
+	total    int
+	perIP    map[netip.Addr]int
+}
+
+func newConnLimits(maxTotal, maxPerIP int) *connLimits {
+	return &connLimits{
+		maxTotal: maxTotal,
+		maxPerIP: maxPerIP,
+		perIP:    make(map[netip.Addr]int),
+	}
+}
+
+func (c *connLimits) tryAcquire(ip netip.Addr, hasIP bool) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.maxTotal > 0 && c.total >= c.maxTotal {
+		return false
+	}
+	if hasIP && c.maxPerIP > 0 && c.perIP[ip] >= c.maxPerIP {
+		return false
+	}
+	c.total++
+	if hasIP {
+		c.perIP[ip]++
+	}
+	return true
+}
+
+func (c *connLimits) release(ip netip.Addr, hasIP bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.total > 0 {
+		c.total--
+	}
+	if hasIP {
+		if n := c.perIP[ip]; n <= 1 {
+			delete(c.perIP, ip)
+		} else {
+			c.perIP[ip] = n - 1
+		}
+	}
+}
+
+func (c *connLimits) active() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.total
+}
+
+// LimitListener wraps a net.Listener to enforce total and per-IP concurrent
+// connection limits (SPEC FR-005, ARCHITECTURE 3.3). Excess connections receive
+// "421 4.7.0 Too many connections" (when writeRejectReply is true) and are
+// closed asynchronously without stalling the accept loop. It also tracks
+// admitted connections so shutdown can close idle ones immediately and
+// in-flight DATA ones once their reply is written (ARCHITECTURE 3.1).
+type LimitListener struct {
+	inner            net.Listener
+	limits           *connLimits
+	writeRejectReply bool
 
 	admitCh chan net.Conn
 	errCh   chan error
@@ -36,8 +89,6 @@ type LimitListener struct {
 	mu       sync.Mutex
 	closed   bool
 	draining bool
-	total    int
-	perIP    map[netip.Addr]int
 	conns    map[*trackedConn]struct{}
 	admitWG  sync.WaitGroup
 	loopWG   sync.WaitGroup
@@ -46,15 +97,22 @@ type LimitListener struct {
 // NewLimitListener starts accepting connections from inner and admits up to
 // maxTotal concurrent connections and maxPerIP per client IP.
 func NewLimitListener(inner net.Listener, maxTotal, maxPerIP int) *LimitListener {
+	return newSharedLimitListener(inner, newConnLimits(maxTotal, maxPerIP), true)
+}
+
+func newSharedLimitListener(inner net.Listener, limits *connLimits, writeRejectReply bool) *LimitListener {
+	bufSize := 16
+	if limits != nil && limits.maxTotal > bufSize {
+		bufSize = limits.maxTotal
+	}
 	l := &LimitListener{
-		inner:    inner,
-		maxTotal: maxTotal,
-		maxPerIP: maxPerIP,
-		admitCh:  make(chan net.Conn, max(16, maxTotal)),
-		errCh:    make(chan error, 1),
-		done:     make(chan struct{}),
-		perIP:    make(map[netip.Addr]int),
-		conns:    make(map[*trackedConn]struct{}),
+		inner:            inner,
+		limits:           limits,
+		writeRejectReply: writeRejectReply,
+		admitCh:          make(chan net.Conn, bufSize),
+		errCh:            make(chan error, 1),
+		done:             make(chan struct{}),
+		conns:            make(map[*trackedConn]struct{}),
 	}
 	l.loopWG.Add(1)
 	go l.acceptLoop()
@@ -108,9 +166,7 @@ func (l *LimitListener) Addr() net.Addr {
 
 // ActiveConnections returns the current number of active admitted connections.
 func (l *LimitListener) ActiveConnections() int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.total
+	return l.limits.active()
 }
 
 // acceptLoop runs until l.done is closed or the inner listener returns a fatal
@@ -175,18 +231,14 @@ func (l *LimitListener) admitConn(conn net.Conn) {
 		_ = conn.Close()
 		return
 	}
-	overTotal := l.maxTotal > 0 && l.total >= l.maxTotal
-	overIP := hasIP && l.maxPerIP > 0 && l.perIP[ip] >= l.maxPerIP
-	if overTotal || overIP {
+	if !l.limits.tryAcquire(ip, hasIP) {
 		l.mu.Unlock()
-		_ = conn.SetWriteDeadline(time.Now().Add(rejectWriteDeadline))
-		_, _ = conn.Write([]byte(tooManyConnsReply))
+		if l.writeRejectReply {
+			_ = conn.SetWriteDeadline(time.Now().Add(rejectWriteDeadline))
+			_, _ = conn.Write([]byte(tooManyConnsReply))
+		}
 		_ = conn.Close()
 		return
-	}
-	l.total++
-	if hasIP {
-		l.perIP[ip]++
 	}
 	tc := &trackedConn{Conn: conn, l: l}
 	tc.onClose = func() {
@@ -204,18 +256,9 @@ func (l *LimitListener) admitConn(conn net.Conn) {
 
 func (l *LimitListener) release(tc *trackedConn, ip netip.Addr, hasIP bool) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	delete(l.conns, tc)
-	if l.total > 0 {
-		l.total--
-	}
-	if hasIP {
-		if n := l.perIP[ip]; n <= 1 {
-			delete(l.perIP, ip)
-		} else {
-			l.perIP[ip] = n - 1
-		}
-	}
+	l.mu.Unlock()
+	l.limits.release(ip, hasIP)
 }
 
 // closeIdle switches the listener to draining and closes every admitted

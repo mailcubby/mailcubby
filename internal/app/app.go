@@ -32,6 +32,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/secrets"
 	"github.com/mailcubby/mailcubby/internal/smtpd"
 	"github.com/mailcubby/mailcubby/internal/store"
+	"github.com/mailcubby/mailcubby/internal/tlsutil"
 	"github.com/mailcubby/mailcubby/internal/web"
 )
 
@@ -64,12 +65,14 @@ type App struct {
 	sweeper      *retention.Sweeper
 	orphanGC     *retention.OrphanGC
 	housekeeping *retention.Housekeeping
+	tlsReloader  *tlsutil.Reloader
 	apiSrv       *api.Server
 	smtpSrv      *smtpd.Server
 	httpSrv      *http.Server
 	cancelHTTP   context.CancelFunc
 	httpActive   sync.WaitGroup
 	smtpLn       net.Listener
+	smtpsLn      net.Listener
 	httpLn       net.Listener
 
 	listenersReady atomic.Bool
@@ -92,24 +95,17 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		ver = "dev"
 	}
 
-	var smtpTLSConfig *tls.Config
+	var (
+		tlsReloader   *tlsutil.Reloader
+		smtpTLSConfig *tls.Config
+	)
 	if cfg.SMTPTLSCert != "" && cfg.SMTPTLSKey != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.SMTPTLSCert, cfg.SMTPTLSKey)
+		reloader, err := tlsutil.NewReloader(cfg.SMTPTLSCert, cfg.SMTPTLSKey, tlsutil.DefaultPollInterval, clk, log)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"app: load SMTP TLS certificate (MAILCUBBY_SMTP_TLS_CERT=%q, MAILCUBBY_SMTP_TLS_KEY=%q): %w",
-				cfg.SMTPTLSCert,
-				cfg.SMTPTLSKey,
-				err,
-			)
+			return nil, fmt.Errorf("app: load SMTP TLS certificate: %w", err)
 		}
-		// TODO(phase-12): replace static startup cert with internal/tlsutil.Reloader.
-		smtpTLSConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-				return &cert, nil
-			},
-		}
+		tlsReloader = reloader
+		smtpTLSConfig = reloader.TLSConfig()
 	}
 
 	if cfg.Mode == config.ModeLocal {
@@ -184,8 +180,28 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		return nil, fmt.Errorf("app: listen smtp %s: %w", cfg.SMTPAddr, err)
 	}
 
+	var smtpsLn net.Listener
+	if cfg.SMTPSAddr != "" {
+		if smtpTLSConfig == nil {
+			_ = smtpLn.Close()
+			bus.Close()
+			_ = st.Close()
+			return nil, errors.New("app: MAILCUBBY_SMTPS_ADDR requires MAILCUBBY_SMTP_TLS_CERT and MAILCUBBY_SMTP_TLS_KEY")
+		}
+		smtpsLn, err = lc.Listen(ctx, "tcp", cfg.SMTPSAddr)
+		if err != nil {
+			_ = smtpLn.Close()
+			bus.Close()
+			_ = st.Close()
+			return nil, fmt.Errorf("app: listen smtps %s: %w", cfg.SMTPSAddr, err)
+		}
+	}
+
 	httpLn, err := lc.Listen(ctx, "tcp", cfg.HTTPAddr)
 	if err != nil {
+		if smtpsLn != nil {
+			_ = smtpsLn.Close()
+		}
 		_ = smtpLn.Close()
 		bus.Close()
 		_ = st.Close()
@@ -204,8 +220,10 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		sweeper:      sweeper,
 		orphanGC:     orphanGC,
 		housekeeping: housekeeping,
+		tlsReloader:  tlsReloader,
 		smtpSrv:      smtpSrv,
 		smtpLn:       smtpLn,
+		smtpsLn:      smtpsLn,
 		httpLn:       httpLn,
 	}
 	a.listenersReady.Store(true)
@@ -275,6 +293,13 @@ func (a *App) Serve(ctx context.Context) error {
 			a.housekeeping.Run(workersCtx)
 		}()
 	}
+	if a.tlsReloader != nil {
+		workersWG.Add(1)
+		go func() {
+			defer workersWG.Done()
+			a.tlsReloader.Run(workersCtx)
+		}()
+	}
 
 	g, gctx := errgroup.WithContext(ctx)
 
@@ -285,6 +310,16 @@ func (a *App) Serve(ctx context.Context) error {
 		}
 		return nil
 	})
+
+	if a.smtpsLn != nil {
+		g.Go(func() error {
+			a.log.Info("smtps listening", "smtps_addr", a.smtpsLn.Addr().String())
+			if err := a.smtpSrv.ServeTLS(a.smtpsLn); err != nil {
+				return fmt.Errorf("app: smtps server: %w", err)
+			}
+			return nil
+		})
+	}
 
 	g.Go(func() error {
 		a.log.Info("http listening", "http_addr", a.httpLn.Addr().String(), "version", a.version)
@@ -351,6 +386,11 @@ func (a *App) Close() error {
 				errs = append(errs, cerr)
 			}
 		}
+		if a.smtpsLn != nil {
+			if cerr := a.smtpsLn.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) {
+				errs = append(errs, cerr)
+			}
+		}
 		if a.httpLn != nil {
 			if cerr := a.httpLn.Close(); cerr != nil && !errors.Is(cerr, net.ErrClosed) {
 				errs = append(errs, cerr)
@@ -378,6 +418,15 @@ func (a *App) Close() error {
 // SMTPAddr returns the bound TCP address of the SMTP listener.
 func (a *App) SMTPAddr() string {
 	return a.smtpLn.Addr().String()
+}
+
+// SMTPSAddr returns the bound TCP address of the implicit TLS SMTP listener,
+// or an empty string if implicit TLS is not enabled.
+func (a *App) SMTPSAddr() string {
+	if a.smtpsLn == nil {
+		return ""
+	}
+	return a.smtpsLn.Addr().String()
 }
 
 // HTTPAddr returns the bound TCP address of the HTTP listener.
