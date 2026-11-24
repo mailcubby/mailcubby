@@ -230,11 +230,20 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	normEmail := auth.NormalizeEmail(req.Email)
+	// Bound the email before it reaches the limiter key or the audit log.
+	if len(normEmail) > auth.MaxEmailLen {
+		writeError(w, http.StatusBadRequest, ErrCodeBadRequest, "email is too long", nil)
+		return
+	}
 	clientIP := ClientIPFromContext(ctx)
 	pairKey := clientIP + "\x00" + normEmail
 
-	// SPEC 12.4: HTTP login rate limit per (IP, email) and 5x per IP.
-	if retryAfter, blocked := s.checkLoginRateLimit(pairKey, clientIP); blocked {
+	// SPEC 12.4: HTTP login rate limit per (IP, email) and 5x per IP. The
+	// attempt is reserved before verification so concurrent requests cannot
+	// all pass the check; it is given back only on a successful login, so
+	// only failed attempts count.
+	releaseAttempt, retryAfter, allowed := s.reserveLoginAttempt(pairKey, clientIP)
+	if !allowed {
 		sec := ratelimit.RetryAfterSeconds(retryAfter)
 		w.Header().Set("Retry-After", strconv.Itoa(sec))
 		writeError(w, http.StatusTooManyRequests, ErrCodeRateLimited, "too many login attempts, try again later", map[string]string{
@@ -250,7 +259,6 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	failLogin := func(user *store.User, reason string) {
-		s.recordLoginFailure(pairKey, clientIP)
 		actorType := store.AuditActorSystem
 		var actorUserID *int64
 		actorLabel := normEmail
@@ -318,6 +326,7 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		failLogin(&user, "invalid_password")
 		return
 	}
+	releaseAttempt()
 
 	var rehashed string
 	if needsRehash {
@@ -730,18 +739,26 @@ func (s *Server) createSessionTx(ctx context.Context, tx *store.Tx, userID int64
 	return rawToken, nil
 }
 
-func (s *Server) checkLoginRateLimit(pairKey, ip string) (time.Duration, bool) {
-	okPair, retryPair := s.loginKeyLimiter.Check(pairKey)
-	okIP, retryIP := s.loginIPLimiter.Check(ip)
-	if okPair && okIP {
-		return 0, false
+// reserveLoginAttempt atomically counts one login attempt against both the
+// (IP, email) and the IP limiter before credentials are verified. When either
+// limiter is exhausted nothing stays counted and allowed is false. Otherwise
+// release gives both reservations back and must be called only after a
+// successful verification.
+func (s *Server) reserveLoginAttempt(pairKey, ip string) (release func(), retryAfter time.Duration, allowed bool) {
+	pairAt, okPair, retryPair := s.loginKeyLimiter.Reserve(pairKey)
+	if !okPair {
+		_, retryIP := s.loginIPLimiter.Check(ip)
+		return nil, max(retryPair, retryIP), false
 	}
-	return max(retryPair, retryIP), true
-}
-
-func (s *Server) recordLoginFailure(pairKey, ip string) {
-	s.loginKeyLimiter.Record(pairKey)
-	s.loginIPLimiter.Record(ip)
+	ipAt, okIP, retryIP := s.loginIPLimiter.Reserve(ip)
+	if !okIP {
+		s.loginKeyLimiter.Cancel(pairKey, pairAt)
+		return nil, retryIP, false
+	}
+	return func() {
+		s.loginKeyLimiter.Cancel(pairKey, pairAt)
+		s.loginIPLimiter.Cancel(ip, ipAt)
+	}, 0, true
 }
 
 func buildAuthUser(u store.User) authUserResponse {

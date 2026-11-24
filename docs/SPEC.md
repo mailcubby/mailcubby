@@ -120,7 +120,7 @@ Routing rules are defined precisely in section 7.
 **FR-020 Project resolution.** Every accepted message is stored in exactly the project(s) resolved by section 7, or rejected with the codes listed there.
 - AC: table-driven tests cover every row of the routing table in section 7.2 in both modes.
 
-**FR-021 Credential attribution.** Messages accepted via an SMTP credential record `smtp_credential_id`; the UI can filter by credential (useful when one project has separate credentials per environment). The list API filter is `?credential=<credential id>`; the search operator `credential:<label>` matches by label.
+**FR-021 Credential attribution.** Messages accepted via an SMTP credential record `smtp_credential_id`; the UI can filter by credential (useful when one project has separate credentials per environment). The list and delete-all API filter is `?credential=<credential id>`; the search operator `credential:<label>` matches by label (labels are not unique, so the UI's "Delete matching" sends the sidebar credential as `?credential=<id>`, never as `credential:<label>`).
 
 ### 6.3 Projects
 
@@ -196,7 +196,7 @@ Roles are per project: `owner`, `member`, `viewer`. Instance admins (`users.is_a
 
 **FR-056 Accept.** `GET /api/v1/invites/{token}` previews project name (absent for instance invites), inviter name, role and email (public, rate limited). `POST /api/v1/invites/{token}/accept`:
 - If the caller is logged in, the membership is added to the current user (the invite email is informative; owners see who accepted). For an instance invite, a logged-in caller gets `409 conflict` (nothing to accept).
-- If not logged in and a user exists with the invite email and `password_hash` is NULL (admin-created user): body `{name?, password}` sets the password (and name if given), and logs them in.
+- If not logged in, the invite is an instance invite, and a user exists with the invite email and `password_hash` is NULL (admin-created user): body `{name?, password}` sets the password (and name if given), and logs them in. A project invite never sets a password: for any existing user (with or without a password) it returns `409 login_required`.
 - If not logged in and no user exists with the invite email: body `{name, password}` creates the user with that email and logs them in.
 - If not logged in and a user with a password exists with that email: `409 login_required`; the UI asks the user to log in and then accepts.
 - If the user is already a member, the role is upgraded if the invite role is higher, never downgraded.
@@ -271,6 +271,7 @@ Unknown operators are treated as plain text. The parser MUST produce parameteris
 - AC: fuzz test of the parser never panics and never produces SQL containing user text outside bind parameters.
 
 **FR-082 Search API.** `query` parameter on the list, delete-all and wait endpoints.
+- Delete-all with a `query` returns `400 bad_request` and deletes nothing when the query does not narrow the selection: it parses to zero terms, every term is a negated full-text term without indexable tokens (e.g. `-"!"`), or it consists only of exclusions (negated text, `from:`, `to:`, `subject:`, `tag:`, `credential:` terms) that exclude no message in the project. A `credential=<id>` filter counts as narrowing, so delete-all with only `credential` deletes that credential's messages. To delete every message, omit `query` and `credential`. List and wait treat such no-op terms as matching everything.
 
 ### 6.11 Tags
 
@@ -286,7 +287,7 @@ Unknown operators are treated as plain text. The parser MUST produce parameteris
 
 **FR-090 SSE stream.** `GET /api/v1/events` (optionally `?project=slug`) returns `text/event-stream`. Event types: `message.created`, `message.updated` (seen, tags), `message.deleted` (IDs, or `all` with project), `project.updated` (counters), `project.created`, `project.deleted`, `membership.changed`. Payload is JSON. A comment heartbeat `: ping` is sent every 25 s. There is no replay; on reconnect the client refetches.
 
-**FR-091 Filtering.** Each subscriber receives only events for projects it can access at the time of the event. Membership changes take effect for open streams within 1 s (the subscriber's project set is refreshed on `membership.changed`). Token-authenticated subscribers are limited by token project restriction.
+**FR-091 Filtering.** Each subscriber receives only events for projects it can access at the time of the event. Membership changes take effect for open streams within 1 s (the subscriber's project set is refreshed on `membership.changed`). Token-authenticated subscribers are limited by token project restriction. On `project.deleted` every open stream that could access the project receives the event and then stops matching that project ID; a stream scoped to the deleted project (`?project=` or a project-restricted token) ends after delivering it (a reconnect then gets `404`).
 - AC: a viewer of project A connected to `/api/v1/events` receives no event when mail arrives in project B; after being removed from A, receives no further A events.
 
 **FR-092 Limits.** Max `MAILCUBBY_SSE_MAX_CONNECTIONS_PER_USER` (default 10) concurrent streams per user or token; the oldest is closed when exceeded. Slow consumers (buffer of 256 events full) are disconnected.
@@ -597,7 +598,7 @@ Environment variables only (no config file in v1). Variables marked (secret) als
 
 ## 10. Data model
 
-SQLite, one file `app.db`. Times are `INTEGER` Unix milliseconds UTC unless noted. Booleans are `INTEGER` 0/1. Foreign keys ON. Every table that holds tenant data has a `project_id` column (denormalised where needed) so that every query can filter by it directly. Migrations are SQL files in `migrations/` (goose). `00001_init.sql` creates all v1 tables and indexes; `00002_fts.sql` creates `messages_fts` and its delete trigger (kept separate because sqlc's SQLite parser does not handle FTS5 virtual tables; it is excluded from `sqlc.yaml`).
+SQLite, one file `app.db`. Times are `INTEGER` Unix milliseconds UTC unless noted. Booleans are `INTEGER` 0/1. Foreign keys ON. Every table that holds tenant data has a `project_id` column (denormalised where needed) so that every query can filter by it directly. Migrations are SQL files in `migrations/` (goose). `00001_init.sql` creates all v1 tables and indexes; `00002_fts.sql` creates `messages_fts` and its delete trigger (kept separate because sqlc's SQLite parser does not handle FTS5 virtual tables; it is excluded from `sqlc.yaml`). `00003_projects_autoincrement.sql` rebuilds `projects` with `id INTEGER PRIMARY KEY AUTOINCREMENT` (foreign keys off around the rebuild so no child row cascades) and starts the sequence above every project ID recorded in the audit log, so a deleted project's ID is never reused by a new project.
 
 ### users
 | Column | Type | Notes |
@@ -634,7 +635,7 @@ SQLite, one file `app.db`. Times are `INTEGER` Unix milliseconds UTC unless note
 ### projects
 | Column | Type | Notes |
 |---|---|---|
-| id | INTEGER PK | |
+| id | INTEGER PK AUTOINCREMENT | never reused after a project is deleted (`00003_projects_autoincrement.sql`) |
 | slug | TEXT NOT NULL UNIQUE | |
 | name | TEXT NOT NULL | |
 | color | TEXT NOT NULL | token, e.g. `blue` |
@@ -828,7 +829,7 @@ Email HTML is attacker-controlled. It MUST never execute script, reach the app's
 - No inline scripts in `index.html` (theme bootstrap is a separate static file). No WebAssembly and no `eval` in the SPA: Shiki uses its JavaScript regex engine (`createJavaScriptRegexEngine`), so `script-src` needs neither `'wasm-unsafe-eval'` nor `'unsafe-eval'`.
 - All SQL via sqlc-generated parameterised queries or `database/sql` with bind parameters. No string concatenation of user input into SQL (search builds SQL from fixed fragments plus bind parameters).
 - Secrets (session tokens, invite tokens, reset tokens, API tokens) generated with `crypto/rand`, stored hashed (SHA-256; they have 256 bits of entropy so a slow hash is unnecessary). Passwords use argon2id (FR-042). SMTP passwords are encrypted, not hashed (FR-061), so owners can reveal them.
-- Tokens and passwords never appear in logs, errors or audit metadata. Log middleware redacts `Authorization`, `Cookie`, `Set-Cookie` and `X-CSRF-Token`.
+- Tokens and passwords never appear in logs, errors or audit metadata. Log middleware redacts `Authorization`, `Cookie`, `Set-Cookie` and `X-CSRF-Token`, never logs query strings, and replaces the token segment of invite and password-reset paths (`/api/v1/invites/{token}`, `/api/v1/password-reset/{token}`, `/invite/{token}`, `/reset/{token}`) with `[REDACTED]`.
 - Constant-time comparison for all secret comparisons.
 
 ### 12.4 Brute force and rate limiting
@@ -836,7 +837,7 @@ Email HTML is attacker-controlled. It MUST never execute script, reach the app's
 In-memory (single process), sliding windows; state is lost on restart, which is acceptable.
 
 - SMTP AUTH: after `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` failures per IP or per username within `MAILCUBBY_SMTP_AUTH_LOCKOUT`, further AUTH attempts from that IP / for that username get `454 4.7.0` without checking the password until the window passes. An audit entry `smtp.auth_lockout` is written once per lockout. After a failure the server delays its reply by 1 s (the delay goes through the injected clock so tests do not sleep).
-- HTTP login: `MAILCUBBY_LOGIN_RATE_LIMIT` per (IP, email) and 5x that per IP; `429` with `Retry-After`.
+- HTTP login: `MAILCUBBY_LOGIN_RATE_LIMIT` per (IP, email) and 5x that per IP; `429` with `Retry-After`. Only failed attempts count, but each attempt is reserved atomically before the password is verified and given back only on success, so concurrent requests cannot exceed the limit. An email longer than 254 bytes gets `400 bad_request` before rate limiting, hashing or auditing.
 - Invite preview/accept and password reset: 20 requests per 15 min per IP.
 - API: `MAILCUBBY_API_RATE_LIMIT` per token or session (token bucket).
 - Client IP is the socket address, or `X-Forwarded-For` (rightmost untrusted hop) only when the peer is in `MAILCUBBY_TRUSTED_PROXIES`.

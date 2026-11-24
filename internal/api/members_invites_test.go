@@ -473,3 +473,124 @@ func TestConcurrentInviteAccept(t *testing.T) {
 		}
 	})
 }
+
+// FR-056: an anonymous accept of a PROJECT invite must never set the password of
+// an existing passwordless (admin-created) user; only the instance invite may.
+// Otherwise any project owner could invite a pending account (even a pending
+// instance admin) to their own project and take it over.
+func TestProjectInviteCannotSetPasswordOfPasswordlessUser(t *testing.T) {
+	t.Parallel()
+
+	env := newServerModeEnv(t)
+	h := env.srv.Handler()
+	const pass = "correct-horse-battery-staple"
+	const attackerPass = "attacker-chosen-password"
+	const victimEmail = "pending-admin@example.test"
+
+	env.createUser(t, "root@example.test", "Root", pass, true, true, false)
+	env.createUser(t, "mallory@example.test", "Mallory", pass, false, true, false)
+
+	// Admin onboards a new co-admin: passwordless user plus instance invite.
+	rootCookie, rootCSRF := loginAndGetCSRF(t, h, "root@example.test", pass)
+	rec := doReq(t, h, http.MethodPost, "/api/v1/admin/users", map[string]any{
+		"email": victimEmail, "name": "Pending Admin", "is_admin": true,
+	}, rootCookie, csrfHeaders(rootCSRF))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("POST /admin/users status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		InviteURL string `json:"invite_url"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("unmarshal create user: %v", err)
+	}
+	instanceTok := extractInviteToken(t, created.InviteURL)
+
+	// A project creator invites the pending account to their own project.
+	malCookie, malCSRF := loginAndGetCSRF(t, h, "mallory@example.test", pass)
+	rec = doReq(t, h, http.MethodPost, "/api/v1/projects", map[string]any{"name": "Evil", "slug": "evil"}, malCookie, csrfHeaders(malCSRF))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("POST /projects status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	rec = doReq(t, h, http.MethodPost, "/api/v1/projects/evil/invites", map[string]any{
+		"email": victimEmail, "role": "viewer",
+	}, malCookie, csrfHeaders(malCSRF))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("POST /projects/evil/invites status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	var projInv struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &projInv); err != nil {
+		t.Fatalf("unmarshal create invite: %v", err)
+	}
+	projectTok := extractInviteToken(t, projInv.URL)
+
+	// Anonymous accept of the project invite is refused with 409 login_required.
+	rec = doReq(t, h, http.MethodPost, "/api/v1/invites/"+projectTok+"/accept", map[string]any{
+		"name": "Owned", "password": attackerPass,
+	}, nil, map[string]string{"Origin": testBaseURL})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("anonymous project invite accept status = %d, want 409; body=%s", rec.Code, rec.Body.String())
+	}
+	var errResp struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if errResp.Error.Code != "login_required" {
+		t.Fatalf("error code = %q, want login_required", errResp.Error.Code)
+	}
+	if findSessionCookie(rec) != nil {
+		t.Fatalf("refused accept must not set a session cookie")
+	}
+
+	victim, err := env.store.GetUserByEmail(t.Context(), victimEmail)
+	if err != nil {
+		t.Fatalf("GetUserByEmail: %v", err)
+	}
+	if victim.PasswordHash != nil {
+		t.Fatalf("victim password hash was set by a project invite")
+	}
+	if victim.Name != "Pending Admin" {
+		t.Fatalf("victim name = %q, want unchanged", victim.Name)
+	}
+	proj, err := env.store.GetProjectBySlug(t.Context(), "evil")
+	if err != nil {
+		t.Fatalf("GetProjectBySlug: %v", err)
+	}
+	if _, err := env.store.GetProjectMember(t.Context(), proj.ID, victim.ID); err == nil {
+		t.Fatalf("victim was added to the project by a refused accept")
+	}
+
+	rec = doReq(t, h, http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"email": victimEmail, "password": attackerPass,
+	}, nil, map[string]string{"Origin": testBaseURL})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("login with attacker password status = %d, want 401", rec.Code)
+	}
+
+	// The refused accept consumed nothing: the project invite is still pending.
+	rec = doReq(t, h, http.MethodGet, "/api/v1/invites/"+projectTok, nil, nil, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("project invite preview after refused accept status = %d, want 200", rec.Code)
+	}
+
+	// The legitimate instance invite still sets the password.
+	rec = doReq(t, h, http.MethodPost, "/api/v1/invites/"+instanceTok+"/accept", map[string]any{
+		"password": pass,
+	}, nil, map[string]string{"Origin": testBaseURL})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("instance invite accept status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	victimCookie, victimCSRF := loginAndGetCSRF(t, h, victimEmail, pass)
+
+	// Once signed in, the project invite is accepted as a logged-in user.
+	rec = doReq(t, h, http.MethodPost, "/api/v1/invites/"+projectTok+"/accept", nil, victimCookie, csrfHeaders(victimCSRF))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("logged-in project invite accept status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+}

@@ -321,8 +321,9 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	if (cfg.AdminEmail != "") != (cfg.AdminPassword != "") {
 		// Only report pairing mismatch if neither variable already failed to load/validate.
 		_, hasEmailEnv := get("MAILCUBBY_ADMIN_EMAIL")
-		_, hasPassEnv := lookup("MAILCUBBY_ADMIN_PASSWORD")
-		_, hasPassFileEnv := lookup("MAILCUBBY_ADMIN_PASSWORD_FILE")
+		// Empty or whitespace-only values count as unset, as in getSecret.
+		_, hasPassEnv := get("MAILCUBBY_ADMIN_PASSWORD")
+		_, hasPassFileEnv := get("MAILCUBBY_ADMIN_PASSWORD_FILE")
 		if hasEmailEnv && !hasPassEnv && !hasPassFileEnv {
 			addErr("MAILCUBBY_ADMIN_PASSWORD", errors.New("must be set when MAILCUBBY_ADMIN_EMAIL is set"))
 		} else if !hasEmailEnv && cfg.AdminPassword != "" {
@@ -533,8 +534,10 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		if _, hasBase := get("MAILCUBBY_BASE_URL"); !hasBase {
 			addErr("MAILCUBBY_BASE_URL", errors.New("required in server mode"))
 		}
-		_, hasKey := lookup("MAILCUBBY_APP_KEY")
-		_, hasKeyFile := lookup("MAILCUBBY_APP_KEY_FILE")
+		// Empty or whitespace-only values count as unset, as in getSecret; a set
+		// but invalid value has already been reported above.
+		_, hasKey := get("MAILCUBBY_APP_KEY")
+		_, hasKeyFile := get("MAILCUBBY_APP_KEY_FILE")
 		if len(cfg.AppKey) == 0 && !hasKey && !hasKeyFile {
 			addErr("MAILCUBBY_APP_KEY", errors.New("required in server mode (or set MAILCUBBY_APP_KEY_FILE)"))
 		}

@@ -243,6 +243,25 @@ func (f *ProjectSetFilter) Set(projectIDs []int64) {
 	f.projects.Store(&m)
 }
 
+// Remove atomically drops projectID from the set of accessible project IDs.
+// It does not affect an allow-all filter.
+func (f *ProjectSetFilter) Remove(projectID int64) {
+	setPtr := f.projects.Load()
+	if setPtr == nil {
+		return
+	}
+	if _, ok := (*setPtr)[projectID]; !ok {
+		return
+	}
+	m := make(map[int64]struct{}, len(*setPtr))
+	for id := range *setPtr {
+		if id != projectID {
+			m[id] = struct{}{}
+		}
+	}
+	f.projects.Store(&m)
+}
+
 // AllowsProject reports whether projectID is currently permitted by the filter.
 func (f *ProjectSetFilter) AllowsProject(projectID int64) bool {
 	if f.allowAll.Load() {

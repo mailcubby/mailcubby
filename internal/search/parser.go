@@ -354,9 +354,23 @@ func readBareToken(s string, start int) (string, int) {
 
 func hasFTSToken(s string) bool {
 	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+		if isFTSTokenRune(r) {
 			return true
 		}
 	}
 	return false
+}
+
+// isFTSTokenRune reports whether r is a token character for the FTS5
+// unicode61 tokenizer (FR-080). unicode61 uses Unicode 6.1 categories while
+// Go's tables are newer: New Tai Lue vowel signs (U+19B0..U+19C0,
+// U+19C8..U+19C9) and Vedic signs U+1CF2..U+1CF3 were spacing marks in 6.1,
+// so SQLite treats them as separators even though Go reports them as letters.
+func isFTSTokenRune(r rune) bool {
+	switch {
+	case r >= 0x19B0 && r <= 0x19C0, r == 0x19C8, r == 0x19C9, r == 0x1CF2, r == 0x1CF3:
+		return false
+	default:
+		return unicode.IsLetter(r) || unicode.IsNumber(r)
+	}
 }

@@ -173,3 +173,21 @@ func TestProjectSetFilterAllowAllAndMembershipIsolation(t *testing.T) {
 		t.Fatal("expected no match after clearing projects and allowAll")
 	}
 }
+
+// FR-091: Remove drops a single deleted project from the set without touching the others.
+func TestProjectSetFilterRemove(t *testing.T) {
+	t.Parallel()
+
+	f := NewProjectSetFilter(42, []int64{1, 2})
+	f.Remove(2)
+	if f.AllowsProject(2) {
+		t.Fatal("expected project 2 to be removed")
+	}
+	if !f.AllowsProject(1) {
+		t.Fatal("expected project 1 to remain")
+	}
+	f.Remove(99) // absent ID is a no-op
+	if !f.AllowsProject(1) {
+		t.Fatal("expected project 1 to remain after removing an absent id")
+	}
+}

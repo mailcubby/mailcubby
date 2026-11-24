@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"path"
 	"runtime/debug"
 	"strings"
 
@@ -111,6 +112,36 @@ func RedactHeaders(h http.Header) map[string]string {
 	return out
 }
 
+// secretPathPrefixes are URL path prefixes whose next segment is a bearer
+// secret (invite or password-reset token) that must never reach the logs.
+var secretPathPrefixes = [...]string{
+	"/api/v1/invites/",
+	"/api/v1/password-reset/",
+	"/invite/",
+	"/reset/",
+}
+
+// RedactLogPath returns p with the token segment of invite and password-reset
+// paths (API and SPA) replaced by "[REDACTED]", e.g.
+// "/api/v1/invites/[REDACTED]/accept". Matching uses the cleaned path and is
+// case-insensitive so variants such as "//Invite/<token>" are redacted too.
+// Other paths are returned unchanged.
+func RedactLogPath(p string) string {
+	cleaned := path.Clean("/" + p)
+	for _, prefix := range secretPathPrefixes {
+		if len(cleaned) <= len(prefix) || !strings.EqualFold(cleaned[:len(prefix)], prefix) {
+			continue
+		}
+		rest := cleaned[len(prefix):]
+		suffix := ""
+		if i := strings.IndexByte(rest, '/'); i >= 0 {
+			suffix = rest[i:]
+		}
+		return prefix + "[REDACTED]" + suffix
+	}
+	return p
+}
+
 func isSensitiveHeader(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "authorization", "cookie", "set-cookie", "x-csrf-token":
@@ -141,7 +172,7 @@ func (s *Server) recoverMiddleware(next http.Handler) http.Handler {
 				s.log.Error("http handler panic recovered",
 					"request_id", RequestIDFromContext(r.Context()),
 					"method", r.Method,
-					"path", r.URL.Path,
+					"path", RedactLogPath(r.URL.Path),
 					"panic", fmt.Sprint(rec),
 					"stack", string(debug.Stack()),
 				)
@@ -211,7 +242,7 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 		s.log.Log(r.Context(), level, "http request",
 			"request_id", RequestIDFromContext(r.Context()),
 			"method", r.Method,
-			"path", r.URL.Path,
+			"path", RedactLogPath(r.URL.Path),
 			"status", status,
 			"bytes", rw.bytes,
 			"duration_ms", duration.Milliseconds(),

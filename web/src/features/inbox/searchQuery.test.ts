@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { api } from "@/lib/api";
 import {
   applyAutocompleteSuggestion,
   combineQueryAndTag,
+  deleteAllFilterParams,
   extractOperatorChips,
   getAutocompleteSuggestions,
   isValidTagName,
@@ -127,5 +129,41 @@ describe("tag validation and query combining", () => {
     expect(combineQueryAndTag("from:alice", "invoice", "prod like")).toBe(
       'from:alice tag:invoice credential:"prod like"',
     );
+  });
+
+  // Credential labels are not unique: "Delete matching" must send the sidebar
+  // credential as an ID, never as a credential:<label> term (FR-021, FR-082).
+  it("builds delete-matching params with the credential ID, not its label", () => {
+    expect(deleteAllFilterParams("", undefined, undefined)).toEqual({});
+    expect(deleteAllFilterParams("  ", undefined, 7)).toEqual({ credential: 7 });
+    expect(deleteAllFilterParams("from:alice", "invoice", 7)).toEqual({
+      query: "from:alice tag:invoice",
+      credential: 7,
+    });
+    expect(deleteAllFilterParams("is:unread", undefined, undefined)).toEqual({
+      query: "is:unread",
+    });
+    const params = deleteAllFilterParams("", undefined, 3);
+    expect(params.query ?? "").not.toContain("credential:");
+  });
+
+  it("serialises the credential ID as the DELETE /messages credential parameter", async () => {
+    const urls: string[] = [];
+    const capture = async (input: Request): Promise<Response> => {
+      urls.push(input.url);
+      return new Response(JSON.stringify({ affected: 0 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    await api.DELETE("/api/v1/projects/{project}/messages", {
+      baseUrl: "http://localhost",
+      fetch: capture,
+      params: { path: { project: "shop" }, query: deleteAllFilterParams("is:read", undefined, 7) },
+    });
+    const url = new URL(urls[0] ?? "");
+    expect(url.pathname).toBe("/api/v1/projects/shop/messages");
+    expect(url.searchParams.get("credential")).toBe("7");
+    expect(url.searchParams.get("query")).toBe("is:read");
   });
 });

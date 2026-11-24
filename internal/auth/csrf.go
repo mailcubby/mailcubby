@@ -12,7 +12,9 @@ import (
 // CSRFHeaderName is the HTTP header carrying the session CSRF token (SPEC FR-045).
 const CSRFHeaderName = "X-CSRF-Token"
 
-const maxEmailLen = 254
+// MaxEmailLen is the maximum length in bytes of an email address accepted at
+// the API boundary.
+const MaxEmailLen = 254
 
 // IsUnsafeMethod reports whether an HTTP method mutates state and therefore
 // requires Origin (and CSRF for cookie auth) validation (SPEC FR-045).
@@ -66,7 +68,7 @@ func NormalizeEmail(raw string) string {
 // trimmed form.
 func ValidateEmail(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" || len(trimmed) > maxEmailLen {
+	if trimmed == "" || len(trimmed) > MaxEmailLen {
 		return "", errors.New("must be a valid email address")
 	}
 	if strings.ContainsAny(trimmed, " \t\r\n<>") {

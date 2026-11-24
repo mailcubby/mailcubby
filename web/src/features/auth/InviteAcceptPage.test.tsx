@@ -248,6 +248,10 @@ describe("InviteAcceptPage (FR-056)", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("already exists");
+    // FR-056: project invites for admin-created accounts without a password also
+    // return login_required, so the copy must point them to account setup first.
+    expect(alert.textContent).toContain("If you have not set a password yet");
+    expect(alert.textContent).toContain("password reset link");
     const signInLinks = screen.getAllByRole("link", { name: "Sign in to accept" });
     expect(signInLinks[0]?.getAttribute("href")).toBe("/login?returnTo=%2Finvite%2Ftok-existing");
   });

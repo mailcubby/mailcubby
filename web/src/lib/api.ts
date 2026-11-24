@@ -188,19 +188,37 @@ export function sanitizeReturnTo(raw: string | undefined): string {
   if (!raw) {
     return "/";
   }
+  // Browsers drop tab/CR/LF while parsing URLs and treat "\" like "/", so
+  // "/\t/evil.example" would become the protocol-relative "//evil.example".
+  for (const ch of raw) {
+    const code = ch.charCodeAt(0);
+    if (code < 0x20 || code === 0x7f || ch === "\\") {
+      return "/";
+    }
+  }
   const trimmed = raw.trim();
-  if (!trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.startsWith("/\\")) {
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
     return "/";
   }
-  if (
-    trimmed === "/login" ||
-    trimmed.startsWith("/login?") ||
-    trimmed === "/setup" ||
-    trimmed.startsWith("/setup?")
-  ) {
+  let resolved: URL;
+  try {
+    resolved = new URL(trimmed, window.location.origin);
+  } catch {
     return "/";
   }
-  return trimmed;
+  if (resolved.origin !== window.location.origin) {
+    return "/";
+  }
+  if (resolved.pathname === "/login" || resolved.pathname === "/setup") {
+    return "/";
+  }
+  // Dot segments can collapse into a leading "//" ("/.//evil" -> "//evil"),
+  // which would be protocol-relative once handed back to the browser.
+  const target = `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  if (target.startsWith("//") || target.includes("\\")) {
+    return "/";
+  }
+  return target;
 }
 
 export function handleUnauthorizedRedirect(error: unknown): boolean {

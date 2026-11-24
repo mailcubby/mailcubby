@@ -474,6 +474,56 @@ func TestLoadValidationErrors(t *testing.T) {
 			},
 			wantVars: []string{"MAILCUBBY_ADMIN_PASSWORD"},
 		},
+		// SPEC 5.2: server mode refuses to start without an effective app key;
+		// empty or whitespace values are unset (as for MAILCUBBY_BASE_URL).
+		{
+			name: "server mode empty app key",
+			env: map[string]string{
+				"MAILCUBBY_MODE":                     "server",
+				"MAILCUBBY_BASE_URL":                 "https://mail.example.com",
+				"MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH": "true",
+				"MAILCUBBY_APP_KEY":                  "",
+			},
+			wantVars: []string{"MAILCUBBY_APP_KEY"},
+		},
+		{
+			name: "server mode whitespace app key",
+			env: map[string]string{
+				"MAILCUBBY_MODE":                     "server",
+				"MAILCUBBY_BASE_URL":                 "https://mail.example.com",
+				"MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH": "true",
+				"MAILCUBBY_APP_KEY":                  "   ",
+			},
+			wantVars: []string{"MAILCUBBY_APP_KEY"},
+		},
+		{
+			name: "server mode empty app key and key file",
+			env: map[string]string{
+				"MAILCUBBY_MODE":                     "server",
+				"MAILCUBBY_BASE_URL":                 "https://mail.example.com",
+				"MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH": "true",
+				"MAILCUBBY_APP_KEY":                  "",
+				"MAILCUBBY_APP_KEY_FILE":             " ",
+			},
+			wantVars: []string{"MAILCUBBY_APP_KEY"},
+		},
+		// Open questions (Phase 1): admin email and password must be set together.
+		{
+			name: "admin email with empty password",
+			env: map[string]string{
+				"MAILCUBBY_ADMIN_EMAIL":    "admin@example.com",
+				"MAILCUBBY_ADMIN_PASSWORD": "",
+			},
+			wantVars: []string{"MAILCUBBY_ADMIN_PASSWORD"},
+		},
+		{
+			name: "admin email with empty password file",
+			env: map[string]string{
+				"MAILCUBBY_ADMIN_EMAIL":         "admin@example.com",
+				"MAILCUBBY_ADMIN_PASSWORD_FILE": "  ",
+			},
+			wantVars: []string{"MAILCUBBY_ADMIN_PASSWORD"},
+		},
 	}
 
 	for _, tc := range cases {

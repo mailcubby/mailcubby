@@ -1,10 +1,16 @@
 package search
 
 import (
+	"errors"
 	"strings"
 	"time"
-	"unicode"
 )
+
+// ErrNoEffectiveFilter is returned by DeleteMessagesByQuery when a non-empty
+// query would not narrow the selection, so a filtered delete-all would act as
+// an unfiltered one (FR-076, FR-082). Callers that really want to delete every
+// message must omit the query.
+var ErrNoEffectiveFilter = errors.New("search: query does not narrow the selection")
 
 const messageSelectColumns = `m.pk,
     m.id,
@@ -50,16 +56,20 @@ type BuildOptions struct {
 
 // Build constructs a parameterized SELECT statement over messages (and messages_fts
 // when FTS terms are present) strictly scoped to projectID (ARCHITECTURE 3.7, SPEC FR-080/FR-081).
-// User input is placed exclusively in the returned args slice.
+// User input is placed exclusively in the returned args slice. Negated full-text
+// terms without FTS-indexable tokens add no predicate, so for list and wait a
+// query made only of such terms matches every message; destructive callers must
+// use DeleteMessagesByQuery, which rejects that case with ErrNoEffectiveFilter.
 func Build(projectID int64, q Query, opts BuildOptions) (string, []any) {
 	return buildQuery("SELECT "+messageSelectColumns, projectID, q, opts, true)
 }
 
 // BuildDeleteSelect constructs a parameterized SELECT statement returning
-// (pk, id, blob_path, size_bytes, seen) for all messages in projectID matching q.
-// Used by filtered delete-all (DELETE /api/v1/projects/{project}/messages?query=...).
-func BuildDeleteSelect(projectID int64, q Query) (string, []any) {
-	return buildQuery("SELECT m.pk, m.id, m.blob_path, m.size_bytes, m.seen", projectID, q, BuildOptions{}, false)
+// (pk, id, blob_path, size_bytes, seen) for all messages in projectID matching q
+// and, when credentialID is non-nil, received via that SMTP credential.
+// Used by filtered delete-all (DELETE /api/v1/projects/{project}/messages?query=...&credential=...).
+func BuildDeleteSelect(projectID int64, q Query, credentialID *int64) (string, []any) {
+	return buildQuery("SELECT m.pk, m.id, m.blob_path, m.size_bytes, m.seen", projectID, q, BuildOptions{CredentialID: credentialID}, false)
 }
 
 func buildQuery(selectClause string, projectID int64, q Query, opts BuildOptions, ordered bool) (string, []any) {
@@ -254,10 +264,42 @@ func buildFTSExpr(term Term) (string, bool) {
 func sanitizeFTSInput(raw string) string {
 	noNul := strings.ReplaceAll(raw, "\x00", " ")
 	trimmed := strings.TrimFunc(noNul, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+		return !isFTSTokenRune(r)
 	})
 	if !hasFTSToken(trimmed) {
 		return ""
 	}
 	return trimmed
+}
+
+// filterShape reports how the terms of q constrain a message selection.
+// narrows is false when no term adds a predicate, i.e. every term is a negated
+// full-text term without FTS-indexable tokens (buildQuery skips those).
+// exclusionsOnly is true when every predicate-producing term is a negated
+// text, from, to, subject, tag or credential term, so the selection is
+// "every message except ..." and matches everything when nothing is excluded.
+func filterShape(q Query) (narrows, exclusionsOnly bool) {
+	exclusionsOnly = true
+	for _, term := range q.Terms {
+		switch term.Kind {
+		case TermText, TermFrom, TermTo, TermSubject:
+			if _, ok := buildFTSExpr(term); !ok && term.Negated {
+				continue
+			}
+		}
+		narrows = true
+		if !term.Negated || !isExclusionKind(term.Kind) {
+			exclusionsOnly = false
+		}
+	}
+	return narrows, narrows && exclusionsOnly
+}
+
+func isExclusionKind(k TermKind) bool {
+	switch k {
+	case TermText, TermFrom, TermTo, TermSubject, TermTag, TermCredential:
+		return true
+	default:
+		return false
+	}
 }

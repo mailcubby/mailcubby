@@ -91,6 +91,63 @@ func TestAppOpenServeAndGracefulShutdown(t *testing.T) {
 	}
 }
 
+func TestAppShutdownDoesNotWaitForIdleSMTPConnection(t *testing.T) {
+	t.Parallel()
+
+	// ARCHITECTURE 3.1: shutdown waits only for in-flight DATA. An idle pooled
+	// SMTP connection (after EHLO) must not hold shutdown for the 30 s grace
+	// period (Docker sends SIGKILL after 10 s).
+	cfg, err := config.Load(func(k string) (string, bool) {
+		switch k {
+		case "MAILCUBBY_DATA_DIR":
+			return t.TempDir(), true
+		case "MAILCUBBY_SMTP_ADDR":
+			return "127.0.0.1:0", true
+		case "MAILCUBBY_HTTP_ADDR":
+			return "127.0.0.1:0", true
+		default:
+			return "", false
+		}
+	})
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a, err := app.Open(ctx, cfg, app.Options{
+		Clock:   clock.NewFake(time.Date(2026, 11, 23, 14, 0, 0, 0, time.UTC)),
+		Version: "test",
+	})
+	if err != nil {
+		t.Fatalf("app.Open: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- a.Serve(ctx) }()
+
+	c, err := smtp.Dial(a.SMTPAddr())
+	if err != nil {
+		t.Fatalf("smtp.Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	if err := c.Hello("client.example"); err != nil {
+		t.Fatalf("EHLO: %v", err)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("shutdown waited for an idle SMTP connection")
+	}
+	if err := c.Noop(); err == nil {
+		t.Fatal("idle SMTP connection still open after shutdown")
+	}
+}
+
 func TestAppServerModeSetupTokenAndRotation(t *testing.T) {
 	t.Parallel()
 
