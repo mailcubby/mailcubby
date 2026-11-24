@@ -10,6 +10,32 @@ import (
 	"database/sql"
 )
 
+const countActiveAdmins = `-- name: CountActiveAdmins :one
+SELECT COUNT(*)
+FROM users
+WHERE is_admin = 1 AND disabled_at IS NULL
+`
+
+func (q *Queries) CountActiveAdmins(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActiveAdmins)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countAdmins = `-- name: CountAdmins :one
+SELECT COUNT(*)
+FROM users
+WHERE is_admin = 1
+`
+
+func (q *Queries) CountAdmins(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countAdmins)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countUsers = `-- name: CountUsers :one
 SELECT COUNT(*)
 FROM users
@@ -77,6 +103,19 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
+const deleteUser = `-- name: DeleteUser :execrows
+DELETE FROM users
+WHERE id = ?
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteUser, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, email, name, password_hash, is_admin, can_create_projects, disabled_at, last_login_at, created_at, updated_at
 FROM users
@@ -109,6 +148,205 @@ WHERE id = ?
 
 func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 	row := q.db.QueryRowContext(ctx, getUserByID, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Name,
+		&i.PasswordHash,
+		&i.IsAdmin,
+		&i.CanCreateProjects,
+		&i.DisabledAt,
+		&i.LastLoginAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUserWithProjectCount = `-- name: GetUserWithProjectCount :one
+SELECT
+    u.id,
+    u.email,
+    u.name,
+    u.password_hash,
+    u.is_admin,
+    u.can_create_projects,
+    u.disabled_at,
+    u.last_login_at,
+    u.created_at,
+    u.updated_at,
+    COUNT(pm.project_id) AS project_count
+FROM users u
+LEFT JOIN project_members pm ON pm.user_id = u.id
+WHERE u.id = ?
+GROUP BY u.id
+`
+
+type GetUserWithProjectCountRow struct {
+	ID                int64
+	Email             string
+	Name              string
+	PasswordHash      sql.NullString
+	IsAdmin           int64
+	CanCreateProjects int64
+	DisabledAt        sql.NullInt64
+	LastLoginAt       sql.NullInt64
+	CreatedAt         int64
+	UpdatedAt         int64
+	ProjectCount      int64
+}
+
+// isolation: global (admin user response includes project membership count)
+func (q *Queries) GetUserWithProjectCount(ctx context.Context, id int64) (GetUserWithProjectCountRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserWithProjectCount, id)
+	var i GetUserWithProjectCountRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Name,
+		&i.PasswordHash,
+		&i.IsAdmin,
+		&i.CanCreateProjects,
+		&i.DisabledAt,
+		&i.LastLoginAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ProjectCount,
+	)
+	return i, err
+}
+
+const listUsersAdmin = `-- name: ListUsersAdmin :many
+SELECT
+    u.id,
+    u.email,
+    u.name,
+    u.password_hash,
+    u.is_admin,
+    u.can_create_projects,
+    u.disabled_at,
+    u.last_login_at,
+    u.created_at,
+    u.updated_at,
+    COUNT(pm.project_id) AS project_count
+FROM users u
+LEFT JOIN project_members pm ON pm.user_id = u.id
+WHERE u.id > ?1
+  AND (
+    CAST(?2 AS TEXT) = ''
+    OR INSTR(LOWER(u.email), CAST(?2 AS TEXT)) > 0
+    OR INSTR(LOWER(u.name), CAST(?2 AS TEXT)) > 0
+  )
+GROUP BY u.id
+ORDER BY u.id ASC
+LIMIT ?3
+`
+
+type ListUsersAdminParams struct {
+	AfterID    int64
+	QueryLower string
+	PageLimit  int64
+}
+
+type ListUsersAdminRow struct {
+	ID                int64
+	Email             string
+	Name              string
+	PasswordHash      sql.NullString
+	IsAdmin           int64
+	CanCreateProjects int64
+	DisabledAt        sql.NullInt64
+	LastLoginAt       sql.NullInt64
+	CreatedAt         int64
+	UpdatedAt         int64
+	ProjectCount      int64
+}
+
+// isolation: global (admin user listing aggregates project membership count per user)
+func (q *Queries) ListUsersAdmin(ctx context.Context, arg ListUsersAdminParams) ([]ListUsersAdminRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUsersAdmin, arg.AfterID, arg.QueryLower, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUsersAdminRow{}
+	for rows.Next() {
+		var i ListUsersAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Name,
+			&i.PasswordHash,
+			&i.IsAdmin,
+			&i.CanCreateProjects,
+			&i.DisabledAt,
+			&i.LastLoginAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ProjectCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const revokeAllAPITokensForUser = `-- name: RevokeAllAPITokensForUser :execrows
+UPDATE api_tokens
+SET revoked_at = ?
+WHERE user_id = ? AND revoked_at IS NULL
+`
+
+type RevokeAllAPITokensForUserParams struct {
+	RevokedAt sql.NullInt64
+	UserID    int64
+}
+
+func (q *Queries) RevokeAllAPITokensForUser(ctx context.Context, arg RevokeAllAPITokensForUserParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, revokeAllAPITokensForUser, arg.RevokedAt, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const updateUserAdmin = `-- name: UpdateUserAdmin :one
+UPDATE users
+SET name = ?,
+    is_admin = ?,
+    can_create_projects = ?,
+    disabled_at = ?,
+    updated_at = ?
+WHERE id = ?
+RETURNING id, email, name, password_hash, is_admin, can_create_projects, disabled_at, last_login_at, created_at, updated_at
+`
+
+type UpdateUserAdminParams struct {
+	Name              string
+	IsAdmin           int64
+	CanCreateProjects int64
+	DisabledAt        sql.NullInt64
+	UpdatedAt         int64
+	ID                int64
+}
+
+func (q *Queries) UpdateUserAdmin(ctx context.Context, arg UpdateUserAdminParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, updateUserAdmin,
+		arg.Name,
+		arg.IsAdmin,
+		arg.CanCreateProjects,
+		arg.DisabledAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,

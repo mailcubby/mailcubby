@@ -104,3 +104,73 @@ func TestAdminResetPasswordCLI(t *testing.T) {
 		t.Fatalf("missing email exit code = %d, want 2", code)
 	}
 }
+
+func TestAdminCreateUserCLI(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	now := time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC)
+	clk := clock.NewFake(now)
+
+	env := func(k string) (string, bool) {
+		switch k {
+		case "MAILCUBBY_DATA_DIR":
+			return dir, true
+		case "MAILCUBBY_BASE_URL":
+			return "https://mail.example.test", true
+		default:
+			return "", false
+		}
+	}
+
+	// FR-055, FR-115: create-user creates passwordless user + instance invite link.
+	var stdout, stderr bytes.Buffer
+	code := cli.RunAdminWithClock(t.Context(), []string{
+		"create-user",
+		"--email", "carol@example.test",
+		"--name", "Carol Ops",
+		"--admin",
+	}, &stdout, &stderr, env, clk)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %q)", code, stderr.String())
+	}
+
+	link := strings.TrimSpace(stdout.String())
+	const prefix = "https://mail.example.test/invite/"
+	if !strings.HasPrefix(link, prefix) {
+		t.Fatalf("invite link = %q, want prefix %q", link, prefix)
+	}
+	rawToken := strings.TrimPrefix(link, prefix)
+
+	st, err := store.Open(t.Context(), filepath.Join(dir, store.DBFilename))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	u, err := st.GetUserByEmail(t.Context(), "carol@example.test")
+	if err != nil {
+		t.Fatalf("GetUserByEmail: %v", err)
+	}
+	if u.PasswordHash != nil || !u.IsAdmin || !u.CanCreateProjects || u.Name != "Carol Ops" {
+		t.Fatalf("unexpected created user: %+v", u)
+	}
+
+	inv, err := st.GetInviteByTokenHash(t.Context(), auth.HashToken(rawToken))
+	if err != nil {
+		t.Fatalf("GetInviteByTokenHash: %v", err)
+	}
+	if inv.ProjectID != nil || inv.Role != nil || inv.Email != "carol@example.test" {
+		t.Fatalf("unexpected instance invite: %+v", inv)
+	}
+
+	// Duplicate email fails with exit code 1.
+	stdout.Reset()
+	stderr.Reset()
+	code = cli.RunAdminWithClock(t.Context(), []string{
+		"create-user", "--email", "carol@example.test", "--name", "Duplicate",
+	}, &stdout, &stderr, env, clk)
+	if code != 1 || !strings.Contains(stderr.String(), "already exists") {
+		t.Fatalf("duplicate create-user = (%d, %q), want (1, contains already exists)", code, stderr.String())
+	}
+}

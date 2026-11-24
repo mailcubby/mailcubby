@@ -961,6 +961,174 @@ paths:
         "409":
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/admin/users:
+    get:
+      operationId: adminListUsers
+      summary: List users with project counts and optional search (server mode, admin)
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive substring filter on email or name
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paginated users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserListResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      operationId: adminCreateUser
+      summary: Create a passwordless user and return a one-time instance invite link (server mode, admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreateUserRequest"
+      responses:
+        "201":
+          description: User created with instance invite URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCreateUserResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/admin/users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    patch:
+      operationId: adminUpdateUser
+      summary: Update user name, privileges, or disabled state (server mode, admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateUserRequest"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+    delete:
+      operationId: adminDeleteUser
+      summary: Delete a user account (server mode, admin; fails with 409 for last admin)
+      responses:
+        "204":
+          description: User deleted
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/admin/users/{id}/password-reset:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    post:
+      operationId: adminCreatePasswordReset
+      summary: Generate a single-use password reset link valid for 1 hour (server mode, admin)
+      responses:
+        "200":
+          description: Single-use password reset link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPasswordResetResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/admin/projects:
+    get:
+      operationId: adminListProjects
+      summary: List all projects with owners and counters (server mode, admin)
+      responses:
+        "200":
+          description: All projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminProject"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/events:
     get:
       operationId: streamEvents
@@ -1813,3 +1981,149 @@ components:
       properties:
         project:
           $ref: "#/components/schemas/InviteProjectPreview"
+
+    AdminUser:
+      type: object
+      required:
+        - id
+        - email
+        - name
+        - is_admin
+        - can_create_projects
+        - has_password
+        - disabled_at
+        - last_login_at
+        - created_at
+        - project_count
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        is_admin:
+          type: boolean
+        can_create_projects:
+          type: boolean
+        has_password:
+          type: boolean
+        disabled_at:
+          type: ["string", "null"]
+          format: date-time
+        last_login_at:
+          type: ["string", "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        project_count:
+          type: integer
+          format: int64
+
+    AdminUserListResponse:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUser"
+        next_cursor:
+          type: ["string", "null"]
+
+    AdminCreateUserRequest:
+      type: object
+      required: [email, name]
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        is_admin:
+          type: boolean
+        can_create_projects:
+          type: boolean
+
+    AdminCreateUserResponse:
+      type: object
+      required: [user, invite_url]
+      properties:
+        user:
+          $ref: "#/components/schemas/AdminUser"
+        invite_url:
+          type: string
+          format: uri
+
+    AdminUpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        is_admin:
+          type: boolean
+        can_create_projects:
+          type: boolean
+        disabled:
+          type: boolean
+
+    AdminPasswordResetResponse:
+      type: object
+      required: [url, expires_at]
+      properties:
+        url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+
+    AdminProject:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - color
+        - message_count
+        - unread_count
+        - size_bytes
+        - last_message_at
+        - created_at
+        - owners
+      properties:
+        id:
+          type: integer
+          format: int64
+        slug:
+          type: string
+        name:
+          type: string
+        color:
+          $ref: "#/components/schemas/ProjectColor"
+        message_count:
+          type: integer
+          format: int64
+        unread_count:
+          type: integer
+          format: int64
+        size_bytes:
+          type: integer
+          format: int64
+        last_message_at:
+          type: ["string", "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        owners:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberUser"

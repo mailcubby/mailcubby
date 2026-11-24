@@ -100,6 +100,14 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/invites", Need: PermOwner, ServerOnly: true, Handler: s.handleCreateProjectInvite},
 		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}/invites/{id}", Need: PermOwner, ServerOnly: true, Handler: s.handleRevokeProjectInvite},
 
+		// Admin (SPEC 8.8)
+		{Method: http.MethodGet, Pattern: "/api/v1/admin/users", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminListUsers},
+		{Method: http.MethodPost, Pattern: "/api/v1/admin/users", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminCreateUser},
+		{Method: http.MethodPatch, Pattern: "/api/v1/admin/users/{id}", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminUpdateUser},
+		{Method: http.MethodDelete, Pattern: "/api/v1/admin/users/{id}", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminDeleteUser},
+		{Method: http.MethodPost, Pattern: "/api/v1/admin/users/{id}/password-reset", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminPasswordReset},
+		{Method: http.MethodGet, Pattern: "/api/v1/admin/projects", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminListProjects},
+
 		// Events & Render (SPEC 8.9)
 		{Method: http.MethodGet, Pattern: "/api/v1/events", Need: PermUser, Handler: s.handleEvents},
 		{Method: http.MethodGet, Pattern: "/render/{project}/{id}", Need: PermViewer, Handler: s.handleRenderMessage},
