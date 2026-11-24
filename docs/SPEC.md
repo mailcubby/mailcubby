@@ -597,7 +597,7 @@ Environment variables only (no config file in v1). Variables marked (secret) als
 
 ## 10. Data model
 
-SQLite, one file `app.db`. Times are `INTEGER` Unix milliseconds UTC unless noted. Booleans are `INTEGER` 0/1. Foreign keys ON. Every table that holds tenant data has a `project_id` column (denormalised where needed) so that every query can filter by it directly. Migrations are SQL files in `migrations/` (goose). `00001_init.sql` creates all v1 tables and indexes; `00002_fts.sql` creates `messages_fts` and its delete trigger (kept separate because sqlc's SQLite parser does not handle FTS5 virtual tables; it is excluded from `sqlc.yaml`).
+SQLite, one file `app.db`. Times are `INTEGER` Unix milliseconds UTC unless noted. Booleans are `INTEGER` 0/1. Foreign keys ON. Every table that holds tenant data has a `project_id` column (denormalised where needed) so that every query can filter by it directly. Migrations are SQL files in `migrations/` (goose). `00001_init.sql` creates all v1 tables and indexes; `00002_fts.sql` creates `messages_fts` and its delete trigger (kept separate because sqlc's SQLite parser does not handle FTS5 virtual tables; it is excluded from `sqlc.yaml`). `00003_projects_autoincrement.sql` rebuilds `projects` with `id INTEGER PRIMARY KEY AUTOINCREMENT` (foreign keys off around the rebuild so no child row cascades) and starts the sequence above every project ID recorded in the audit log, so a deleted project's ID is never reused by a new project.
 
 ### users
 | Column | Type | Notes |
@@ -634,7 +634,7 @@ SQLite, one file `app.db`. Times are `INTEGER` Unix milliseconds UTC unless note
 ### projects
 | Column | Type | Notes |
 |---|---|---|
-| id | INTEGER PK | |
+| id | INTEGER PK AUTOINCREMENT | never reused after a project is deleted (`00003_projects_autoincrement.sql`) |
 | slug | TEXT NOT NULL UNIQUE | |
 | name | TEXT NOT NULL | |
 | color | TEXT NOT NULL | token, e.g. `blue` |
