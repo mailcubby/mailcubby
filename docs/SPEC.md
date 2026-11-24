@@ -828,7 +828,7 @@ Email HTML is attacker-controlled. It MUST never execute script, reach the app's
 - No inline scripts in `index.html` (theme bootstrap is a separate static file). No WebAssembly and no `eval` in the SPA: Shiki uses its JavaScript regex engine (`createJavaScriptRegexEngine`), so `script-src` needs neither `'wasm-unsafe-eval'` nor `'unsafe-eval'`.
 - All SQL via sqlc-generated parameterised queries or `database/sql` with bind parameters. No string concatenation of user input into SQL (search builds SQL from fixed fragments plus bind parameters).
 - Secrets (session tokens, invite tokens, reset tokens, API tokens) generated with `crypto/rand`, stored hashed (SHA-256; they have 256 bits of entropy so a slow hash is unnecessary). Passwords use argon2id (FR-042). SMTP passwords are encrypted, not hashed (FR-061), so owners can reveal them.
-- Tokens and passwords never appear in logs, errors or audit metadata. Log middleware redacts `Authorization`, `Cookie`, `Set-Cookie` and `X-CSRF-Token`.
+- Tokens and passwords never appear in logs, errors or audit metadata. Log middleware redacts `Authorization`, `Cookie`, `Set-Cookie` and `X-CSRF-Token`, never logs query strings, and replaces the token segment of invite and password-reset paths (`/api/v1/invites/{token}`, `/api/v1/password-reset/{token}`, `/invite/{token}`, `/reset/{token}`) with `[REDACTED]`.
 - Constant-time comparison for all secret comparisons.
 
 ### 12.4 Brute force and rate limiting

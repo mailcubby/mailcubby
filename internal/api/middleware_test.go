@@ -250,3 +250,100 @@ func TestMiddlewareRecoverAndBodyLimitAndMethodNotAllowed(t *testing.T) {
 		t.Errorf("405 response missing Allow header")
 	}
 }
+
+// SPEC 12.3, FR-056, FR-046: invite and password-reset tokens in URL paths
+// (API and SPA routes) must never appear in the access log.
+func TestAccessLogRedactsInviteAndResetTokens(t *testing.T) {
+	t.Parallel()
+
+	st := testutil.NewStore(t)
+	dataDir := t.TempDir()
+	blobs, err := blob.NewStore(dataDir, 3)
+	if err != nil {
+		t.Fatalf("blob.NewStore: %v", err)
+	}
+	envMap := map[string]string{
+		"MAILCUBBY_MODE":                     "server",
+		"MAILCUBBY_DATA_DIR":                 dataDir,
+		"MAILCUBBY_BASE_URL":                 testBaseURL,
+		"MAILCUBBY_APP_KEY":                  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		"MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH": "true",
+	}
+	cfg, err := config.Load(func(k string) (string, bool) {
+		v, ok := envMap[k]
+		return v, ok
+	})
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	srv := api.New(cfg, st, blobs, nil, api.Options{
+		Logger: logger,
+		WebHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	})
+	defer srv.Close()
+
+	const token = "SecretTokenValue0123456789abcdefghijklmnopq"
+	cases := []struct {
+		method  string
+		path    string
+		wantLog string
+	}{
+		{http.MethodGet, "/api/v1/invites/" + token, "/api/v1/invites/[REDACTED]"},
+		{http.MethodPost, "/api/v1/invites/" + token + "/accept", "/api/v1/invites/[REDACTED]/accept"},
+		{http.MethodPost, "/api/v1/password-reset/" + token, "/api/v1/password-reset/[REDACTED]"},
+		{http.MethodGet, "/invite/" + token, "/invite/[REDACTED]"},
+		{http.MethodGet, "/reset/" + token, "/reset/[REDACTED]"},
+		{http.MethodGet, "//invite/" + token, "/invite/[REDACTED]"},
+	}
+	for _, tc := range cases {
+		logBuf.Reset()
+		req := httptest.NewRequestWithContext(t.Context(), tc.method, tc.path, strings.NewReader("{}"))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", testBaseURL)
+		srv.Handler().ServeHTTP(httptest.NewRecorder(), req)
+
+		logs := logBuf.String()
+		if strings.Contains(logs, token) {
+			t.Errorf("%s %s: token leaked into logs: %s", tc.method, tc.path, logs)
+		}
+		if !strings.Contains(logs, `"path":"`+tc.wantLog+`"`) {
+			t.Errorf("%s %s: logs missing redacted path %q: %s", tc.method, tc.path, tc.wantLog, logs)
+		}
+	}
+}
+
+func TestRedactLogPath(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"invite preview", "/api/v1/invites/tok", "/api/v1/invites/[REDACTED]"},
+		{"invite accept", "/api/v1/invites/tok/accept", "/api/v1/invites/[REDACTED]/accept"},
+		{"password reset", "/api/v1/password-reset/tok", "/api/v1/password-reset/[REDACTED]"},
+		{"spa invite", "/invite/tok", "/invite/[REDACTED]"},
+		{"spa reset", "/reset/tok", "/reset/[REDACTED]"},
+		{"unclean path", "/x/../invite//tok/", "/invite/[REDACTED]"},
+		{"case variant", "/Invite/tok", "/invite/[REDACTED]"},
+		{"project invites list", "/api/v1/projects/shop/invites", "/api/v1/projects/shop/invites"},
+		{"project invite revoke", "/api/v1/projects/shop/invites/5", "/api/v1/projects/shop/invites/5"},
+		{"admin password reset", "/api/v1/admin/users/3/password-reset", "/api/v1/admin/users/3/password-reset"},
+		{"bare prefix", "/invite/", "/invite/"},
+		{"message", "/api/v1/projects/shop/messages", "/api/v1/projects/shop/messages"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := api.RedactLogPath(tc.in); got != tc.want {
+				t.Fatalf("RedactLogPath(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
