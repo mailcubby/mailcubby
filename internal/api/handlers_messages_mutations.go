@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -301,6 +302,46 @@ func (s *Server) handleDeleteAllMessages(w http.ResponseWriter, r *http.Request)
 		}
 		credentialID = &parsedCred
 	}
+	recordDeleteAllAudit := func(affected int64) {
+		ctx := r.Context()
+		principal := PrincipalFromContext(ctx)
+		actorType, actorUserID, actorLabel := auditActorForPrincipal(principal)
+		var ipPtr *string
+		if ip := ClientIPFromContext(ctx); ip != "" {
+			ipPtr = &ip
+		}
+		targetType := "project"
+		targetID := strconv.FormatInt(pctx.Project.ID, 10)
+		meta := map[string]any{
+			"affected": affected,
+			"slug":     pctx.Project.Slug,
+		}
+		if rawQuery != "" {
+			meta["query"] = rawQuery
+		}
+		if credentialID != nil {
+			meta["credential_id"] = *credentialID
+		}
+		if _, auditErr := s.store.InsertAudit(ctx, store.InsertAuditParams{
+			At:          s.clk.Now().UTC(),
+			ActorType:   actorType,
+			ActorUserID: actorUserID,
+			ActorLabel:  actorLabel,
+			ProjectID:   &pctx.Project.ID,
+			Action:      "messages.delete_all",
+			TargetType:  &targetType,
+			TargetID:    &targetID,
+			IP:          ipPtr,
+			Metadata:    meta,
+		}); auditErr != nil {
+			s.log.Warn("failed to write messages.delete_all audit entry",
+				"request_id", RequestIDFromContext(ctx),
+				"project_id", pctx.Project.ID,
+				"error", auditErr,
+			)
+		}
+	}
+
 	if rawQuery != "" || credentialID != nil {
 		parsedQuery, parseErr := search.Parse(rawQuery)
 		if parseErr != nil {
@@ -338,6 +379,7 @@ func (s *Server) handleDeleteAllMessages(w http.ResponseWriter, r *http.Request)
 			s.publishMessageDeleted(proj, ids, false)
 			s.publishProjectUpdated(proj)
 		}
+		recordDeleteAllAudit(int64(len(deleted)))
 		writeJSON(w, http.StatusOK, affectedResponse{Affected: int64(len(deleted))})
 		return
 	}
@@ -359,6 +401,7 @@ func (s *Server) handleDeleteAllMessages(w http.ResponseWriter, r *http.Request)
 		s.publishMessageDeleted(proj, nil, true)
 		s.publishProjectUpdated(proj)
 	}
+	recordDeleteAllAudit(affected)
 
 	writeJSON(w, http.StatusOK, affectedResponse{Affected: affected})
 }

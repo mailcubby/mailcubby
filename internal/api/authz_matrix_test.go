@@ -442,6 +442,10 @@ func TestAuthorizationMatrix(t *testing.T) {
 				return "/api/v1/projects/" + dp.Slug + "/leave", nil, nil, ""
 			},
 		},
+		"GET /api/v1/projects/{project}/audit": {
+			expected: ownerOK,
+			makeReq:  constPath("/api/v1/projects/"+proj.Slug+"/audit", nil),
+		},
 
 		// Messages
 		"GET /api/v1/projects/{project}/messages": {expected: viewerOK, makeReq: constPath("/api/v1/projects/"+proj.Slug+"/messages", nil)},
@@ -679,6 +683,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 		"GET /api/v1/admin/projects":   {expected: adminOK, makeReq: constPath("/api/v1/admin/projects", nil)},
 		"GET /api/v1/admin/settings":   {expected: adminOK, makeReq: constPath("/api/v1/admin/settings", nil)},
 		"PATCH /api/v1/admin/settings": {expected: adminOK, makeReq: constPath("/api/v1/admin/settings", map[string]any{})},
+		"GET /api/v1/admin/audit":      {expected: adminOK, makeReq: constPath("/api/v1/admin/audit", nil)},
 		"GET /api/v1/admin/stats":      {expected: adminOK, makeReq: constPath("/api/v1/admin/stats", nil)},
 
 		// Events & Render

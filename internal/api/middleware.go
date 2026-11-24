@@ -546,7 +546,7 @@ func (s *Server) authorizeRouteMiddleware(rt Route, next http.HandlerFunc) http.
 				writeError(w, http.StatusForbidden, ErrCodeForbidden, "insufficient permissions", nil)
 				return
 			}
-		case PermListMembers, PermReadSMTP, PermRevealSMTP, PermManageSMTP, PermOwner:
+		case PermListMembers, PermReadSMTP, PermRevealSMTP, PermManageSMTP, PermOwner, PermProjectAudit:
 			if !principal.IsAuthenticated() {
 				writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "authentication required", nil)
 				return
@@ -693,6 +693,8 @@ func permissionAction(p Permission) (auth.Action, bool) {
 		return auth.ActionManageSMTP, true
 	case PermOwner:
 		return auth.ActionManageProject, true
+	case PermProjectAudit:
+		return auth.ActionReadProjectAudit, true
 	case PermLeave:
 		return auth.ActionLeaveProject, true
 	default:

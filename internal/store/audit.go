@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mailcubby/mailcubby/internal/store/sqlc"
@@ -34,11 +35,30 @@ type AuditEntry struct {
 	ActorUserID  *int64
 	ActorLabel   *string
 	ProjectID    *int64
+	ProjectSlug  *string
 	Action       string
 	TargetType   *string
 	TargetID     *string
 	IP           *string
 	MetadataJSON *string
+}
+
+// ListProjectAuditParams filters and paginates project-scoped audit log entries.
+type ListProjectAuditParams struct {
+	ProjectID int64
+	BeforeID  int64
+	Action    string
+	Limit     int64
+}
+
+// ListAdminAuditParams filters and paginates instance-wide audit log entries.
+type ListAdminAuditParams struct {
+	BeforeID  int64
+	Action    string
+	ProjectID int64
+	UserID    int64
+	UserLabel string
+	Limit     int64
 }
 
 // InsertAuditParams specifies inputs for writing an audit log entry.
@@ -106,6 +126,78 @@ func (s *Store) ListAuditEntries(ctx context.Context, limit int64) ([]AuditEntry
 	out := make([]AuditEntry, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, auditFromRow(r))
+	}
+	return out, nil
+}
+
+// ListProjectAudit returns paginated audit entries scoped to p.ProjectID, newest first.
+func (s *Store) ListProjectAudit(ctx context.Context, p ListProjectAuditParams) ([]AuditEntry, error) {
+	limit := p.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.readQ.ListProjectAudit(ctx, sqlc.ListProjectAuditParams{
+		ProjectID:    sql.NullInt64{Int64: p.ProjectID, Valid: true},
+		BeforeID:     p.BeforeID,
+		ActionFilter: strings.TrimSpace(p.Action),
+		PageLimit:    limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("store: list project audit: %w", mapError(err))
+	}
+	out := make([]AuditEntry, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, AuditEntry{
+			ID:           r.ID,
+			At:           time.UnixMilli(r.At).UTC(),
+			ActorType:    AuditActorType(r.ActorType),
+			ActorUserID:  int64PtrFromNull(r.ActorUserID),
+			ActorLabel:   fromNullString(r.ActorLabel),
+			ProjectID:    int64PtrFromNull(r.ProjectID),
+			ProjectSlug:  fromNullString(r.ProjectSlug),
+			Action:       r.Action,
+			TargetType:   fromNullString(r.TargetType),
+			TargetID:     fromNullString(r.TargetID),
+			IP:           fromNullString(r.Ip),
+			MetadataJSON: fromNullString(r.MetadataJson),
+		})
+	}
+	return out, nil
+}
+
+// ListAdminAudit returns paginated, filtered audit entries across the instance, newest first.
+func (s *Store) ListAdminAudit(ctx context.Context, p ListAdminAuditParams) ([]AuditEntry, error) {
+	limit := p.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.readQ.ListAdminAudit(ctx, sqlc.ListAdminAuditParams{
+		BeforeID:        p.BeforeID,
+		ActionFilter:    strings.TrimSpace(p.Action),
+		ProjectIDFilter: p.ProjectID,
+		UserIDFilter:    p.UserID,
+		UserLabelLower:  strings.ToLower(strings.TrimSpace(p.UserLabel)),
+		PageLimit:       limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("store: list admin audit: %w", mapError(err))
+	}
+	out := make([]AuditEntry, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, AuditEntry{
+			ID:           r.ID,
+			At:           time.UnixMilli(r.At).UTC(),
+			ActorType:    AuditActorType(r.ActorType),
+			ActorUserID:  int64PtrFromNull(r.ActorUserID),
+			ActorLabel:   fromNullString(r.ActorLabel),
+			ProjectID:    int64PtrFromNull(r.ProjectID),
+			ProjectSlug:  fromNullString(r.ProjectSlug),
+			Action:       r.Action,
+			TargetType:   fromNullString(r.TargetType),
+			TargetID:     fromNullString(r.TargetID),
+			IP:           fromNullString(r.Ip),
+			MetadataJSON: fromNullString(r.MetadataJson),
+		})
 	}
 	return out, nil
 }

@@ -17,6 +17,7 @@ import { Route as AccountProfileRouteImport } from './routes/account.profile'
 import { Route as AccountSecurityRouteImport } from './routes/account.security'
 import { Route as AccountTokensRouteImport } from './routes/account.tokens'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminAuditRouteImport } from './routes/admin.audit'
 import { Route as AdminProjectsRouteImport } from './routes/admin.projects'
 import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
 import { Route as AdminStatsRouteImport } from './routes/admin.stats'
@@ -28,6 +29,7 @@ import { Route as PProjectIndexRouteImport } from './routes/p.$project.index'
 import { Route as PProjectMMessageIdRouteImport } from './routes/p.$project.m.$messageId'
 import { Route as PProjectSettingsIndexRouteImport } from './routes/p.$project_.settings.index'
 import { Route as PProjectSettingsApiRouteImport } from './routes/p.$project_.settings.api'
+import { Route as PProjectSettingsAuditRouteImport } from './routes/p.$project_.settings.audit'
 import { Route as PProjectSettingsGeneralRouteImport } from './routes/p.$project_.settings.general'
 import { Route as PProjectSettingsMembersRouteImport } from './routes/p.$project_.settings.members'
 import { Route as PProjectSettingsRetentionRouteImport } from './routes/p.$project_.settings.retention'
@@ -72,6 +74,11 @@ const AccountTokensRoute = AccountTokensRouteImport.update({
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/admin/',
   path: '/admin/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminAuditRoute = AdminAuditRouteImport.update({
+  id: '/admin/audit',
+  path: '/admin/audit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminProjectsRoute = AdminProjectsRouteImport.update({
@@ -129,6 +136,11 @@ const PProjectSettingsApiRoute = PProjectSettingsApiRouteImport.update({
   path: '/p/$project/settings/api',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PProjectSettingsAuditRoute = PProjectSettingsAuditRouteImport.update({
+  id: '/p/$project_/settings/audit',
+  path: '/p/$project/settings/audit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PProjectSettingsGeneralRoute = PProjectSettingsGeneralRouteImport.update({
   id: '/p/$project_/settings/general',
   path: '/p/$project/settings/general',
@@ -164,6 +176,7 @@ export interface FileRoutesByFullPath {
   '/account/profile': typeof AccountProfileRoute
   '/account/security': typeof AccountSecurityRoute
   '/account/tokens': typeof AccountTokensRoute
+  '/admin/audit': typeof AdminAuditRoute
   '/admin/projects': typeof AdminProjectsRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/stats': typeof AdminStatsRoute
@@ -175,6 +188,7 @@ export interface FileRoutesByFullPath {
   '/p/$project/': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
   '/p/$project/settings/api': typeof PProjectSettingsApiRoute
+  '/p/$project/settings/audit': typeof PProjectSettingsAuditRoute
   '/p/$project/settings/general': typeof PProjectSettingsGeneralRoute
   '/p/$project/settings/members': typeof PProjectSettingsMembersRoute
   '/p/$project/settings/retention': typeof PProjectSettingsRetentionRoute
@@ -190,6 +204,7 @@ export interface FileRoutesByTo {
   '/account/profile': typeof AccountProfileRoute
   '/account/security': typeof AccountSecurityRoute
   '/account/tokens': typeof AccountTokensRoute
+  '/admin/audit': typeof AdminAuditRoute
   '/admin/projects': typeof AdminProjectsRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/stats': typeof AdminStatsRoute
@@ -200,6 +215,7 @@ export interface FileRoutesByTo {
   '/p/$project': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
   '/p/$project/settings/api': typeof PProjectSettingsApiRoute
+  '/p/$project/settings/audit': typeof PProjectSettingsAuditRoute
   '/p/$project/settings/general': typeof PProjectSettingsGeneralRoute
   '/p/$project/settings/members': typeof PProjectSettingsMembersRoute
   '/p/$project/settings/retention': typeof PProjectSettingsRetentionRoute
@@ -216,6 +232,7 @@ export interface FileRoutesById {
   '/account/profile': typeof AccountProfileRoute
   '/account/security': typeof AccountSecurityRoute
   '/account/tokens': typeof AccountTokensRoute
+  '/admin/audit': typeof AdminAuditRoute
   '/admin/projects': typeof AdminProjectsRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/stats': typeof AdminStatsRoute
@@ -227,6 +244,7 @@ export interface FileRoutesById {
   '/p/$project/': typeof PProjectIndexRoute
   '/p/$project/m/$messageId': typeof PProjectMMessageIdRoute
   '/p/$project_/settings/api': typeof PProjectSettingsApiRoute
+  '/p/$project_/settings/audit': typeof PProjectSettingsAuditRoute
   '/p/$project_/settings/general': typeof PProjectSettingsGeneralRoute
   '/p/$project_/settings/members': typeof PProjectSettingsMembersRoute
   '/p/$project_/settings/retention': typeof PProjectSettingsRetentionRoute
@@ -244,6 +262,7 @@ export interface FileRouteTypes {
     | '/account/profile'
     | '/account/security'
     | '/account/tokens'
+    | '/admin/audit'
     | '/admin/projects'
     | '/admin/settings'
     | '/admin/stats'
@@ -255,6 +274,7 @@ export interface FileRouteTypes {
     | '/p/$project/'
     | '/p/$project/m/$messageId'
     | '/p/$project/settings/api'
+    | '/p/$project/settings/audit'
     | '/p/$project/settings/general'
     | '/p/$project/settings/members'
     | '/p/$project/settings/retention'
@@ -270,6 +290,7 @@ export interface FileRouteTypes {
     | '/account/profile'
     | '/account/security'
     | '/account/tokens'
+    | '/admin/audit'
     | '/admin/projects'
     | '/admin/settings'
     | '/admin/stats'
@@ -280,6 +301,7 @@ export interface FileRouteTypes {
     | '/p/$project'
     | '/p/$project/m/$messageId'
     | '/p/$project/settings/api'
+    | '/p/$project/settings/audit'
     | '/p/$project/settings/general'
     | '/p/$project/settings/members'
     | '/p/$project/settings/retention'
@@ -295,6 +317,7 @@ export interface FileRouteTypes {
     | '/account/profile'
     | '/account/security'
     | '/account/tokens'
+    | '/admin/audit'
     | '/admin/projects'
     | '/admin/settings'
     | '/admin/stats'
@@ -306,6 +329,7 @@ export interface FileRouteTypes {
     | '/p/$project/'
     | '/p/$project/m/$messageId'
     | '/p/$project_/settings/api'
+    | '/p/$project_/settings/audit'
     | '/p/$project_/settings/general'
     | '/p/$project_/settings/members'
     | '/p/$project_/settings/retention'
@@ -322,6 +346,7 @@ export interface RootRouteChildren {
   AccountProfileRoute: typeof AccountProfileRoute
   AccountSecurityRoute: typeof AccountSecurityRoute
   AccountTokensRoute: typeof AccountTokensRoute
+  AdminAuditRoute: typeof AdminAuditRoute
   AdminProjectsRoute: typeof AdminProjectsRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
   AdminStatsRoute: typeof AdminStatsRoute
@@ -331,6 +356,7 @@ export interface RootRouteChildren {
   ResetTokenRoute: typeof ResetTokenRoute
   AdminIndexRoute: typeof AdminIndexRoute
   PProjectSettingsApiRoute: typeof PProjectSettingsApiRoute
+  PProjectSettingsAuditRoute: typeof PProjectSettingsAuditRoute
   PProjectSettingsGeneralRoute: typeof PProjectSettingsGeneralRoute
   PProjectSettingsMembersRoute: typeof PProjectSettingsMembersRoute
   PProjectSettingsRetentionRoute: typeof PProjectSettingsRetentionRoute
@@ -395,6 +421,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/audit': {
+      id: '/admin/audit'
+      path: '/admin/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AdminAuditRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/projects': {
@@ -474,6 +507,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PProjectSettingsApiRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/p/$project_/settings/audit': {
+      id: '/p/$project_/settings/audit'
+      path: '/p/$project/settings/audit'
+      fullPath: '/p/$project/settings/audit'
+      preLoaderRoute: typeof PProjectSettingsAuditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/p/$project_/settings/general': {
       id: '/p/$project_/settings/general'
       path: '/p/$project/settings/general'
@@ -534,6 +574,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountProfileRoute: AccountProfileRoute,
   AccountSecurityRoute: AccountSecurityRoute,
   AccountTokensRoute: AccountTokensRoute,
+  AdminAuditRoute: AdminAuditRoute,
   AdminProjectsRoute: AdminProjectsRoute,
   AdminSettingsRoute: AdminSettingsRoute,
   AdminStatsRoute: AdminStatsRoute,
@@ -543,6 +584,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetTokenRoute: ResetTokenRoute,
   AdminIndexRoute: AdminIndexRoute,
   PProjectSettingsApiRoute: PProjectSettingsApiRoute,
+  PProjectSettingsAuditRoute: PProjectSettingsAuditRoute,
   PProjectSettingsGeneralRoute: PProjectSettingsGeneralRoute,
   PProjectSettingsMembersRoute: PProjectSettingsMembersRoute,
   PProjectSettingsRetentionRoute: PProjectSettingsRetentionRoute,

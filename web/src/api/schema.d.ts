@@ -292,6 +292,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        /** List paginated audit log entries for the project (server mode, owner) */
+        get: operations["listProjectAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/messages": {
         parameters: {
             query?: never;
@@ -821,6 +840,23 @@ export interface paths {
         head?: never;
         /** Update or clear DB overrides for instance name and default retention (server mode, admin) */
         patch: operations["adminUpdateSettings"];
+        trace?: never;
+    };
+    "/api/v1/admin/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List paginated, filtered instance-wide audit log entries (server mode, admin) */
+        get: operations["adminListAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/stats": {
@@ -1416,6 +1452,32 @@ export interface components {
             /** Format: date-time */
             started_at: string;
         };
+        /** @enum {string} */
+        AuditActorType: "user" | "token" | "system" | "smtp" | "local";
+        AuditEntry: {
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            at: string;
+            actor_type: components["schemas"]["AuditActorType"];
+            /** Format: int64 */
+            actor_user_id: number | null;
+            actor_label: string | null;
+            /** Format: int64 */
+            project_id: number | null;
+            project_slug: string | null;
+            action: string;
+            target_type: string | null;
+            target_id: string | null;
+            ip: string | null;
+            metadata: {
+                [key: string]: unknown;
+            } | null;
+        };
+        AuditListResponse: {
+            items: components["schemas"]["AuditEntry"][];
+            next_cursor: string | null;
+        };
     };
     responses: {
         /** @description Error response */
@@ -1938,6 +2000,39 @@ export interface operations {
             403: components["responses"]["ErrorResponse"];
             404: components["responses"]["ErrorResponse"];
             409: components["responses"]["ErrorResponse"];
+        };
+    };
+    listProjectAudit: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from next_cursor */
+                cursor?: string;
+                /** @description Page size (default 50, max 200) */
+                limit?: number;
+                /** @description Filter by exact FR-105 audit action name */
+                action?: string;
+            };
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated project audit log entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditListResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
         };
     };
     listMessages: {
@@ -3027,6 +3122,41 @@ export interface operations {
             403: components["responses"]["ErrorResponse"];
             404: components["responses"]["ErrorResponse"];
             422: components["responses"]["ErrorResponse"];
+        };
+    };
+    adminListAudit: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from next_cursor */
+                cursor?: string;
+                /** @description Page size (default 50, max 200) */
+                limit?: number;
+                /** @description Filter by exact FR-105 audit action name */
+                action?: string;
+                /** @description Filter by project slug (or numeric project ID) */
+                project?: string;
+                /** @description Filter by numeric actor user ID or case-insensitive actor label substring */
+                user?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated instance audit log entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditListResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
         };
     };
     adminGetStats: {

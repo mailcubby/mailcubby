@@ -1,12 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Activity, ArrowLeft, FolderKanban, Settings, ShieldAlert, Users } from "lucide-react";
+import {
+  Activity,
+  ArrowLeft,
+  FolderKanban,
+  ScrollText,
+  Settings,
+  ShieldAlert,
+  Users,
+} from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { authMeQueryOptions, metaQueryOptions } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-export type AdminSection = "users" | "projects" | "settings" | "stats";
+export type AdminSection = "users" | "projects" | "settings" | "audit" | "stats";
 
 export interface AdminLayoutProps {
   section: AdminSection;
@@ -19,12 +27,13 @@ export interface AdminLayoutProps {
 const NAV_ITEMS: ReadonlyArray<{
   id: AdminSection;
   label: string;
-  to: "/admin/users" | "/admin/projects" | "/admin/settings" | "/admin/stats";
+  to: "/admin/users" | "/admin/projects" | "/admin/settings" | "/admin/audit" | "/admin/stats";
   Icon: typeof Users;
 }> = [
   { id: "users", label: "Users", to: "/admin/users", Icon: Users },
   { id: "projects", label: "Projects", to: "/admin/projects", Icon: FolderKanban },
   { id: "settings", label: "Settings", to: "/admin/settings", Icon: Settings },
+  { id: "audit", label: "Audit log", to: "/admin/audit", Icon: ScrollText },
   { id: "stats", label: "Stats", to: "/admin/stats", Icon: Activity },
 ];
 

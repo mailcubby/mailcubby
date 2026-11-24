@@ -8,6 +8,16 @@ export interface AdminUsersQueryParams {
   q?: string;
 }
 
+export interface ProjectAuditQueryParams {
+  action?: string;
+}
+
+export interface AdminAuditQueryParams {
+  action?: string;
+  project?: string;
+  user?: string;
+}
+
 export const queryKeys = {
   meta: () => ["meta"] as const,
   authMe: () => ["auth", "me"] as const,
@@ -17,6 +27,8 @@ export const queryKeys = {
   project: (slug: string) => ["projects", slug] as const,
   projectMembers: (slug: string) => ["projects", slug, "members"] as const,
   projectInvites: (slug: string) => ["projects", slug, "invites"] as const,
+  projectAudit: (slug: string, params?: ProjectAuditQueryParams) =>
+    ["projects", slug, "audit", params ?? {}] as const,
   smtpCredentials: (slug: string) => ["projects", slug, "smtp-credentials"] as const,
   invitePreview: (token: string) => ["invites", token] as const,
   tags: (slug: string) => ["projects", slug, "tags"] as const,
@@ -30,5 +42,6 @@ export const queryKeys = {
   adminUsers: (params?: AdminUsersQueryParams) => ["admin", "users", params ?? {}] as const,
   adminProjects: () => ["admin", "projects"] as const,
   adminSettings: () => ["admin", "settings"] as const,
+  adminAudit: (params?: AdminAuditQueryParams) => ["admin", "audit", params ?? {}] as const,
   adminStats: () => ["admin", "stats"] as const,
 } as const;

@@ -140,6 +140,7 @@ func TestTwoTenantIsolation(t *testing.T) {
 		{http.MethodPatch, "/api/v1/projects/tenant-b", map[string]any{"name": "Hijacked"}},
 		{http.MethodDelete, "/api/v1/projects/tenant-b", map[string]any{"confirm_slug": "tenant-b"}},
 		{http.MethodPost, "/api/v1/projects/tenant-b/leave", nil},
+		{http.MethodGet, "/api/v1/projects/tenant-b/audit", nil},
 		{http.MethodGet, "/api/v1/projects/tenant-b/messages", nil},
 		{http.MethodDelete, "/api/v1/projects/tenant-b/messages", nil},
 		{http.MethodGet, "/api/v1/projects/tenant-b/messages/wait?timeout=1s", nil},
@@ -260,6 +261,7 @@ func TestTwoTenantIsolation(t *testing.T) {
 		"/api/v1/projects/tenant-a/members",
 		"/api/v1/projects/tenant-a/invites",
 		"/api/v1/projects/tenant-a/smtp-credentials",
+		"/api/v1/projects/tenant-a/audit",
 	}
 	forbiddenTokens := []string{"tenant-b", msgB, "tag-beta", "ownerb@tenant-b.test", "memberb@tenant-b.test", "invb@tenant-b.test", "cred-beta", credUserB}
 	for _, p := range listEndpoints {

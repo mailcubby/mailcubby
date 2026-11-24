@@ -416,6 +416,50 @@ paths:
         "409":
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/projects/{project}/audit:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+    get:
+      operationId: listProjectAudit
+      summary: List paginated audit log entries for the project (server mode, owner)
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque pagination cursor from next_cursor
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Page size (default 50, max 200)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: action
+          in: query
+          required: false
+          description: Filter by exact FR-105 audit action name
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paginated project audit log entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditListResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/projects/{project}/messages:
     parameters:
       - $ref: "#/components/parameters/ProjectSlug"
@@ -1403,6 +1447,60 @@ paths:
         "404":
           $ref: "#/components/responses/ErrorResponse"
         "422":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/admin/audit:
+    get:
+      operationId: adminListAudit
+      summary: List paginated, filtered instance-wide audit log entries (server mode, admin)
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque pagination cursor from next_cursor
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Page size (default 50, max 200)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: action
+          in: query
+          required: false
+          description: Filter by exact FR-105 audit action name
+          schema:
+            type: string
+        - name: project
+          in: query
+          required: false
+          description: Filter by project slug (or numeric project ID)
+          schema:
+            type: string
+        - name: user
+          in: query
+          required: false
+          description: Filter by numeric actor user ID or case-insensitive actor label substring
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paginated instance audit log entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditListResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
           $ref: "#/components/responses/ErrorResponse"
 
   /api/v1/admin/stats:
@@ -2720,3 +2818,64 @@ components:
         started_at:
           type: string
           format: date-time
+
+    AuditActorType:
+      type: string
+      enum: [user, token, system, smtp, local]
+
+    AuditEntry:
+      type: object
+      required:
+        - id
+        - at
+        - actor_type
+        - actor_user_id
+        - actor_label
+        - project_id
+        - project_slug
+        - action
+        - target_type
+        - target_id
+        - ip
+        - metadata
+      properties:
+        id:
+          type: integer
+          format: int64
+        at:
+          type: string
+          format: date-time
+        actor_type:
+          $ref: "#/components/schemas/AuditActorType"
+        actor_user_id:
+          type: ["integer", "null"]
+          format: int64
+        actor_label:
+          type: ["string", "null"]
+        project_id:
+          type: ["integer", "null"]
+          format: int64
+        project_slug:
+          type: ["string", "null"]
+        action:
+          type: string
+        target_type:
+          type: ["string", "null"]
+        target_id:
+          type: ["string", "null"]
+        ip:
+          type: ["string", "null"]
+        metadata:
+          type: ["object", "null"]
+          additionalProperties: true
+
+    AuditListResponse:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEntry"
+        next_cursor:
+          type: ["string", "null"]

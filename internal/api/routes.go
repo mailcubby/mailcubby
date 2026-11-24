@@ -36,6 +36,8 @@ const (
 	PermManageSMTP Permission = "manage_smtp"
 	// PermOwner requires owner role or admin on the resolved project.
 	PermOwner Permission = "owner"
+	// PermProjectAudit requires owner role or admin to read a project's audit log (non-token).
+	PermProjectAudit Permission = "project_audit"
 	// PermLeave requires a session user with project access to leave the project (FR-051).
 	PermLeave Permission = "leave"
 )
@@ -76,6 +78,7 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodPatch, Pattern: "/api/v1/projects/{project}", Need: PermOwner, Handler: s.handleUpdateProject},
 		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}", Need: PermOwner, Handler: s.handleDeleteProject},
 		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/leave", Need: PermLeave, ServerOnly: true, Handler: s.handleLeaveProject},
+		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/audit", Need: PermProjectAudit, ServerOnly: true, Handler: s.handleListProjectAudit},
 
 		// Messages (SPEC 8.4)
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages", Need: PermViewer, Handler: s.handleListMessages},
@@ -128,6 +131,7 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodGet, Pattern: "/api/v1/admin/projects", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminListProjects},
 		{Method: http.MethodGet, Pattern: "/api/v1/admin/settings", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminGetSettings},
 		{Method: http.MethodPatch, Pattern: "/api/v1/admin/settings", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminUpdateSettings},
+		{Method: http.MethodGet, Pattern: "/api/v1/admin/audit", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminListAudit},
 		{Method: http.MethodGet, Pattern: "/api/v1/admin/stats", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminStats},
 
 		// Events & Render (SPEC 8.9)

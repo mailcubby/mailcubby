@@ -7,6 +7,7 @@ import {
   Code2,
   KeyRound,
   Route as RouteIcon,
+  ScrollText,
   Settings2,
   Users,
 } from "lucide-react";
@@ -25,7 +26,8 @@ export type ProjectSettingsSection =
   | "members"
   | "retention"
   | "routing"
-  | "api";
+  | "api"
+  | "audit";
 
 export interface ProjectSettingsLayoutProps {
   projectSlug: string;
@@ -141,7 +143,8 @@ export function ProjectSettingsLayout({
       | "/p/$project/settings/members"
       | "/p/$project/settings/retention"
       | "/p/$project/settings/routing"
-      | "/p/$project/settings/api";
+      | "/p/$project/settings/api"
+      | "/p/$project/settings/audit";
     Icon: typeof Settings2;
   }> = [];
 
@@ -187,6 +190,14 @@ export function ProjectSettingsLayout({
     to: "/p/$project/settings/api",
     Icon: Code2,
   });
+  if (isServer && isOwner) {
+    navItems.push({
+      id: "audit",
+      label: "Audit log",
+      to: "/p/$project/settings/audit",
+      Icon: ScrollText,
+    });
+  }
 
   return (
     <main className="h-full overflow-y-auto px-4 py-6 sm:px-6">

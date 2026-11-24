@@ -82,6 +82,101 @@ func (q *Queries) InsertAudit(ctx context.Context, arg InsertAuditParams) (Audit
 	return i, err
 }
 
+const listAdminAudit = `-- name: ListAdminAudit :many
+SELECT
+    a.id,
+    a.at,
+    a.actor_type,
+    a.actor_user_id,
+    a.actor_label,
+    a.project_id,
+    p.slug AS project_slug,
+    a.action,
+    a.target_type,
+    a.target_id,
+    a.ip,
+    a.metadata_json
+FROM audit_log a
+LEFT JOIN projects p ON p.id = a.project_id
+WHERE (CAST(?1 AS INTEGER) = 0 OR a.id < CAST(?1 AS INTEGER))
+  AND (CAST(?2 AS TEXT) = '' OR a.action = CAST(?2 AS TEXT))
+  AND (CAST(?3 AS INTEGER) = 0 OR a.project_id = CAST(?3 AS INTEGER))
+  AND (CAST(?4 AS INTEGER) = 0 OR a.actor_user_id = CAST(?4 AS INTEGER))
+  AND (
+    CAST(?5 AS TEXT) = ''
+    OR INSTR(LOWER(COALESCE(a.actor_label, '')), CAST(?5 AS TEXT)) > 0
+  )
+ORDER BY a.id DESC
+LIMIT ?6
+`
+
+type ListAdminAuditParams struct {
+	BeforeID        int64
+	ActionFilter    string
+	ProjectIDFilter int64
+	UserIDFilter    int64
+	UserLabelLower  string
+	PageLimit       int64
+}
+
+type ListAdminAuditRow struct {
+	ID           int64
+	At           int64
+	ActorType    string
+	ActorUserID  sql.NullInt64
+	ActorLabel   sql.NullString
+	ProjectID    sql.NullInt64
+	ProjectSlug  sql.NullString
+	Action       string
+	TargetType   sql.NullString
+	TargetID     sql.NullString
+	Ip           sql.NullString
+	MetadataJson sql.NullString
+}
+
+func (q *Queries) ListAdminAudit(ctx context.Context, arg ListAdminAuditParams) ([]ListAdminAuditRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAdminAudit,
+		arg.BeforeID,
+		arg.ActionFilter,
+		arg.ProjectIDFilter,
+		arg.UserIDFilter,
+		arg.UserLabelLower,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAdminAuditRow{}
+	for rows.Next() {
+		var i ListAdminAuditRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.At,
+			&i.ActorType,
+			&i.ActorUserID,
+			&i.ActorLabel,
+			&i.ProjectID,
+			&i.ProjectSlug,
+			&i.Action,
+			&i.TargetType,
+			&i.TargetID,
+			&i.Ip,
+			&i.MetadataJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAuditEntries = `-- name: ListAuditEntries :many
 SELECT id, at, actor_type, actor_user_id, actor_label, project_id, action, target_type, target_id, ip, metadata_json
 FROM audit_log
@@ -105,6 +200,92 @@ func (q *Queries) ListAuditEntries(ctx context.Context, limit int64) ([]AuditLog
 			&i.ActorUserID,
 			&i.ActorLabel,
 			&i.ProjectID,
+			&i.Action,
+			&i.TargetType,
+			&i.TargetID,
+			&i.Ip,
+			&i.MetadataJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProjectAudit = `-- name: ListProjectAudit :many
+SELECT
+    a.id,
+    a.at,
+    a.actor_type,
+    a.actor_user_id,
+    a.actor_label,
+    a.project_id,
+    p.slug AS project_slug,
+    a.action,
+    a.target_type,
+    a.target_id,
+    a.ip,
+    a.metadata_json
+FROM audit_log a
+LEFT JOIN projects p ON p.id = a.project_id
+WHERE a.project_id = ?1
+  AND (CAST(?2 AS INTEGER) = 0 OR a.id < CAST(?2 AS INTEGER))
+  AND (CAST(?3 AS TEXT) = '' OR a.action = CAST(?3 AS TEXT))
+ORDER BY a.id DESC
+LIMIT ?4
+`
+
+type ListProjectAuditParams struct {
+	ProjectID    sql.NullInt64
+	BeforeID     int64
+	ActionFilter string
+	PageLimit    int64
+}
+
+type ListProjectAuditRow struct {
+	ID           int64
+	At           int64
+	ActorType    string
+	ActorUserID  sql.NullInt64
+	ActorLabel   sql.NullString
+	ProjectID    sql.NullInt64
+	ProjectSlug  sql.NullString
+	Action       string
+	TargetType   sql.NullString
+	TargetID     sql.NullString
+	Ip           sql.NullString
+	MetadataJson sql.NullString
+}
+
+func (q *Queries) ListProjectAudit(ctx context.Context, arg ListProjectAuditParams) ([]ListProjectAuditRow, error) {
+	rows, err := q.db.QueryContext(ctx, listProjectAudit,
+		arg.ProjectID,
+		arg.BeforeID,
+		arg.ActionFilter,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProjectAuditRow{}
+	for rows.Next() {
+		var i ListProjectAuditRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.At,
+			&i.ActorType,
+			&i.ActorUserID,
+			&i.ActorLabel,
+			&i.ProjectID,
+			&i.ProjectSlug,
 			&i.Action,
 			&i.TargetType,
 			&i.TargetID,
