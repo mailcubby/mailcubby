@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -312,4 +313,163 @@ func TestInvitesLifecycleAndAcceptCases(t *testing.T) {
 	if rec.Code != http.StatusGone {
 		t.Fatalf("expired invite preview status = %d, want 410", rec.Code)
 	}
+}
+
+// FR-056 AC: two (or more) concurrent accepts of one invite produce exactly one
+// membership and 410 Gone for every losing caller.
+func TestConcurrentInviteAccept(t *testing.T) {
+	t.Parallel()
+
+	t.Run("logged-in concurrent accepts", func(t *testing.T) {
+		t.Parallel()
+		env := newServerModeEnv(t)
+		h := env.srv.Handler()
+		const pass = "correct-horse-battery-staple"
+
+		owner := env.createUser(t, "owner@example.test", "Owner", pass, false, true, false)
+		proj, err := env.store.CreateProject(t.Context(), store.CreateProjectParams{
+			Slug: "race-logged", Name: "Race Logged", Color: "blue", Settings: store.DefaultProjectSettings(), Now: env.clk.Now().UTC(),
+		})
+		if err != nil {
+			t.Fatalf("CreateProject: %v", err)
+		}
+		if _, err := env.store.AddProjectMember(t.Context(), proj.ID, owner.ID, "owner", env.clk.Now().UTC()); err != nil {
+			t.Fatalf("AddProjectMember: %v", err)
+		}
+
+		ownerCookie, ownerCSRF := loginAndGetCSRF(t, h, owner.Email, pass)
+		rec := doReq(t, h, http.MethodPost, "/api/v1/projects/race-logged/invites", map[string]any{
+			"email": "anyone@example.test",
+			"role":  "member",
+		}, ownerCookie, csrfHeaders(ownerCSRF))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create invite status = %d, want 201", rec.Code)
+		}
+		var created struct {
+			URL string `json:"url"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &created)
+		tok := extractInviteToken(t, created.URL)
+
+		const contenders = 4
+		cookies := make([]*http.Cookie, contenders)
+		csrfs := make([]string, contenders)
+		for i := range contenders {
+			u := env.createUser(t, "contender-"+strconv.Itoa(i)+"@example.test", "Contender "+strconv.Itoa(i), pass, false, false, false)
+			cookies[i], csrfs[i] = loginAndGetCSRF(t, h, u.Email, pass)
+		}
+
+		start := make(chan struct{})
+		codes := make([]int, contenders)
+		var wg sync.WaitGroup
+		for i := range contenders {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				<-start
+				r := doReq(t, h, http.MethodPost, "/api/v1/invites/"+tok+"/accept", nil, cookies[idx], csrfHeaders(csrfs[idx]))
+				codes[idx] = r.Code
+			}(i)
+		}
+		close(start)
+		wg.Wait()
+
+		okCount, goneCount := 0, 0
+		for _, c := range codes {
+			switch c {
+			case http.StatusOK:
+				okCount++
+			case http.StatusGone:
+				goneCount++
+			default:
+				t.Errorf("unexpected status %d in concurrent accept (all=%v)", c, codes)
+			}
+		}
+		if okCount != 1 || goneCount != contenders-1 {
+			t.Fatalf("concurrent accept statuses = %v, want 1x200 and %dx410", codes, contenders-1)
+		}
+
+		members, err := env.store.ListProjectMembers(t.Context(), proj.ID)
+		if err != nil {
+			t.Fatalf("ListProjectMembers: %v", err)
+		}
+		// 1 original owner + exactly 1 accepted invite member.
+		if len(members) != 2 {
+			t.Fatalf("member count = %d, want 2 (1 owner + 1 invite winner)", len(members))
+		}
+	})
+
+	t.Run("unauthenticated new-user concurrent accepts", func(t *testing.T) {
+		t.Parallel()
+		env := newServerModeEnv(t)
+		h := env.srv.Handler()
+		const pass = "correct-horse-battery-staple"
+
+		owner := env.createUser(t, "owner@example.test", "Owner", pass, false, true, false)
+		proj, err := env.store.CreateProject(t.Context(), store.CreateProjectParams{
+			Slug: "race-anon", Name: "Race Anon", Color: "green", Settings: store.DefaultProjectSettings(), Now: env.clk.Now().UTC(),
+		})
+		if err != nil {
+			t.Fatalf("CreateProject: %v", err)
+		}
+		if _, err := env.store.AddProjectMember(t.Context(), proj.ID, owner.ID, "owner", env.clk.Now().UTC()); err != nil {
+			t.Fatalf("AddProjectMember: %v", err)
+		}
+
+		ownerCookie, ownerCSRF := loginAndGetCSRF(t, h, owner.Email, pass)
+		rec := doReq(t, h, http.MethodPost, "/api/v1/projects/race-anon/invites", map[string]any{
+			"email": "racer@example.test",
+			"role":  "viewer",
+		}, ownerCookie, csrfHeaders(ownerCSRF))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create invite status = %d, want 201", rec.Code)
+		}
+		var created struct {
+			URL string `json:"url"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &created)
+		tok := extractInviteToken(t, created.URL)
+
+		const contenders = 2
+		start := make(chan struct{})
+		codes := make([]int, contenders)
+		var wg sync.WaitGroup
+		for i := range contenders {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				<-start
+				r := doReq(t, h, http.MethodPost, "/api/v1/invites/"+tok+"/accept", map[string]any{
+					"name":     "Racer",
+					"password": pass,
+				}, nil, map[string]string{"Origin": testBaseURL})
+				codes[idx] = r.Code
+			}(i)
+		}
+		close(start)
+		wg.Wait()
+
+		okCount, goneCount := 0, 0
+		for _, c := range codes {
+			switch c {
+			case http.StatusOK:
+				okCount++
+			case http.StatusGone:
+				goneCount++
+			default:
+				t.Errorf("unexpected status %d in concurrent unauthenticated accept (all=%v)", c, codes)
+			}
+		}
+		if okCount != 1 || goneCount != contenders-1 {
+			t.Fatalf("concurrent unauthenticated accept statuses = %v, want 1x200 and %dx410", codes, contenders-1)
+		}
+
+		members, err := env.store.ListProjectMembers(t.Context(), proj.ID)
+		if err != nil {
+			t.Fatalf("ListProjectMembers: %v", err)
+		}
+		if len(members) != 2 {
+			t.Fatalf("member count = %d, want 2", len(members))
+		}
+	})
 }

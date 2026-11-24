@@ -177,6 +177,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invites/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        /** Preview a pending project or instance invitation (server mode) */
+        get: operations["previewInvite"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invites/{token}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept a pending project or instance invitation (server mode) */
+        post: operations["acceptInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/password-reset/{token}": {
         parameters: {
             query?: never;
@@ -233,6 +271,25 @@ export interface paths {
         head?: never;
         /** Update project metadata, slug, or settings */
         patch: operations["updateProject"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Leave the project (server mode; fails with 409 for last owner) */
+        post: operations["leaveProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/projects/{project}/messages": {
@@ -476,6 +533,160 @@ export interface paths {
         patch: operations["updateTag"];
         trace?: never;
     };
+    "/api/v1/projects/{project}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        /** List project members and roles (server mode) */
+        get: operations["listProjectMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a member from the project (server mode) */
+        delete: operations["deleteProjectMember"];
+        options?: never;
+        head?: never;
+        /** Update a member's project role (server mode) */
+        patch: operations["updateProjectMember"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        /** List project invitations (server mode) */
+        get: operations["listProjectInvites"];
+        put?: never;
+        /** Create a project invitation and return its one-time URL (server mode) */
+        post: operations["createProjectInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/invites/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a pending project invitation (server mode) */
+        delete: operations["revokeProjectInvite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List users with project counts and optional search (server mode, admin) */
+        get: operations["adminListUsers"];
+        put?: never;
+        /** Create a passwordless user and return a one-time instance invite link (server mode, admin) */
+        post: operations["adminCreateUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a user account (server mode, admin; fails with 409 for last admin) */
+        delete: operations["adminDeleteUser"];
+        options?: never;
+        head?: never;
+        /** Update user name, privileges, or disabled state (server mode, admin) */
+        patch: operations["adminUpdateUser"];
+        trace?: never;
+    };
+    "/api/v1/admin/users/{id}/password-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate a single-use password reset link valid for 1 hour (server mode, admin) */
+        post: operations["adminCreatePasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all projects with owners and counters (server mode, admin) */
+        get: operations["adminListProjects"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -630,21 +841,21 @@ export interface components {
              * Format: int64
              * @description Max message age in seconds (null inherits global default, 0 disables limit)
              */
-            retention_max_age: number | null;
+            retention_max_age?: number | null;
             /**
              * Format: int64
              * @description Max message count (null inherits global default, 0 disables limit)
              */
-            retention_max_messages: number | null;
+            retention_max_messages?: number | null;
             /**
              * Format: int64
              * @description Max raw bytes (null inherits global default, 0 disables limit)
              */
-            retention_max_bytes: number | null;
-            recipient_routing_enabled: boolean;
+            retention_max_bytes?: number | null;
+            recipient_routing_enabled?: boolean;
             plus_address_tags: boolean;
             viewer_hide_technical: boolean;
-            members_can_reveal_smtp: boolean;
+            members_can_reveal_smtp?: boolean;
         };
         ProjectDetail: {
             /** Format: int64 */
@@ -787,6 +998,132 @@ export interface components {
         AffectedResponse: {
             /** Format: int64 */
             affected: number;
+        };
+        MemberUser: {
+            /** Format: int64 */
+            id: number;
+            /** Format: email */
+            email: string;
+            name: string;
+        };
+        ProjectMember: {
+            user: components["schemas"]["MemberUser"];
+            role: components["schemas"]["ProjectRole"];
+            /** Format: date-time */
+            created_at: string;
+        };
+        UpdateProjectMemberRequest: {
+            role: components["schemas"]["ProjectRole"];
+        };
+        /** @enum {string} */
+        InviteStatus: "pending" | "accepted" | "revoked" | "expired";
+        ProjectInvite: {
+            /** Format: int64 */
+            id: number;
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["ProjectRole"];
+            created_by: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            status: components["schemas"]["InviteStatus"];
+        };
+        CreateProjectInviteRequest: {
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["ProjectRole"];
+        };
+        CreateProjectInviteResponse: {
+            invite: components["schemas"]["ProjectInvite"];
+            /** Format: uri */
+            url: string;
+        };
+        InviteProjectPreview: {
+            name: string;
+            slug: string;
+        };
+        InvitePreview: {
+            project?: components["schemas"]["InviteProjectPreview"];
+            /** @enum {string|null} */
+            role: "owner" | "member" | "viewer" | null;
+            /** Format: email */
+            email: string;
+            invited_by: string | null;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        AcceptInviteRequest: {
+            name?: string;
+            password?: string;
+        };
+        AcceptInviteResponse: {
+            project?: components["schemas"]["InviteProjectPreview"];
+        };
+        AdminUser: {
+            /** Format: int64 */
+            id: number;
+            /** Format: email */
+            email: string;
+            name: string;
+            is_admin: boolean;
+            can_create_projects: boolean;
+            has_password: boolean;
+            /** Format: date-time */
+            disabled_at: string | null;
+            /** Format: date-time */
+            last_login_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            project_count: number;
+        };
+        AdminUserListResponse: {
+            items: components["schemas"]["AdminUser"][];
+            next_cursor: string | null;
+        };
+        AdminCreateUserRequest: {
+            /** Format: email */
+            email: string;
+            name: string;
+            is_admin?: boolean;
+            can_create_projects?: boolean;
+        };
+        AdminCreateUserResponse: {
+            user: components["schemas"]["AdminUser"];
+            /** Format: uri */
+            invite_url: string;
+        };
+        AdminUpdateUserRequest: {
+            name?: string;
+            is_admin?: boolean;
+            can_create_projects?: boolean;
+            disabled?: boolean;
+        };
+        AdminPasswordResetResponse: {
+            /** Format: uri */
+            url: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        AdminProject: {
+            /** Format: int64 */
+            id: number;
+            slug: string;
+            name: string;
+            color: components["schemas"]["ProjectColor"];
+            /** Format: int64 */
+            message_count: number;
+            /** Format: int64 */
+            unread_count: number;
+            /** Format: int64 */
+            size_bytes: number;
+            /** Format: date-time */
+            last_message_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            owners: components["schemas"]["MemberUser"][];
         };
     };
     responses: {
@@ -1073,6 +1410,64 @@ export interface operations {
             404: components["responses"]["ErrorResponse"];
         };
     };
+    previewInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invite preview metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePreview"];
+                };
+            };
+            404: components["responses"]["ErrorResponse"];
+            410: components["responses"]["ErrorResponse"];
+            429: components["responses"]["ErrorResponse"];
+        };
+    };
+    acceptInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AcceptInviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Invitation accepted (sets session cookie for unauthenticated signup/password set) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptInviteResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            410: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+            429: components["responses"]["ErrorResponse"];
+        };
+    };
     completePasswordReset: {
         parameters: {
             query?: never;
@@ -1228,6 +1623,30 @@ export interface operations {
             404: components["responses"]["ErrorResponse"];
             409: components["responses"]["ErrorResponse"];
             422: components["responses"]["ErrorResponse"];
+        };
+    };
+    leaveProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Membership removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
         };
     };
     listMessages: {
@@ -1689,6 +2108,337 @@ export interface operations {
             404: components["responses"]["ErrorResponse"];
             409: components["responses"]["ErrorResponse"];
             422: components["responses"]["ErrorResponse"];
+        };
+    };
+    listProjectMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project members */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMember"][];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteProjectMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Member removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+        };
+    };
+    updateProjectMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProjectMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated project member */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMember"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+        };
+    };
+    listProjectInvites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project invitations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectInvite"][];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    createProjectInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProjectInviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Invitation created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateProjectInviteResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+        };
+    };
+    revokeProjectInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invitation revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+        };
+    };
+    adminListUsers: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                /** @description Case-insensitive substring filter on email or name */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated users */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserListResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    adminCreateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description User created with instance invite URL */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCreateUserResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+        };
+    };
+    adminDeleteUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description User deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+        };
+    };
+    adminUpdateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+        };
+    };
+    adminCreatePasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Single-use password reset link */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPasswordResetResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    adminListProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All projects */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminProject"][];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
         };
     };
     streamEvents: {
