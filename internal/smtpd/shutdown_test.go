@@ -3,6 +3,7 @@ package smtpd
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
@@ -47,7 +48,7 @@ type shutdownTestServer struct {
 	serveDone chan error
 }
 
-func startShutdownTestServer(t *testing.T, ing Ingestor) *shutdownTestServer {
+func startShutdownTestServer(t *testing.T, ing Ingestor, tlsCfg *tls.Config) *shutdownTestServer {
 	t.Helper()
 	var lc net.ListenConfig
 	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
@@ -58,6 +59,9 @@ func startShutdownTestServer(t *testing.T, ing Ingestor) *shutdownTestServer {
 		srv:       NewWithLookup(defaultLocalConfig(t), newFakeLookup(), ing, nil),
 		addr:      ln.Addr().String(),
 		serveDone: make(chan error, 1),
+	}
+	if tlsCfg != nil {
+		ts.srv.SetTLSConfig(tlsCfg)
 	}
 	go func() { ts.serveDone <- ts.srv.Serve(ln) }()
 	return ts
@@ -117,6 +121,24 @@ func (c *smtpTestClient) expect(t *testing.T, code string) {
 	}
 }
 
+// startTLS upgrades the connection with STARTTLS and greets again.
+func (c *smtpTestClient) startTLS(t *testing.T) {
+	t.Helper()
+	c.send(t, "STARTTLS")
+	c.expect(t, "220")
+	tlsConn := tls.Client(c.conn, &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: true, //nolint:gosec // runtime-generated self-signed test cert
+	})
+	if err := tlsConn.HandshakeContext(t.Context()); err != nil {
+		t.Fatalf("TLS handshake: %v", err)
+	}
+	c.conn = tlsConn
+	c.r = bufio.NewReader(tlsConn)
+	c.send(t, "EHLO client.example")
+	c.expect(t, "250")
+}
+
 // expectClosed asserts the server closed the connection (EOF or reset, not a
 // read timeout).
 func (c *smtpTestClient) expectClosed(t *testing.T) {
@@ -149,7 +171,7 @@ func TestShutdownClosesIdleConnectionsPromptly(t *testing.T) {
 	// ARCHITECTURE 3.1: shutdown waits only for in-flight DATA. Idle pooled
 	// connections (after EHLO) and connections that never greeted are closed at
 	// once instead of holding shutdown for the whole grace period.
-	ts := startShutdownTestServer(t, stubIngestor{})
+	ts := startShutdownTestServer(t, stubIngestor{}, nil)
 	idle := dialSMTPTestClient(t, ts.addr)
 	idle.send(t, "EHLO client.example")
 	idle.expect(t, "250")
@@ -171,13 +193,35 @@ func TestShutdownLetsInFlightDataFinish(t *testing.T) {
 	t.Parallel()
 
 	// ARCHITECTURE 3.1: an in-flight DATA transaction completes and receives its
-	// 250 reply during shutdown; idle connections are closed meanwhile.
+	// 250 reply during shutdown; idle connections are closed meanwhile. The
+	// STARTTLS case covers the server-mode path, where the tracked connection
+	// sits under a tls.Conn.
+	for _, starttls := range []bool{false, true} {
+		name := "plaintext"
+		if starttls {
+			name = "starttls"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			testShutdownLetsInFlightDataFinish(t, starttls)
+		})
+	}
+}
+
+func testShutdownLetsInFlightDataFinish(t *testing.T, starttls bool) {
 	ing := newGatedIngestor(true)
-	ts := startShutdownTestServer(t, ing)
+	var tlsCfg *tls.Config
+	if starttls {
+		tlsCfg = generateSelfSignedTLSConfig(t)
+	}
+	ts := startShutdownTestServer(t, ing, tlsCfg)
 
 	busy := dialSMTPTestClient(t, ts.addr)
 	busy.send(t, "EHLO client.example")
 	busy.expect(t, "250")
+	if starttls {
+		busy.startTLS(t)
+	}
 	busy.send(t, "MAIL FROM:<sender@example.com>")
 	busy.expect(t, "250")
 	busy.send(t, "RCPT TO:<dev@example.com>")
@@ -214,7 +258,7 @@ func TestShutdownForceClosesStalledDataBeforeReturning(t *testing.T) {
 	// and Shutdown returns only after the session ended, so the store can be
 	// closed afterwards without a session still using it.
 	ing := newGatedIngestor(false)
-	ts := startShutdownTestServer(t, ing)
+	ts := startShutdownTestServer(t, ing, nil)
 
 	stalled := dialSMTPTestClient(t, ts.addr)
 	stalled.send(t, "EHLO client.example")

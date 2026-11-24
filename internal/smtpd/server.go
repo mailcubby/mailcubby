@@ -13,6 +13,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/emersion/go-sasl"
@@ -282,14 +283,15 @@ func (b *backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 		}
 	}
 	_, isTLS := c.TLSConnectionState()
-	return &session{
+	sess := &session{
 		be:       b,
 		conn:     c,
 		remoteIP: remoteIP,
 		helo:     c.Hostname(),
 		tls:      isTLS,
-		active:   true,
-	}, nil
+	}
+	sess.active.Store(true)
+	return sess, nil
 }
 
 func (b *backend) shouldTouchLastUsed(credID int64, dbLastUsed *time.Time, now time.Time) bool {
@@ -314,7 +316,9 @@ type session struct {
 	remoteIP string
 	helo     string
 	tls      bool
-	active   bool // registered in be.active until Logout
+	// active is true while the session is registered in be.active. Atomic
+	// because go-smtp may call Logout from Server.Close and STARTTLS concurrently.
+	active atomic.Bool
 
 	auth     AuthResult
 	mailFrom string
@@ -631,8 +635,7 @@ func (s *session) Reset() {
 }
 
 func (s *session) Logout() error {
-	if s.active {
-		s.active = false
+	if s.active.CompareAndSwap(true, false) {
 		s.be.active.Done()
 	}
 	return nil
