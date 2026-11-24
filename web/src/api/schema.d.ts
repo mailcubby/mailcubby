@@ -204,7 +204,7 @@ export interface paths {
         delete: operations["deleteMessage"];
         options?: never;
         head?: never;
-        /** Update message seen state */
+        /** Update message seen state and/or tags */
         patch: operations["patchMessage"];
         trace?: never;
     };
@@ -326,6 +326,47 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        /** List tags in the project with message counts */
+        get: operations["listTags"];
+        put?: never;
+        /** Create a new tag in the project */
+        post: operations["createTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/tags/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a tag and remove it from all messages in the project */
+        delete: operations["deleteTag"];
+        options?: never;
+        head?: never;
+        /** Rename or recolor a tag in the project */
+        patch: operations["updateTag"];
         trace?: never;
     };
     "/api/v1/events": {
@@ -580,11 +621,29 @@ export interface components {
         };
         PatchMessageRequest: {
             seen?: boolean;
+            tags?: string[];
         };
         BulkMessagesRequest: {
             ids: string[];
             /** @enum {string} */
-            action: "delete" | "seen" | "unseen";
+            action: "delete" | "seen" | "unseen" | "add_tags" | "remove_tags";
+            tags?: string[];
+        };
+        TagSummary: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            color: components["schemas"]["ProjectColor"];
+            /** Format: int64 */
+            message_count: number;
+        };
+        CreateTagRequest: {
+            name: string;
+            color?: components["schemas"]["ProjectColor"];
+        };
+        UpdateTagRequest: {
+            name?: string;
+            color?: components["schemas"]["ProjectColor"];
         };
         AffectedResponse: {
             /** Format: int64 */
@@ -1051,6 +1110,7 @@ export interface operations {
             };
             400: components["responses"]["ErrorResponse"];
             404: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
         };
     };
     getMessageRaw: {
@@ -1199,6 +1259,113 @@ export interface operations {
                 };
             };
             404: components["responses"]["ErrorResponse"];
+        };
+    };
+    listTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of tags */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSummary"][];
+                };
+            };
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    createTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTagRequest"];
+            };
+        };
+        responses: {
+            /** @description Tag created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSummary"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tag deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    updateTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTagRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated tag */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSummary"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
         };
     };
     streamEvents: {

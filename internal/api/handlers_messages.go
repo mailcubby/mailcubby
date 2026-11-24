@@ -176,9 +176,24 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 		nextCursor = &cur
 	}
 
+	pks := make([]int64, 0, len(msgs))
+	for _, m := range msgs {
+		pks = append(pks, m.PK)
+	}
+	tagsByPK, err := s.store.ListTagsByMessagePKs(r.Context(), pctx.Project.ID, pks)
+	if err != nil {
+		s.log.Error("list message tags failed",
+			"request_id", RequestIDFromContext(r.Context()),
+			"project_id", pctx.Project.ID,
+			"error", err,
+		)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+
 	items := make([]messageSummaryResponse, 0, len(msgs))
 	for _, m := range msgs {
-		items = append(items, toMessageSummary(m))
+		items = append(items, toMessageSummary(m, tagsByPK[m.PK]))
 	}
 
 	writeJSON(w, http.StatusOK, messageListResponse{
@@ -276,8 +291,20 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		rcptTo = []string{}
 	}
 
+	tags, err := s.store.ListTagsByMessagePK(r.Context(), pctx.Project.ID, msg.PK)
+	if err != nil {
+		s.log.Error("list tags for message detail failed",
+			"request_id", RequestIDFromContext(r.Context()),
+			"project_id", pctx.Project.ID,
+			"message_id", msg.ID,
+			"error", err,
+		)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+
 	resp := messageDetailResponse{
-		messageSummaryResponse: toMessageSummary(msg),
+		messageSummaryResponse: toMessageSummary(msg, tags),
 		ReplyTo:                toAddressResponses(msg.ReplyTo),
 		Bcc:                    toAddressResponses(msg.Bcc),
 		Envelope: &messageEnvelopeResponse{
@@ -546,7 +573,10 @@ func (s *Server) loadProjectMessage(w http.ResponseWriter, r *http.Request) (Pro
 	return pctx, msg, true
 }
 
-func toMessageSummary(m store.Message) messageSummaryResponse {
+func toMessageSummary(m store.Message, tags []string) messageSummaryResponse {
+	if tags == nil {
+		tags = []string{}
+	}
 	return messageSummaryResponse{
 		ID:         m.ID,
 		ReceivedAt: Timestamp(m.ReceivedAt),
@@ -563,7 +593,7 @@ func toMessageSummary(m store.Message) messageSummaryResponse {
 		AttachmentCount: m.AttachmentCount,
 		HasHTML:         m.HasHTML,
 		HasText:         m.HasText,
-		Tags:            []string{}, // Populated in Phase 5.
+		Tags:            tags,
 	}
 }
 

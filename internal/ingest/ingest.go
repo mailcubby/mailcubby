@@ -218,7 +218,7 @@ func (in *Ingestor) commitTarget(
 		return MessageRef{}, fmt.Errorf("ingest: place blob for project %d: %w", target.ProjectID, err)
 	}
 
-	// Combine X-Tags and plus-address tags into result (stored in Phase 5).
+	// Combine X-Tags and plus-address tags (FR-086).
 	combinedRawTags := make([]string, 0, len(parsed.XTags)+len(target.PlusTags))
 	combinedRawTags = append(combinedRawTags, parsed.XTags...)
 	if target.PlusAddressTags {
@@ -229,8 +229,11 @@ func (in *Ingestor) commitTarget(
 		extractedTags = []string{}
 	}
 
-	var storedMsg store.Message
-	// Step 6: Commit message, attachments, FTS row, and project counters in one tx.
+	var (
+		storedMsg store.Message
+		savedTags []string
+	)
+	// Step 6: Commit message, attachments, tags, FTS row, and project counters in one tx.
 	txErr := in.store.WithTx(ctx, func(tx *store.Tx) error {
 		var err error
 		storedMsg, err = tx.InsertMessage(ctx, store.InsertMessageParams{
@@ -283,6 +286,11 @@ func (in *Ingestor) commitTarget(
 			}
 		}
 
+		savedTags, err = tx.EnsureAndAttachTagsTx(ctx, target.ProjectID, storedMsg.PK, extractedTags, receivedAt)
+		if err != nil {
+			return err
+		}
+
 		if err := search.IndexTx(ctx, tx, storedMsg.PK, ftsDoc); err != nil {
 			return err
 		}
@@ -302,6 +310,9 @@ func (in *Ingestor) commitTarget(
 		}
 		return MessageRef{}, fmt.Errorf("ingest: commit project %d: %w", target.ProjectID, txErr)
 	}
+	if savedTags == nil {
+		savedTags = []string{}
+	}
 
 	summary := events.MessageSummary{
 		ID:         msgID.String(),
@@ -319,7 +330,7 @@ func (in *Ingestor) commitTarget(
 		AttachmentCount: int64(len(parsed.Attachments)),
 		HasHTML:         parsed.HasHTML,
 		HasText:         parsed.HasText,
-		Tags:            extractedTags,
+		Tags:            savedTags,
 		CredentialLabel: target.CredentialLabel,
 	}
 
@@ -331,7 +342,7 @@ func (in *Ingestor) commitTarget(
 		BlobPath:    relPath,
 		SizeBytes:   rawSize,
 		SHA256:      rawSHA,
-		Tags:        extractedTags,
+		Tags:        savedTags,
 		Summary:     summary,
 	}, nil
 }

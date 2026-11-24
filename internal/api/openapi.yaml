@@ -327,7 +327,7 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
     patch:
       operationId: patchMessage
-      summary: Update message seen state
+      summary: Update message seen state and/or tags
       requestBody:
         required: true
         content:
@@ -344,6 +344,8 @@ paths:
         "400":
           $ref: "#/components/responses/ErrorResponse"
         "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
           $ref: "#/components/responses/ErrorResponse"
     delete:
       operationId: deleteMessage
@@ -472,6 +474,92 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageSummary"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/tags:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+    get:
+      operationId: listTags
+      summary: List tags in the project with message counts
+      responses:
+        "200":
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TagSummary"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      operationId: createTag
+      summary: Create a new tag in the project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTagRequest"
+      responses:
+        "201":
+          description: Tag created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagSummary"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/tags/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    patch:
+      operationId: updateTag
+      summary: Rename or recolor a tag in the project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTagRequest"
+      responses:
+        "200":
+          description: Updated tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagSummary"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+    delete:
+      operationId: deleteTag
+      summary: Delete a tag and remove it from all messages in the project
+      responses:
+        "204":
+          description: Tag deleted
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
         "404":
           $ref: "#/components/responses/ErrorResponse"
 
@@ -1064,6 +1152,11 @@ components:
       properties:
         seen:
           type: boolean
+        tags:
+          type: array
+          maxItems: 50
+          items:
+            type: string
 
     BulkMessagesRequest:
       type: object
@@ -1077,7 +1170,48 @@ components:
             type: string
         action:
           type: string
-          enum: [delete, seen, unseen]
+          enum: [delete, seen, unseen, add_tags, remove_tags]
+        tags:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+
+    TagSummary:
+      type: object
+      required: [id, name, color, message_count]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        color:
+          $ref: "#/components/schemas/ProjectColor"
+        message_count:
+          type: integer
+          format: int64
+
+    CreateTagRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        color:
+          $ref: "#/components/schemas/ProjectColor"
+
+    UpdateTagRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        color:
+          $ref: "#/components/schemas/ProjectColor"
 
     AffectedResponse:
       type: object

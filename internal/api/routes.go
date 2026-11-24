@@ -67,6 +67,12 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}/attachments/{attachment_id}", Need: PermViewer, Handler: s.handleGetMessageAttachment},
 		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/send-test", Need: PermMember, Handler: s.handleSendTest},
 
+		// Tags (SPEC 8.5)
+		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/tags", Need: PermViewer, Handler: s.handleListTags},
+		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/tags", Need: PermMember, Handler: s.handleCreateTag},
+		{Method: http.MethodPatch, Pattern: "/api/v1/projects/{project}/tags/{id}", Need: PermMember, Handler: s.handleUpdateTag},
+		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}/tags/{id}", Need: PermMember, Handler: s.handleDeleteTag},
+
 		// Events & Render (SPEC 8.9)
 		{Method: http.MethodGet, Pattern: "/api/v1/events", Need: PermUser, Handler: s.handleEvents},
 		{Method: http.MethodGet, Pattern: "/render/{project}/{id}", Need: PermViewer, Handler: s.handleRenderMessage},

@@ -19,12 +19,14 @@ const (
 )
 
 type patchMessageRequest struct {
-	Seen *bool `json:"seen"`
+	Seen *bool     `json:"seen"`
+	Tags *[]string `json:"tags"`
 }
 
 type bulkMessagesRequest struct {
 	IDs    []string `json:"ids"`
 	Action string   `json:"action"`
+	Tags   []string `json:"tags"`
 }
 
 type affectedResponse struct {
@@ -48,8 +50,17 @@ func (s *Server) handlePatchMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO(phase-5): support tags updates in PATCH /messages/{id}.
-	if req.Seen == nil {
+	var validatedTags *[]string
+	if req.Tags != nil {
+		cleaned, errMsg := validateTagList(*req.Tags)
+		if errMsg != "" {
+			writeValidationError(w, map[string]string{"tags": errMsg})
+			return
+		}
+		validatedTags = &cleaned
+	}
+
+	if req.Seen == nil && validatedTags == nil {
 		msg, err := s.store.GetMessageByID(r.Context(), pctx.Project.ID, msgID)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
@@ -65,17 +76,17 @@ func (s *Server) handlePatchMessage(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
 			return
 		}
-		writeJSON(w, http.StatusOK, toMessageSummary(msg))
+		s.writeMessageSummaryWithTags(w, r, pctx.Project.ID, msg)
 		return
 	}
 
-	msg, proj, changed, err := s.store.SetMessageSeen(r.Context(), pctx.Project.ID, msgID, *req.Seen, s.clk.Now().UTC())
+	res, err := s.store.PatchMessage(r.Context(), pctx.Project.ID, msgID, req.Seen, validatedTags, s.clk.Now().UTC())
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, ErrCodeNotFound, "message not found", nil)
 			return
 		}
-		s.log.Error("patch message seen failed",
+		s.log.Error("patch message failed",
 			"request_id", RequestIDFromContext(r.Context()),
 			"project_id", pctx.Project.ID,
 			"message_id", msgID,
@@ -85,13 +96,26 @@ func (s *Server) handlePatchMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if changed {
-		seenVal := *req.Seen
-		s.publishMessageUpdated(proj, []string{msg.ID}, &seenVal)
-		s.publishProjectUpdated(proj)
+	if res.SeenChanged || res.TagsChanged {
+		var (
+			seenPtr *bool
+			tagsPtr *[]string
+		)
+		if res.SeenChanged {
+			v := res.Message.Seen
+			seenPtr = &v
+		}
+		if res.TagsChanged {
+			t := res.Tags
+			tagsPtr = &t
+		}
+		s.publishMessageUpdated(res.Project, []string{res.Message.ID}, seenPtr, tagsPtr)
+	}
+	if res.SeenChanged {
+		s.publishProjectUpdated(res.Project)
 	}
 
-	writeJSON(w, http.StatusOK, toMessageSummary(msg))
+	writeJSON(w, http.StatusOK, toMessageSummary(res.Message, res.Tags))
 }
 
 func (s *Server) handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
@@ -143,11 +167,22 @@ func (s *Server) handleBulkMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	details := make(map[string]string)
+	var validatedTags []string
 	switch req.Action {
 	case "delete", "seen", "unseen":
-		// TODO(phase-5): support add_tags and remove_tags actions.
+	case "add_tags", "remove_tags":
+		if len(req.Tags) == 0 {
+			details["tags"] = "must contain at least one tag"
+		} else {
+			cleaned, errMsg := validateTagList(req.Tags)
+			if errMsg != "" {
+				details["tags"] = errMsg
+			} else {
+				validatedTags = cleaned
+			}
+		}
 	default:
-		details["action"] = "must be one of delete, seen, unseen"
+		details["action"] = "must be one of delete, seen, unseen, add_tags, remove_tags"
 	}
 
 	switch {
@@ -210,10 +245,29 @@ func (s *Server) handleBulkMessages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(changedIDs) > 0 {
-			s.publishMessageUpdated(proj, changedIDs, &seenVal)
+			s.publishMessageUpdated(proj, changedIDs, &seenVal, nil)
 			s.publishProjectUpdated(proj)
 		}
 		writeJSON(w, http.StatusOK, affectedResponse{Affected: int64(len(changedIDs))})
+
+	case "add_tags", "remove_tags":
+		add := req.Action == "add_tags"
+		updates, err := s.store.BulkUpdateMessageTags(r.Context(), pctx.Project.ID, req.IDs, add, validatedTags, now)
+		if err != nil {
+			s.log.Error("bulk update messages tags failed",
+				"request_id", RequestIDFromContext(r.Context()),
+				"project_id", pctx.Project.ID,
+				"action", req.Action,
+				"error", err,
+			)
+			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+			return
+		}
+		for _, u := range updates {
+			tags := u.Tags
+			s.publishMessageUpdated(pctx.Project, []string{u.ID}, nil, &tags)
+		}
+		writeJSON(w, http.StatusOK, affectedResponse{Affected: int64(len(updates))})
 	}
 }
 
@@ -317,7 +371,7 @@ func (s *Server) handleSendTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, toMessageSummary(msg))
+	writeJSON(w, http.StatusCreated, toMessageSummary(msg, ref.Tags))
 }
 
 type waitSinceMode int
@@ -399,7 +453,7 @@ func (s *Server) handleWaitMessage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if lookupErr == nil {
-			writeJSON(w, http.StatusOK, toMessageSummary(existing))
+			s.writeMessageSummaryWithTags(w, r, pctx.Project.ID, existing)
 			return
 		}
 		if !errors.Is(lookupErr, store.ErrNotFound) {
@@ -434,7 +488,7 @@ func (s *Server) handleWaitMessage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if lookupErr == nil {
-			writeJSON(w, http.StatusOK, toMessageSummary(existing))
+			s.writeMessageSummaryWithTags(w, r, pctx.Project.ID, existing)
 			return
 		}
 		if !errors.Is(lookupErr, store.ErrNotFound) {
@@ -498,7 +552,7 @@ func (s *Server) handleWaitMessage(w http.ResponseWriter, r *http.Request) {
 				if len(matches) == 0 {
 					continue
 				}
-				writeJSON(w, http.StatusOK, toMessageSummary(matches[0]))
+				s.writeMessageSummaryWithTags(w, r, pctx.Project.ID, matches[0])
 				return
 			}
 			msg, fetchErr := s.store.GetMessageByID(r.Context(), pctx.Project.ID, payload.Message.ID)
@@ -515,7 +569,7 @@ func (s *Server) handleWaitMessage(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
 				return
 			}
-			writeJSON(w, http.StatusOK, toMessageSummary(msg))
+			s.writeMessageSummaryWithTags(w, r, pctx.Project.ID, msg)
 			return
 		}
 	}
@@ -551,7 +605,22 @@ func (s *Server) removeBlobsBestEffort(r *http.Request, projectID int64, paths [
 	}
 }
 
-func (s *Server) publishMessageUpdated(proj store.Project, ids []string, seen *bool) {
+func (s *Server) writeMessageSummaryWithTags(w http.ResponseWriter, r *http.Request, projectID int64, msg store.Message) {
+	tags, err := s.store.ListTagsByMessagePK(r.Context(), projectID, msg.PK)
+	if err != nil {
+		s.log.Error("list tags for message summary failed",
+			"request_id", RequestIDFromContext(r.Context()),
+			"project_id", projectID,
+			"message_id", msg.ID,
+			"error", err,
+		)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, toMessageSummary(msg, tags))
+}
+
+func (s *Server) publishMessageUpdated(proj store.Project, ids []string, seen *bool, tags *[]string) {
 	if s.bus == nil {
 		return
 	}
@@ -562,6 +631,7 @@ func (s *Server) publishMessageUpdated(proj store.Project, ids []string, seen *b
 			Project: proj.Slug,
 			IDs:     ids,
 			Seen:    seen,
+			Tags:    tags,
 		},
 	})
 }

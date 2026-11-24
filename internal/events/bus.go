@@ -129,10 +129,10 @@ type MessageCreatedPayload struct {
 
 // MessageUpdatedPayload is the JSON payload for TypeMessageUpdated events (SPEC FR-090).
 type MessageUpdatedPayload struct {
-	Project string   `json:"project"`
-	IDs     []string `json:"ids"`
-	Seen    *bool    `json:"seen,omitempty"`
-	Tags    []string `json:"tags,omitempty"`
+	Project string    `json:"project"`
+	IDs     []string  `json:"ids"`
+	Seen    *bool     `json:"seen,omitempty"`
+	Tags    *[]string `json:"tags,omitempty"`
 }
 
 // MessageDeletedPayload is the JSON payload for TypeMessageDeleted events (SPEC FR-090).
