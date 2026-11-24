@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   AlertCircle,
+  Archive,
   ArrowLeft,
   Code2,
   KeyRound,
@@ -18,7 +19,13 @@ import { PROJECT_COLOR_DOT_CLASS } from "@/lib/format";
 import { metaQueryOptions, projectQueryOptions } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-export type ProjectSettingsSection = "general" | "smtp" | "members" | "routing" | "api";
+export type ProjectSettingsSection =
+  | "general"
+  | "smtp"
+  | "members"
+  | "retention"
+  | "routing"
+  | "api";
 
 export interface ProjectSettingsLayoutProps {
   projectSlug: string;
@@ -132,6 +139,7 @@ export function ProjectSettingsLayout({
       | "/p/$project/settings/general"
       | "/p/$project/settings/smtp"
       | "/p/$project/settings/members"
+      | "/p/$project/settings/retention"
       | "/p/$project/settings/routing"
       | "/p/$project/settings/api";
     Icon: typeof Settings2;
@@ -160,6 +168,12 @@ export function ProjectSettingsLayout({
     });
   }
   if (isOwner) {
+    navItems.push({
+      id: "retention",
+      label: "Retention",
+      to: "/p/$project/settings/retention",
+      Icon: Archive,
+    });
     navItems.push({
       id: "routing",
       label: "Routing & client view",

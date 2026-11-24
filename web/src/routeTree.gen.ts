@@ -30,6 +30,7 @@ import { Route as PProjectSettingsIndexRouteImport } from './routes/p.$project_.
 import { Route as PProjectSettingsApiRouteImport } from './routes/p.$project_.settings.api'
 import { Route as PProjectSettingsGeneralRouteImport } from './routes/p.$project_.settings.general'
 import { Route as PProjectSettingsMembersRouteImport } from './routes/p.$project_.settings.members'
+import { Route as PProjectSettingsRetentionRouteImport } from './routes/p.$project_.settings.retention'
 import { Route as PProjectSettingsRoutingRouteImport } from './routes/p.$project_.settings.routing'
 import { Route as PProjectSettingsSmtpRouteImport } from './routes/p.$project_.settings.smtp'
 
@@ -138,6 +139,12 @@ const PProjectSettingsMembersRoute = PProjectSettingsMembersRouteImport.update({
   path: '/p/$project/settings/members',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PProjectSettingsRetentionRoute =
+  PProjectSettingsRetentionRouteImport.update({
+    id: '/p/$project_/settings/retention',
+    path: '/p/$project/settings/retention',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const PProjectSettingsRoutingRoute = PProjectSettingsRoutingRouteImport.update({
   id: '/p/$project_/settings/routing',
   path: '/p/$project/settings/routing',
@@ -170,6 +177,7 @@ export interface FileRoutesByFullPath {
   '/p/$project/settings/api': typeof PProjectSettingsApiRoute
   '/p/$project/settings/general': typeof PProjectSettingsGeneralRoute
   '/p/$project/settings/members': typeof PProjectSettingsMembersRoute
+  '/p/$project/settings/retention': typeof PProjectSettingsRetentionRoute
   '/p/$project/settings/routing': typeof PProjectSettingsRoutingRoute
   '/p/$project/settings/smtp': typeof PProjectSettingsSmtpRoute
   '/p/$project/settings/': typeof PProjectSettingsIndexRoute
@@ -194,6 +202,7 @@ export interface FileRoutesByTo {
   '/p/$project/settings/api': typeof PProjectSettingsApiRoute
   '/p/$project/settings/general': typeof PProjectSettingsGeneralRoute
   '/p/$project/settings/members': typeof PProjectSettingsMembersRoute
+  '/p/$project/settings/retention': typeof PProjectSettingsRetentionRoute
   '/p/$project/settings/routing': typeof PProjectSettingsRoutingRoute
   '/p/$project/settings/smtp': typeof PProjectSettingsSmtpRoute
   '/p/$project/settings': typeof PProjectSettingsIndexRoute
@@ -220,6 +229,7 @@ export interface FileRoutesById {
   '/p/$project_/settings/api': typeof PProjectSettingsApiRoute
   '/p/$project_/settings/general': typeof PProjectSettingsGeneralRoute
   '/p/$project_/settings/members': typeof PProjectSettingsMembersRoute
+  '/p/$project_/settings/retention': typeof PProjectSettingsRetentionRoute
   '/p/$project_/settings/routing': typeof PProjectSettingsRoutingRoute
   '/p/$project_/settings/smtp': typeof PProjectSettingsSmtpRoute
   '/p/$project_/settings/': typeof PProjectSettingsIndexRoute
@@ -247,6 +257,7 @@ export interface FileRouteTypes {
     | '/p/$project/settings/api'
     | '/p/$project/settings/general'
     | '/p/$project/settings/members'
+    | '/p/$project/settings/retention'
     | '/p/$project/settings/routing'
     | '/p/$project/settings/smtp'
     | '/p/$project/settings/'
@@ -271,6 +282,7 @@ export interface FileRouteTypes {
     | '/p/$project/settings/api'
     | '/p/$project/settings/general'
     | '/p/$project/settings/members'
+    | '/p/$project/settings/retention'
     | '/p/$project/settings/routing'
     | '/p/$project/settings/smtp'
     | '/p/$project/settings'
@@ -296,6 +308,7 @@ export interface FileRouteTypes {
     | '/p/$project_/settings/api'
     | '/p/$project_/settings/general'
     | '/p/$project_/settings/members'
+    | '/p/$project_/settings/retention'
     | '/p/$project_/settings/routing'
     | '/p/$project_/settings/smtp'
     | '/p/$project_/settings/'
@@ -320,6 +333,7 @@ export interface RootRouteChildren {
   PProjectSettingsApiRoute: typeof PProjectSettingsApiRoute
   PProjectSettingsGeneralRoute: typeof PProjectSettingsGeneralRoute
   PProjectSettingsMembersRoute: typeof PProjectSettingsMembersRoute
+  PProjectSettingsRetentionRoute: typeof PProjectSettingsRetentionRoute
   PProjectSettingsRoutingRoute: typeof PProjectSettingsRoutingRoute
   PProjectSettingsSmtpRoute: typeof PProjectSettingsSmtpRoute
   PProjectSettingsIndexRoute: typeof PProjectSettingsIndexRoute
@@ -474,6 +488,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PProjectSettingsMembersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/p/$project_/settings/retention': {
+      id: '/p/$project_/settings/retention'
+      path: '/p/$project/settings/retention'
+      fullPath: '/p/$project/settings/retention'
+      preLoaderRoute: typeof PProjectSettingsRetentionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/p/$project_/settings/routing': {
       id: '/p/$project_/settings/routing'
       path: '/p/$project/settings/routing'
@@ -524,6 +545,7 @@ const rootRouteChildren: RootRouteChildren = {
   PProjectSettingsApiRoute: PProjectSettingsApiRoute,
   PProjectSettingsGeneralRoute: PProjectSettingsGeneralRoute,
   PProjectSettingsMembersRoute: PProjectSettingsMembersRoute,
+  PProjectSettingsRetentionRoute: PProjectSettingsRetentionRoute,
   PProjectSettingsRoutingRoute: PProjectSettingsRoutingRoute,
   PProjectSettingsSmtpRoute: PProjectSettingsSmtpRoute,
   PProjectSettingsIndexRoute: PProjectSettingsIndexRoute,

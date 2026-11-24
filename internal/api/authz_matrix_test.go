@@ -676,10 +676,10 @@ func TestAuthorizationMatrix(t *testing.T) {
 			expected: adminOK,
 			makeReq:  constPath("/api/v1/admin/users/"+strconv.FormatInt(outsiderUser.ID, 10)+"/password-reset", nil),
 		},
-		"GET /api/v1/admin/projects":  {expected: adminOK, makeReq: constPath("/api/v1/admin/projects", nil)},
-		"GET /api/v1/admin/settings":  {expected: adminOK, makeReq: constPath("/api/v1/admin/settings", nil)},
+		"GET /api/v1/admin/projects":   {expected: adminOK, makeReq: constPath("/api/v1/admin/projects", nil)},
+		"GET /api/v1/admin/settings":   {expected: adminOK, makeReq: constPath("/api/v1/admin/settings", nil)},
 		"PATCH /api/v1/admin/settings": {expected: adminOK, makeReq: constPath("/api/v1/admin/settings", map[string]any{})},
-		"GET /api/v1/admin/stats":     {expected: adminOK, makeReq: constPath("/api/v1/admin/stats", nil)},
+		"GET /api/v1/admin/stats":      {expected: adminOK, makeReq: constPath("/api/v1/admin/stats", nil)},
 
 		// Events & Render
 		"GET /api/v1/events":         {expected: userOK, makeReq: constPath("/api/v1/events", nil)},

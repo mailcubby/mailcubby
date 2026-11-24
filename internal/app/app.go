@@ -53,22 +53,22 @@ type Options struct {
 
 // App holds all initialized Mailcubby components and bound listeners.
 type App struct {
-	cfg      config.Config
-	clk      clock.Clock
-	log      *slog.Logger
-	version  string
-	store    *store.Store
-	blobs    *blob.Store
-	bus      *events.Bus
-	ingestor *ingest.Ingestor
+	cfg          config.Config
+	clk          clock.Clock
+	log          *slog.Logger
+	version      string
+	store        *store.Store
+	blobs        *blob.Store
+	bus          *events.Bus
+	ingestor     *ingest.Ingestor
 	sweeper      *retention.Sweeper
 	orphanGC     *retention.OrphanGC
 	housekeeping *retention.Housekeeping
 	apiSrv       *api.Server
-	smtpSrv  *smtpd.Server
-	httpSrv  *http.Server
-	smtpLn   net.Listener
-	httpLn   net.Listener
+	smtpSrv      *smtpd.Server
+	httpSrv      *http.Server
+	smtpLn       net.Listener
+	httpLn       net.Listener
 
 	listenersReady atomic.Bool
 	closeOnce      sync.Once
@@ -191,20 +191,20 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 	}
 
 	a := &App{
-		cfg:      cfg,
-		clk:      clk,
-		log:      log,
-		version:  ver,
-		store:    st,
-		blobs:    blobs,
-		bus:      bus,
-		ingestor: ing,
+		cfg:          cfg,
+		clk:          clk,
+		log:          log,
+		version:      ver,
+		store:        st,
+		blobs:        blobs,
+		bus:          bus,
+		ingestor:     ing,
 		sweeper:      sweeper,
 		orphanGC:     orphanGC,
 		housekeeping: housekeeping,
 		smtpSrv:      smtpSrv,
-		smtpLn:   smtpLn,
-		httpLn:   httpLn,
+		smtpLn:       smtpLn,
+		httpLn:       httpLn,
 	}
 	a.listenersReady.Store(true)
 

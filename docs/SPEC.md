@@ -436,7 +436,7 @@ Base path: `/api/v1` (the UI and API are always served from the root of `MAILCUB
 |---|---|---|---|---|
 | GET | `/projects` | user | | `[{id, slug, name, color, role, message_count, unread_count, size_bytes, last_message_at, sparkline[24]}]` |
 | POST | `/projects` | admin or `can_create_projects` (local: any) | `{name, slug?, color?}` | `201` project |
-| GET | `/projects/{project}` | viewer | | project + `settings` (owner sees all settings; others see `viewer_hide_technical` and `plus_address_tags`) |
+| GET | `/projects/{project}` | viewer | | project + `settings` (owner sees all settings plus effective instance `retention_defaults`; others see `viewer_hide_technical` and `plus_address_tags`) |
 | PATCH | `/projects/{project}` | owner | `{name?, slug?, color?, settings?{retention_max_age?, retention_max_messages?, retention_max_bytes?, recipient_routing_enabled?, plus_address_tags?, viewer_hide_technical?, members_can_reveal_smtp?}}` | project |
 | DELETE | `/projects/{project}` | owner | `{confirm_slug}` | `204` |
 | POST | `/projects/{project}/leave` | viewer, server | | `204` |

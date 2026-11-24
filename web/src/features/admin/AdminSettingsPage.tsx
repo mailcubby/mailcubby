@@ -255,6 +255,7 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
                   type="button"
                   variant="ghost"
                   size="xs"
+                  aria-label="Reset max age to environment default"
                   title="Reset max age to environment default"
                   disabled={updateMutation.isPending}
                   onClick={() => resetFieldToEnv("retention_max_age")}
@@ -299,6 +300,7 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
                   type="button"
                   variant="ghost"
                   size="xs"
+                  aria-label="Reset max messages to environment default"
                   title="Reset max messages to environment default"
                   disabled={updateMutation.isPending}
                   onClick={() => resetFieldToEnv("retention_max_messages")}
@@ -356,6 +358,7 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
                   type="button"
                   variant="ghost"
                   size="xs"
+                  aria-label="Reset max size to environment default"
                   title="Reset max size to environment default"
                   disabled={updateMutation.isPending}
                   onClick={() => resetFieldToEnv("retention_max_bytes")}

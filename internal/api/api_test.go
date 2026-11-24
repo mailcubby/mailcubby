@@ -623,7 +623,8 @@ func TestIntegrationMetaAuthMeProjectsCRUDAndIsolation(t *testing.T) {
 		t.Fatalf("shop-qa not found in GET /projects")
 	}
 
-	// DELETE /projects/{project}: wrong confirm_slug -> 422; right confirm_slug -> 204 and blobs removed.
+	// DELETE /projects/{project}: wrong confirm_slug -> 422; right confirm_slug -> 204,
+	// and OrphanGC removes the deleted project's blob directory asynchronously (FR-033, FR-098).
 	res = doJSON(t, client, http.MethodDelete, base+"/api/v1/projects/shop-qa", map[string]string{"confirm_slug": "wrong"})
 	if res.status != http.StatusUnprocessableEntity {
 		t.Fatalf("delete wrong confirm_slug status = %d, want 422", res.status)
@@ -638,8 +639,11 @@ func TestIntegrationMetaAuthMeProjectsCRUDAndIsolation(t *testing.T) {
 	if res.status != http.StatusNoContent {
 		t.Fatalf("delete project status = %d, want 204", res.status)
 	}
+	if _, err := srv.App.OrphanGC().RunOnce(t.Context()); err != nil {
+		t.Fatalf("OrphanGC.RunOnce: %v", err)
+	}
 	if _, err := os.Stat(projBlobDir); !os.IsNotExist(err) {
-		t.Errorf("expected project blob dir %s to be removed on delete, stat err = %v", projBlobDir, err)
+		t.Errorf("expected project blob dir %s to be removed by OrphanGC, stat err = %v", projBlobDir, err)
 	}
 
 	res = doJSON(t, client, http.MethodGet, base+"/api/v1/projects/shop-qa", nil)
