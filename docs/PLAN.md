@@ -248,7 +248,7 @@ Acceptance:
 
 Tasks:
 - [x] `internal/auth/permissions.go` implementing the SPEC FR-050 matrix; middleware resolving `{project}` to `ProjectContext` with `404` for no access (replaces the Phase 6 admin-only rule).
-- [ ] Project create permission (`can_create_projects`, admin), last-owner rule, leave project (FR-051), admin implicit access with `project.admin_access` audit.
+- [x] Project create permission (`can_create_projects`, admin), last-owner rule, leave project (FR-051), admin implicit access with `project.admin_access` audit.
 - [ ] Members endpoints; invites create/list/revoke/preview/accept with single-use guard (FR-055 to FR-057), including instance invites and admin-created users without password.
 - [ ] Admin endpoints: users CRUD (FR-100), disable (revokes sessions and tokens), password reset link, all projects list (FR-101); `mailcubby admin create-user`.
 - [ ] SSE membership filtering and `membership.changed` refresh (FR-091).

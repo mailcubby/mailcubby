@@ -448,6 +448,9 @@ func (s *Server) resolveProjectMiddleware(rt Route, next http.HandlerFunc) http.
 			if principal.IsAdmin {
 				authRole = auth.RoleAdmin
 				displayRole = string(auth.RoleOwner)
+				if !isExplicitMember {
+					s.recordAdminProjectAccess(r.Context(), principal, proj)
+				}
 			} else if !isExplicitMember {
 				// SPEC FR-050: inaccessible projects return 404 so project existence is not revealed.
 				writeError(w, http.StatusNotFound, ErrCodeNotFound, "project not found", nil)

@@ -396,6 +396,7 @@ func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.clearAdminAccessForSession(principal.SessionID)
 	http.SetCookie(w, auth.ClearSessionCookie(s.cfg.BaseURL))
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -572,6 +573,7 @@ func (s *Server) handleDeleteAuthSession(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	s.clearAdminAccessForSession(targetID)
 	if targetID == principal.SessionID {
 		http.SetCookie(w, auth.ClearSessionCookie(s.cfg.BaseURL))
 	}

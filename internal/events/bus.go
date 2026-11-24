@@ -152,6 +152,11 @@ type ProjectDeletedPayload struct {
 	Project string `json:"project"`
 }
 
+// MembershipChangedPayload is the JSON payload for TypeMembershipChanged events (SPEC FR-090).
+type MembershipChangedPayload struct {
+	Project string `json:"project,omitempty"`
+}
+
 // ProjectUpdatedPayload is the JSON payload for TypeProjectUpdated events (SPEC FR-090).
 type ProjectUpdatedPayload struct {
 	Project       string     `json:"project"`

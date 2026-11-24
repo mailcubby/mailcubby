@@ -6,6 +6,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -29,7 +30,10 @@ const (
 	sparklineCacheTTL     = 30 * time.Second
 	resetRateLimitCount   = 20
 	resetRateLimitWindow  = 15 * time.Minute
+	inviteRateLimitCount  = 20
+	inviteRateLimitWindow = 15 * time.Minute
 	loginIPRateMultiplier = 5
+	maxAdminAccessEntries = 10000
 )
 
 // PasswordHasher performs argon2id password hashing and verification (SPEC FR-042).
@@ -70,11 +74,15 @@ type Server struct {
 	loginKeyLimiter *ratelimit.SlidingWindow
 	loginIPLimiter  *ratelimit.SlidingWindow
 	resetIPLimiter  *ratelimit.SlidingWindow
+	inviteIPLimiter *ratelimit.SlidingWindow
 
 	routes  []Route
 	handler http.Handler
 
 	sse *sseTracker
+
+	adminAccessMu   sync.Mutex
+	adminAccessSeen map[adminAccessKey]struct{}
 
 	sparkMu      sync.Mutex
 	sparkCache   map[int64]sparklineEntry
@@ -83,6 +91,11 @@ type Server struct {
 	shutdownCh   chan struct{}
 	shutdownOnce sync.Once
 	closeOnce    sync.Once
+}
+
+type adminAccessKey struct {
+	sessionID string
+	projectID int64
 }
 
 type sparklineEntry struct {
@@ -139,7 +152,9 @@ func New(cfg config.Config, st *store.Store, blobs *blob.Store, bus *events.Bus,
 		loginKeyLimiter: ratelimit.NewSlidingWindow(loginLimit, loginWindow, clk),
 		loginIPLimiter:  ratelimit.NewSlidingWindow(loginLimit*loginIPRateMultiplier, loginWindow, clk),
 		resetIPLimiter:  ratelimit.NewSlidingWindow(resetRateLimitCount, resetRateLimitWindow, clk),
+		inviteIPLimiter: ratelimit.NewSlidingWindow(inviteRateLimitCount, inviteRateLimitWindow, clk),
 		sse:             newSSETracker(cfg.SSEMaxConnectionsPerUser),
+		adminAccessSeen: make(map[adminAccessKey]struct{}),
 		sparkCache:      make(map[int64]sparklineEntry),
 		shutdownCh:      make(chan struct{}),
 	}
@@ -242,4 +257,107 @@ func (s *Server) invalidateSparkline(projectID int64) {
 	s.sparkMu.Lock()
 	delete(s.sparkCache, projectID)
 	s.sparkMu.Unlock()
+}
+
+// recordAdminProjectAccess writes a project.admin_access audit entry at most
+// once per session per project when an instance admin accesses a project they
+// are not an explicit member of (SPEC 6.5, FR-105).
+func (s *Server) recordAdminProjectAccess(ctx context.Context, principal Principal, proj store.Project) {
+	if s.store == nil || !principal.IsAdmin {
+		return
+	}
+	sessKey := principal.SessionID
+	if sessKey == "" {
+		sessKey = "user:" + strconv.FormatInt(principal.UserID, 10)
+	}
+	key := adminAccessKey{sessionID: sessKey, projectID: proj.ID}
+
+	s.adminAccessMu.Lock()
+	if _, seen := s.adminAccessSeen[key]; seen {
+		s.adminAccessMu.Unlock()
+		return
+	}
+	if len(s.adminAccessSeen) >= maxAdminAccessEntries {
+		clear(s.adminAccessSeen)
+	}
+	s.adminAccessSeen[key] = struct{}{}
+	s.adminAccessMu.Unlock()
+
+	actorType, actorUserID, actorLabel := auditActorForPrincipal(principal)
+	targetType := "project"
+	targetID := strconv.FormatInt(proj.ID, 10)
+	var ipPtr *string
+	if ip := ClientIPFromContext(ctx); ip != "" {
+		ipPtr = &ip
+	}
+	if _, err := s.store.InsertAudit(ctx, store.InsertAuditParams{
+		At:          s.clk.Now().UTC(),
+		ActorType:   actorType,
+		ActorUserID: actorUserID,
+		ActorLabel:  actorLabel,
+		ProjectID:   &proj.ID,
+		Action:      "project.admin_access",
+		TargetType:  &targetType,
+		TargetID:    &targetID,
+		IP:          ipPtr,
+		Metadata:    map[string]any{"slug": proj.Slug},
+	}); err != nil {
+		s.log.Warn("failed to write project.admin_access audit entry",
+			"request_id", RequestIDFromContext(ctx),
+			"project_id", proj.ID,
+			"error", err,
+		)
+	}
+}
+
+func (s *Server) clearAdminAccessForSession(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	s.adminAccessMu.Lock()
+	for k := range s.adminAccessSeen {
+		if k.sessionID == sessionID {
+			delete(s.adminAccessSeen, k)
+		}
+	}
+	s.adminAccessMu.Unlock()
+}
+
+func (s *Server) publishMembershipChanged(userID int64, projectSlug string) {
+	if s.bus == nil || userID == 0 {
+		return
+	}
+	s.bus.Publish(events.Event{
+		Type:   events.TypeMembershipChanged,
+		UserID: userID,
+		Payload: events.MembershipChangedPayload{
+			Project: projectSlug,
+		},
+	})
+}
+
+func auditActorForPrincipal(p Principal) (store.AuditActorType, *int64, *string) {
+	switch p.Kind {
+	case auth.PrincipalUser:
+		uid := p.UserID
+		var label *string
+		if p.Email != "" {
+			e := p.Email
+			label = &e
+		}
+		return store.AuditActorUser, &uid, label
+	case auth.PrincipalToken:
+		uid := p.UserID
+		var label *string
+		if p.Email != "" {
+			e := p.Email
+			label = &e
+		}
+		return store.AuditActorToken, &uid, label
+	case auth.PrincipalLocal:
+		l := "local"
+		return store.AuditActorLocal, nil, &l
+	default:
+		return store.AuditActorSystem, nil, nil
+	}
 }

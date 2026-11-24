@@ -67,6 +67,7 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}", Need: PermViewer, Handler: s.handleGetProject},
 		{Method: http.MethodPatch, Pattern: "/api/v1/projects/{project}", Need: PermOwner, Handler: s.handleUpdateProject},
 		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}", Need: PermOwner, Handler: s.handleDeleteProject},
+		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/leave", Need: PermLeave, ServerOnly: true, Handler: s.handleLeaveProject},
 
 		// Messages (SPEC 8.4)
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages", Need: PermViewer, Handler: s.handleListMessages},

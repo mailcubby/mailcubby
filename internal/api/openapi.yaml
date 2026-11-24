@@ -336,6 +336,24 @@ paths:
         "422":
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/projects/{project}/leave:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+    post:
+      operationId: leaveProject
+      summary: Leave the project (server mode; fails with 409 for last owner)
+      responses:
+        "204":
+          description: Membership removed
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/projects/{project}/messages:
     parameters:
       - $ref: "#/components/parameters/ProjectSlug"

@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -10,6 +11,11 @@ import (
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
 	"github.com/mailcubby/mailcubby/internal/store"
+)
+
+var (
+	errLastProjectOwner = errors.New("cannot remove or demote the last project owner")
+	errNotProjectMember = errors.New("caller is not an explicit member of this project")
 )
 
 const (
@@ -204,12 +210,51 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	proj, err := s.store.CreateProject(r.Context(), store.CreateProjectParams{
-		Slug:     slug,
-		Name:     name,
-		Color:    color,
-		Settings: store.DefaultProjectSettings(),
-		Now:      s.clk.Now().UTC(),
+	ctx := r.Context()
+	principal := PrincipalFromContext(ctx)
+	now := s.clk.Now().UTC()
+	actorType, actorUserID, actorLabel := auditActorForPrincipal(principal)
+	var ipPtr *string
+	if ip := ClientIPFromContext(ctx); ip != "" {
+		ipPtr = &ip
+	}
+
+	var proj store.Project
+	err := s.store.WithTx(ctx, func(tx *store.Tx) error {
+		created, err := tx.CreateProject(ctx, store.CreateProjectParams{
+			Slug:     slug,
+			Name:     name,
+			Color:    color,
+			Settings: store.DefaultProjectSettings(),
+			Now:      now,
+		})
+		if err != nil {
+			return err
+		}
+		if s.cfg.Mode == config.ModeServer && principal.Kind == auth.PrincipalUser {
+			// FR-031: creator becomes owner of the new project.
+			if _, err := tx.AddProjectMember(ctx, created.ID, principal.UserID, string(auth.RoleOwner), now); err != nil {
+				return err
+			}
+		}
+		targetType := "project"
+		targetID := strconv.FormatInt(created.ID, 10)
+		if _, err := tx.InsertAudit(ctx, store.InsertAuditParams{
+			At:          now,
+			ActorType:   actorType,
+			ActorUserID: actorUserID,
+			ActorLabel:  actorLabel,
+			ProjectID:   &created.ID,
+			Action:      "project.create",
+			TargetType:  &targetType,
+			TargetID:    &targetID,
+			IP:          ipPtr,
+			Metadata:    map[string]any{"slug": created.Slug, "name": created.Name},
+		}); err != nil {
+			return err
+		}
+		proj = created
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
@@ -217,7 +262,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.log.Error("create project failed",
-			"request_id", RequestIDFromContext(r.Context()),
+			"request_id", RequestIDFromContext(ctx),
 			"slug", slug,
 			"error", err,
 		)
@@ -225,6 +270,9 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.cfg.Mode == config.ModeServer && principal.Kind == auth.PrincipalUser {
+		s.publishMembershipChanged(principal.UserID, proj.Slug)
+	}
 	if s.bus != nil {
 		s.bus.Publish(events.Event{
 			Type:      events.TypeProjectCreated,
@@ -335,13 +383,46 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.store.UpdateProject(r.Context(), store.UpdateProjectParams{
-		ID:       pctx.Project.ID,
-		Slug:     nextSlug,
-		Name:     nextName,
-		Color:    nextColor,
-		Settings: nextSettings,
-		Now:      s.clk.Now().UTC(),
+	ctx := r.Context()
+	principal := PrincipalFromContext(ctx)
+	now := s.clk.Now().UTC()
+	actorType, actorUserID, actorLabel := auditActorForPrincipal(principal)
+	var ipPtr *string
+	if ip := ClientIPFromContext(ctx); ip != "" {
+		ipPtr = &ip
+	}
+
+	var updated store.Project
+	err := s.store.WithTx(ctx, func(tx *store.Tx) error {
+		u, err := tx.UpdateProject(ctx, store.UpdateProjectParams{
+			ID:       pctx.Project.ID,
+			Slug:     nextSlug,
+			Name:     nextName,
+			Color:    nextColor,
+			Settings: nextSettings,
+			Now:      now,
+		})
+		if err != nil {
+			return err
+		}
+		targetType := "project"
+		targetID := strconv.FormatInt(u.ID, 10)
+		if _, err := tx.InsertAudit(ctx, store.InsertAuditParams{
+			At:          now,
+			ActorType:   actorType,
+			ActorUserID: actorUserID,
+			ActorLabel:  actorLabel,
+			ProjectID:   &u.ID,
+			Action:      "project.update",
+			TargetType:  &targetType,
+			TargetID:    &targetID,
+			IP:          ipPtr,
+			Metadata:    map[string]any{"slug": u.Slug},
+		}); err != nil {
+			return err
+		}
+		updated = u
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
@@ -353,7 +434,7 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.log.Error("update project failed",
-			"request_id", RequestIDFromContext(r.Context()),
+			"request_id", RequestIDFromContext(ctx),
 			"project_id", pctx.Project.ID,
 			"error", err,
 		)
@@ -397,13 +478,42 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.DeleteProject(r.Context(), pctx.Project.ID); err != nil {
+	ctx := r.Context()
+	principal := PrincipalFromContext(ctx)
+	now := s.clk.Now().UTC()
+	actorType, actorUserID, actorLabel := auditActorForPrincipal(principal)
+	var ipPtr *string
+	if ip := ClientIPFromContext(ctx); ip != "" {
+		ipPtr = &ip
+	}
+
+	err := s.store.WithTx(ctx, func(tx *store.Tx) error {
+		if err := tx.DeleteProject(ctx, pctx.Project.ID); err != nil {
+			return err
+		}
+		targetType := "project"
+		targetID := strconv.FormatInt(pctx.Project.ID, 10)
+		_, err := tx.InsertAudit(ctx, store.InsertAuditParams{
+			At:          now,
+			ActorType:   actorType,
+			ActorUserID: actorUserID,
+			ActorLabel:  actorLabel,
+			ProjectID:   nil, // Project row already deleted; preserve ID/slug in target & metadata.
+			Action:      "project.delete",
+			TargetType:  &targetType,
+			TargetID:    &targetID,
+			IP:          ipPtr,
+			Metadata:    map[string]any{"slug": pctx.Project.Slug, "name": pctx.Project.Name},
+		})
+		return err
+	})
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, ErrCodeNotFound, "project not found", nil)
 			return
 		}
 		s.log.Error("delete project failed",
-			"request_id", RequestIDFromContext(r.Context()),
+			"request_id", RequestIDFromContext(ctx),
 			"project_id", pctx.Project.ID,
 			"error", err,
 		)
@@ -415,7 +525,7 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 	if s.blobs != nil {
 		if err := s.blobs.RemoveProject(pctx.Project.ID); err != nil {
 			s.log.Warn("best-effort project blob cleanup failed",
-				"request_id", RequestIDFromContext(r.Context()),
+				"request_id", RequestIDFromContext(ctx),
 				"project_id", pctx.Project.ID,
 				"error", err,
 			)
@@ -433,6 +543,80 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleLeaveProject(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	pctx, ok := ProjectFromContext(ctx)
+	if !ok {
+		writeError(w, http.StatusNotFound, ErrCodeNotFound, "project not found", nil)
+		return
+	}
+	principal := PrincipalFromContext(ctx)
+	now := s.clk.Now().UTC()
+	actorType, actorUserID, actorLabel := auditActorForPrincipal(principal)
+	var ipPtr *string
+	if ip := ClientIPFromContext(ctx); ip != "" {
+		ipPtr = &ip
+	}
+
+	err := s.store.WithTx(ctx, func(tx *store.Tx) error {
+		member, err := tx.GetProjectMember(ctx, pctx.Project.ID, principal.UserID)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return errNotProjectMember
+			}
+			return err
+		}
+		if member.Role == string(auth.RoleOwner) {
+			owners, err := tx.CountProjectOwners(ctx, pctx.Project.ID)
+			if err != nil {
+				return err
+			}
+			if owners <= 1 {
+				return errLastProjectOwner
+			}
+		}
+		if err := tx.DeleteProjectMember(ctx, pctx.Project.ID, principal.UserID); err != nil {
+			return err
+		}
+		targetType := "user"
+		targetID := strconv.FormatInt(principal.UserID, 10)
+		_, err = tx.InsertAudit(ctx, store.InsertAuditParams{
+			At:          now,
+			ActorType:   actorType,
+			ActorUserID: actorUserID,
+			ActorLabel:  actorLabel,
+			ProjectID:   &pctx.Project.ID,
+			Action:      "member.remove",
+			TargetType:  &targetType,
+			TargetID:    &targetID,
+			IP:          ipPtr,
+			Metadata:    map[string]any{"self": true, "role": member.Role},
+		})
+		return err
+	})
+	if err != nil {
+		if errors.Is(err, errNotProjectMember) {
+			writeError(w, http.StatusConflict, ErrCodeConflict, "you are not a member of this project", nil)
+			return
+		}
+		if errors.Is(err, errLastProjectOwner) {
+			writeError(w, http.StatusConflict, ErrCodeConflict, "cannot leave project as the last owner", nil)
+			return
+		}
+		s.log.Error("leave project failed",
+			"request_id", RequestIDFromContext(ctx),
+			"project_id", pctx.Project.ID,
+			"user_id", principal.UserID,
+			"error", err,
+		)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+
+	s.publishMembershipChanged(principal.UserID, pctx.Project.Slug)
 	w.WriteHeader(http.StatusNoContent)
 }
 
