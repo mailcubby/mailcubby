@@ -23,3 +23,7 @@ WHERE id = ?
 -- name: DeleteExpiredPasswordResets :execrows
 DELETE FROM password_resets
 WHERE expires_at <= ? OR used_at IS NOT NULL;
+
+-- name: DeletePasswordResetsForUser :execrows
+DELETE FROM password_resets
+WHERE user_id = ?;

@@ -257,3 +257,12 @@ func (s *Store) ListAllProjectOwners(ctx context.Context) (map[int64][]ProjectOw
 	}
 	return out, nil
 }
+
+// CountSoleOwnedProjectsForUser returns the number of projects where userID is the sole owner.
+func (t *Tx) CountSoleOwnedProjectsForUser(ctx context.Context, userID int64) (int64, error) {
+	n, err := t.q.CountSoleOwnedProjectsForUser(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("store: count sole-owned projects for user %d: %w", userID, mapError(err))
+	}
+	return n, nil
+}

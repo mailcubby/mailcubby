@@ -120,3 +120,12 @@ WHERE id = ?;
 -- isolation: global (daily housekeeping removes expired invites across the instance)
 DELETE FROM invites
 WHERE expires_at <= ?;
+
+-- name: RevokePendingInstanceInvitesForEmail :execrows
+-- isolation: global (revokes pending instance invites when an admin deletes a user)
+UPDATE invites
+SET revoked_at = ?
+WHERE project_id IS NULL
+  AND email = ? COLLATE NOCASE
+  AND accepted_at IS NULL
+  AND revoked_at IS NULL;

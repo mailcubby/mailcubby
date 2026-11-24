@@ -57,6 +57,28 @@ func (q *Queries) CountProjectOwners(ctx context.Context, projectID int64) (int6
 	return count, err
 }
 
+const countSoleOwnedProjectsForUser = `-- name: CountSoleOwnedProjectsForUser :one
+SELECT COUNT(*)
+FROM project_members pm
+WHERE pm.user_id = ?
+  AND pm.role = 'owner'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM project_members other
+    WHERE other.project_id = pm.project_id
+      AND other.role = 'owner'
+      AND other.user_id != pm.user_id
+  )
+`
+
+// isolation: global (prevents deleting a user who is the sole owner of any project)
+func (q *Queries) CountSoleOwnedProjectsForUser(ctx context.Context, userID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countSoleOwnedProjectsForUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteProjectMember = `-- name: DeleteProjectMember :execrows
 DELETE FROM project_members
 WHERE project_id = ? AND user_id = ?

@@ -317,6 +317,29 @@ func (q *Queries) ListProjectInvites(ctx context.Context, projectID sql.NullInt6
 	return items, nil
 }
 
+const revokePendingInstanceInvitesForEmail = `-- name: RevokePendingInstanceInvitesForEmail :execrows
+UPDATE invites
+SET revoked_at = ?
+WHERE project_id IS NULL
+  AND email = ? COLLATE NOCASE
+  AND accepted_at IS NULL
+  AND revoked_at IS NULL
+`
+
+type RevokePendingInstanceInvitesForEmailParams struct {
+	RevokedAt sql.NullInt64
+	Email     string
+}
+
+// isolation: global (revokes pending instance invites when an admin deletes a user)
+func (q *Queries) RevokePendingInstanceInvitesForEmail(ctx context.Context, arg RevokePendingInstanceInvitesForEmailParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, revokePendingInstanceInvitesForEmail, arg.RevokedAt, arg.Email)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const revokePendingProjectInvitesForEmail = `-- name: RevokePendingProjectInvitesForEmail :execrows
 UPDATE invites
 SET revoked_at = ?

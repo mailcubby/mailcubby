@@ -16,7 +16,10 @@ import (
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
-var errLastAdmin = errors.New("cannot remove, demote, or disable the last admin")
+var (
+	errLastAdmin        = errors.New("cannot remove, demote, or disable the last admin")
+	errSoleProjectOwner = errors.New("cannot delete a user who is the sole owner of a project")
+)
 
 type adminUserResponse struct {
 	ID                int64      `json:"id"`
@@ -263,6 +266,7 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	var (
 		updated         store.AdminUser
 		notifySSEChange bool
+		closeUserSSE    bool
 	)
 	err = s.store.WithTx(ctx, func(tx *store.Tx) error {
 		existing, err := tx.GetUserByID(ctx, targetID)
@@ -296,9 +300,10 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Prevent demoting or disabling the last active admin (FR-100).
-		wasActiveAdmin := existing.IsAdmin && existing.DisabledAt == nil
-		willBeActiveAdmin := nextIsAdmin && nextDisabledAt == nil
+		// Prevent demoting or disabling the last active admin with a usable password (FR-100).
+		hasPassword := existing.PasswordHash != nil && *existing.PasswordHash != ""
+		wasActiveAdmin := existing.IsAdmin && existing.DisabledAt == nil && hasPassword
+		willBeActiveAdmin := nextIsAdmin && nextDisabledAt == nil && hasPassword
 		if wasActiveAdmin && !willBeActiveAdmin {
 			activeAdmins, err := tx.CountActiveAdmins(ctx)
 			if err != nil {
@@ -323,13 +328,18 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		targetType := "user"
 		targetIDStr := strconv.FormatInt(targetID, 10)
 		if disabling {
-			// FR-044: disabling a user deletes all their sessions and revokes their API tokens.
+			// FR-044: disabling a user deletes all their sessions, revokes their API tokens,
+			// and invalidates outstanding password-reset links.
 			if _, err := tx.DeleteAllSessionsForUser(ctx, targetID); err != nil {
 				return err
 			}
 			if _, err := tx.RevokeAllAPITokensForUser(ctx, targetID, now); err != nil {
 				return err
 			}
+			if _, err := tx.DeletePasswordResetsForUser(ctx, targetID); err != nil {
+				return err
+			}
+			closeUserSSE = true
 			if _, err := tx.InsertAudit(ctx, store.InsertAuditParams{
 				At:          now,
 				ActorType:   actorType,
@@ -401,6 +411,9 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if closeUserSSE {
+		s.sse.closeUser(targetID)
+	}
 	if notifySSEChange {
 		s.publishMembershipChanged(targetID, "")
 	}
@@ -429,7 +442,8 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 
-		// FR-100: deleting the last admin returns 409.
+		// FR-100: deleting the last active admin (with a usable password) returns 409.
+		hasPassword := existing.PasswordHash != nil && *existing.PasswordHash != ""
 		if existing.IsAdmin {
 			admins, err := tx.CountAdmins(ctx)
 			if err != nil {
@@ -438,7 +452,7 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 			if admins <= 1 {
 				return errLastAdmin
 			}
-			if existing.DisabledAt == nil {
+			if existing.DisabledAt == nil && hasPassword {
 				activeAdmins, err := tx.CountActiveAdmins(ctx)
 				if err != nil {
 					return err
@@ -449,6 +463,18 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// SPEC 6.5: a project must always keep at least one owner.
+		soleOwned, err := tx.CountSoleOwnedProjectsForUser(ctx, targetID)
+		if err != nil {
+			return err
+		}
+		if soleOwned > 0 {
+			return errSoleProjectOwner
+		}
+
+		if _, err := tx.RevokePendingInstanceInvitesForEmail(ctx, existing.Email, now); err != nil {
+			return err
+		}
 		if err := tx.DeleteUser(ctx, targetID); err != nil {
 			return err
 		}
@@ -477,11 +503,16 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, ErrCodeConflict, "cannot delete the last admin", nil)
 			return
 		}
+		if errors.Is(err, errSoleProjectOwner) {
+			writeError(w, http.StatusConflict, ErrCodeConflict, "cannot delete user who is the sole owner of a project", nil)
+			return
+		}
 		s.log.Error("admin delete user failed", "request_id", RequestIDFromContext(ctx), "target_user_id", targetID, "error", err)
 		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
 		return
 	}
 
+	s.sse.closeUser(targetID)
 	s.publishMembershipChanged(targetID, "")
 	w.WriteHeader(http.StatusNoContent)
 }

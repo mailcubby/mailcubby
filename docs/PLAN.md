@@ -362,7 +362,7 @@ Tasks:
 - [x] Test asserting header sets per route class (app, render, attachment, raw, SSE).
 - [x] Rate limits for API, invite and reset endpoints (SPEC 12.4).
 - [x] Audit log: all FR-105 actions written; owner project audit endpoint and UI; admin audit endpoint and UI with filters.
-- [ ] Log redaction test (no secrets in captured logs during the full integration suite).
+- [x] Log redaction test (no secrets in captured logs during the full integration suite).
 - [ ] `gosec` clean; `govulncheck` job added to CI (run via `go run golang.org/x/vuln/cmd/govulncheck@<pinned>` in CI only; pin the version in the workflow, it is not a Go module dependency).
 - [ ] Threat model section appended to `docs/ARCHITECTURE.md` (assets, actors, mitigations).
 

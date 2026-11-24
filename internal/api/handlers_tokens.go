@@ -296,6 +296,7 @@ func (s *Server) handleDeleteAPIToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.sse.closeToken(tokenID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -232,7 +232,18 @@ func TestAdminUsersAndProjectsEndpoints(t *testing.T) {
 		t.Fatalf("unexpected admin projects: %+v", adminProjs)
 	}
 
-	// 6. Deleting a non-admin user returns 204.
+	// 6. Deleting a user who is the sole owner of a project returns 409 (SPEC 6.5);
+	// once the project has another owner or is deleted, deleting the user returns 204.
+	rec = doReq(t, h, http.MethodDelete, alicePath, nil, adminCookie, csrfHeaders(adminCSRF))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("delete sole-owner alice status = %d, want 409", rec.Code)
+	}
+	rec = doReq(t, h, http.MethodDelete, "/api/v1/projects/alice-shop", map[string]any{
+		"confirm_slug": "alice-shop",
+	}, adminCookie, csrfHeaders(adminCSRF))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete alice-shop status = %d, want 204", rec.Code)
+	}
 	rec = doReq(t, h, http.MethodDelete, alicePath, nil, adminCookie, csrfHeaders(adminCSRF))
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("delete alice status = %d, want 204", rec.Code)

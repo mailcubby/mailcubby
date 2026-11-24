@@ -102,3 +102,17 @@ FROM project_members pm
 JOIN users u ON u.id = pm.user_id
 WHERE pm.role = 'owner'
 ORDER BY pm.project_id ASC, pm.created_at ASC, u.id ASC;
+
+-- name: CountSoleOwnedProjectsForUser :one
+-- isolation: global (prevents deleting a user who is the sole owner of any project)
+SELECT COUNT(*)
+FROM project_members pm
+WHERE pm.user_id = ?
+  AND pm.role = 'owner'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM project_members other
+    WHERE other.project_id = pm.project_id
+      AND other.role = 'owner'
+      AND other.user_id != pm.user_id
+  );

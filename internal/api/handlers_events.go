@@ -23,9 +23,12 @@ const (
 )
 
 type sseConn struct {
-	id      uint64
-	evictCh chan struct{}
-	evicted bool
+	id        uint64
+	userID    int64
+	sessionID string
+	tokenID   int64
+	evictCh   chan struct{}
+	evicted   bool
 }
 
 // sseTracker bounds concurrent SSE connections per principal (SPEC FR-092),
@@ -48,12 +51,15 @@ func newSSETracker(maxPerUser int) *sseTracker {
 	}
 }
 
-func (t *sseTracker) register(key string) (<-chan struct{}, func()) {
+func (t *sseTracker) register(key string, userID int64, sessionID string, tokenID int64) (<-chan struct{}, func()) {
 	t.mu.Lock()
 	t.nextID++
 	conn := &sseConn{
-		id:      t.nextID,
-		evictCh: make(chan struct{}),
+		id:        t.nextID,
+		userID:    userID,
+		sessionID: sessionID,
+		tokenID:   tokenID,
+		evictCh:   make(chan struct{}),
 	}
 	list := t.conns[key]
 	for len(list) >= t.maxPerUser {
@@ -88,6 +94,58 @@ func (t *sseTracker) register(key string) (<-chan struct{}, func()) {
 		})
 	}
 	return conn.evictCh, unregister
+}
+
+func (t *sseTracker) closeMatching(match func(*sseConn) bool) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, list := range t.conns {
+		for _, c := range list {
+			if match(c) && !c.evicted {
+				c.evicted = true
+				close(c.evictCh)
+			}
+		}
+	}
+}
+
+func (t *sseTracker) closeSession(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	t.closeMatching(func(c *sseConn) bool {
+		return c.sessionID == sessionID
+	})
+}
+
+func (t *sseTracker) closeOtherSessions(userID int64, keepSessionID string) {
+	if userID == 0 {
+		return
+	}
+	t.closeMatching(func(c *sseConn) bool {
+		return c.userID == userID && c.sessionID != "" && c.sessionID != keepSessionID
+	})
+}
+
+func (t *sseTracker) closeUser(userID int64) {
+	if userID == 0 {
+		return
+	}
+	t.closeMatching(func(c *sseConn) bool {
+		return c.userID == userID
+	})
+}
+
+func (t *sseTracker) closeToken(tokenID int64) {
+	if tokenID == 0 {
+		return
+	}
+	t.closeMatching(func(c *sseConn) bool {
+		return c.tokenID == tokenID
+	})
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +259,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if principal.Kind == PrincipalToken && principal.TokenID > 0 {
 		connKey = fmt.Sprintf("token:%d", principal.TokenID)
 	}
-	evictCh, unregister := s.sse.register(connKey)
+	evictCh, unregister := s.sse.register(connKey, principal.UserID, principal.SessionID, principal.TokenID)
 	defer unregister()
 
 	rc := http.NewResponseController(w)

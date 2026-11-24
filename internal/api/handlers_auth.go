@@ -406,6 +406,7 @@ func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.clearAdminAccessForSession(principal.SessionID)
+	s.sse.closeSession(principal.SessionID)
 	http.SetCookie(w, auth.ClearSessionCookie(s.cfg.BaseURL))
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -508,6 +509,10 @@ func (s *Server) handleUpdateAuthMe(w http.ResponseWriter, r *http.Request) {
 			if _, err := tx.DeleteOtherSessionsForUser(ctx, user.ID, principal.SessionID); err != nil {
 				return err
 			}
+			// Invalidate any outstanding password-reset links after password change.
+			if _, err := tx.DeletePasswordResetsForUser(ctx, user.ID); err != nil {
+				return err
+			}
 			targetType := "user"
 			targetID := strconv.FormatInt(user.ID, 10)
 			if _, err := tx.InsertAudit(ctx, store.InsertAuditParams{
@@ -531,6 +536,9 @@ func (s *Server) handleUpdateAuthMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if changingPassword {
+		s.sse.closeOtherSessions(user.ID, principal.SessionID)
+	}
 	writeJSON(w, http.StatusOK, buildAuthUser(updated))
 }
 
@@ -583,6 +591,7 @@ func (s *Server) handleDeleteAuthSession(w http.ResponseWriter, r *http.Request)
 	}
 
 	s.clearAdminAccessForSession(targetID)
+	s.sse.closeSession(targetID)
 	if targetID == principal.SessionID {
 		http.SetCookie(w, auth.ClearSessionCookie(s.cfg.BaseURL))
 	}
@@ -667,8 +676,12 @@ func (s *Server) handlePasswordReset(w http.ResponseWriter, r *http.Request) {
 		if err := tx.UpdateUserPassword(ctx, user.ID, newHash, now); err != nil {
 			return err
 		}
-		// FR-046: resetting password deletes all of the user's sessions.
+		// FR-046: resetting password deletes all of the user's sessions and
+		// invalidates any other outstanding password-reset tokens.
 		if _, err := tx.DeleteAllSessionsForUser(ctx, user.ID); err != nil {
+			return err
+		}
+		if _, err := tx.DeletePasswordResetsForUser(ctx, user.ID); err != nil {
 			return err
 		}
 		targetType := "user"
@@ -696,6 +709,7 @@ func (s *Server) handlePasswordReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.sse.closeUser(user.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

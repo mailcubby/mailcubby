@@ -13,7 +13,7 @@ import (
 const countActiveAdmins = `-- name: CountActiveAdmins :one
 SELECT COUNT(*)
 FROM users
-WHERE is_admin = 1 AND disabled_at IS NULL
+WHERE is_admin = 1 AND disabled_at IS NULL AND password_hash IS NOT NULL AND password_hash != ''
 `
 
 func (q *Queries) CountActiveAdmins(ctx context.Context) (int64, error) {

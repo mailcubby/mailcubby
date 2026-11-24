@@ -112,7 +112,7 @@ WHERE is_admin = 1;
 -- name: CountActiveAdmins :one
 SELECT COUNT(*)
 FROM users
-WHERE is_admin = 1 AND disabled_at IS NULL;
+WHERE is_admin = 1 AND disabled_at IS NULL AND password_hash IS NOT NULL AND password_hash != '';
 
 -- name: RevokeAllAPITokensForUser :execrows
 UPDATE api_tokens

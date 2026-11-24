@@ -87,6 +87,15 @@ func (t *Tx) ConsumePasswordReset(ctx context.Context, id int64, now time.Time) 
 	return affected > 0, nil
 }
 
+// DeletePasswordResetsForUser removes all password reset tokens belonging to userID.
+func (t *Tx) DeletePasswordResetsForUser(ctx context.Context, userID int64) (int64, error) {
+	n, err := t.q.DeletePasswordResetsForUser(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("store: delete password resets for user %d: %w", userID, mapError(err))
+	}
+	return n, nil
+}
+
 func passwordResetFromRow(r sqlc.PasswordReset) PasswordReset {
 	return PasswordReset{
 		ID:        r.ID,

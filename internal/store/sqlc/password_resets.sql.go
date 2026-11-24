@@ -85,6 +85,19 @@ func (q *Queries) DeleteExpiredPasswordResets(ctx context.Context, expiresAt int
 	return result.RowsAffected()
 }
 
+const deletePasswordResetsForUser = `-- name: DeletePasswordResetsForUser :execrows
+DELETE FROM password_resets
+WHERE user_id = ?
+`
+
+func (q *Queries) DeletePasswordResetsForUser(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deletePasswordResetsForUser, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getPasswordResetByTokenHash = `-- name: GetPasswordResetByTokenHash :one
 SELECT id, user_id, token_hash, created_by, created_at, expires_at, used_at
 FROM password_resets

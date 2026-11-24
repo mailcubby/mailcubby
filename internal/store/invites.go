@@ -251,6 +251,18 @@ func (t *Tx) SetInviteAcceptedBy(ctx context.Context, inviteID, userID int64) er
 	return nil
 }
 
+// RevokePendingInstanceInvitesForEmail revokes all pending instance invites for email.
+func (t *Tx) RevokePendingInstanceInvitesForEmail(ctx context.Context, email string, now time.Time) (int64, error) {
+	n, err := t.q.RevokePendingInstanceInvitesForEmail(ctx, sqlc.RevokePendingInstanceInvitesForEmailParams{
+		RevokedAt: sql.NullInt64{Int64: now.UTC().UnixMilli(), Valid: true},
+		Email:     email,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("store: revoke pending instance invites for %q: %w", email, mapError(err))
+	}
+	return n, nil
+}
+
 func inviteFromBaseRow(row sqlc.Invite) Invite {
 	return Invite{
 		ID:         row.ID,
