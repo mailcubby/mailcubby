@@ -521,6 +521,20 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Publish right after commit so open SSE streams stop matching this project ID
+	// as early as possible, and forget admin-access audit state keyed by the ID.
+	s.invalidateSparkline(pctx.Project.ID)
+	s.clearAdminAccessForProject(pctx.Project.ID)
+	if s.bus != nil {
+		s.bus.Publish(events.Event{
+			Type:      events.TypeProjectDeleted,
+			ProjectID: pctx.Project.ID,
+			Payload: events.ProjectDeletedPayload{
+				Project: pctx.Project.Slug,
+			},
+		})
+	}
+
 	// TODO(phase-10): delegate project blob directory removal to OrphanGC worker.
 	if s.blobs != nil {
 		if err := s.blobs.RemoveProject(pctx.Project.ID); err != nil {
@@ -530,17 +544,6 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 				"error", err,
 			)
 		}
-	}
-
-	s.invalidateSparkline(pctx.Project.ID)
-	if s.bus != nil {
-		s.bus.Publish(events.Event{
-			Type:      events.TypeProjectDeleted,
-			ProjectID: pctx.Project.ID,
-			Payload: events.ProjectDeletedPayload{
-				Project: pctx.Project.Slug,
-			},
-		})
 	}
 
 	w.WriteHeader(http.StatusNoContent)

@@ -336,6 +336,18 @@ func (s *Server) clearAdminAccessForSession(sessionID string) {
 	s.adminAccessMu.Unlock()
 }
 
+// clearAdminAccessForProject forgets every session's admin-access record for a
+// deleted project, so a later project reusing its ID is audited afresh.
+func (s *Server) clearAdminAccessForProject(projectID int64) {
+	s.adminAccessMu.Lock()
+	for k := range s.adminAccessSeen {
+		if k.projectID == projectID {
+			delete(s.adminAccessSeen, k)
+		}
+	}
+	s.adminAccessMu.Unlock()
+}
+
 func (s *Server) publishMembershipChanged(userID int64, projectSlug string) {
 	if s.bus == nil || userID == 0 {
 		return
