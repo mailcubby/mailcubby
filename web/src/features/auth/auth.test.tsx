@@ -44,6 +44,8 @@ describe("auth API helpers", () => {
     "https://evil.example",
     "javascript:alert(1)",
     "evil.example",
+    "/.//evil.example?x",
+    "/a/..//evil.example?x",
     "/p/../login",
     "/./setup?x=1",
   ])("rejects unsafe returnTo %j", (raw) => {

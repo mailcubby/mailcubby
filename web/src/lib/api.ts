@@ -212,7 +212,13 @@ export function sanitizeReturnTo(raw: string | undefined): string {
   if (resolved.pathname === "/login" || resolved.pathname === "/setup") {
     return "/";
   }
-  return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  // Dot segments can collapse into a leading "//" ("/.//evil" -> "//evil"),
+  // which would be protocol-relative once handed back to the browser.
+  const target = `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  if (target.startsWith("//") || target.includes("\\")) {
+    return "/";
+  }
+  return target;
 }
 
 export function handleUnauthorizedRedirect(error: unknown): boolean {
