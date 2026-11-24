@@ -18,6 +18,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/ingest"
 	"github.com/mailcubby/mailcubby/internal/ratelimit"
 	"github.com/mailcubby/mailcubby/internal/render"
+	"github.com/mailcubby/mailcubby/internal/secrets"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
@@ -65,6 +66,7 @@ type Server struct {
 	ingestor       *ingest.Ingestor
 	renderer       *render.Renderer
 	hasher         PasswordHasher
+	smtpCipher     *secrets.Cipher
 	clk            clock.Clock
 	log            *slog.Logger
 	version        string
@@ -133,6 +135,16 @@ func New(cfg config.Config, st *store.Store, blobs *blob.Store, bus *events.Bus,
 		hasher = auth.NewHasher()
 	}
 
+	var smtpCipher *secrets.Cipher
+	if len(cfg.AppKey) == secrets.KeySize {
+		c, err := secrets.NewSMTPCredentialCipher(cfg.AppKey)
+		if err != nil {
+			log.Error("failed to initialize smtp credential cipher", "error", err)
+		} else {
+			smtpCipher = c
+		}
+	}
+
 	loginLimit := cfg.LoginRateLimit.Count
 	loginWindow := cfg.LoginRateLimit.Window
 
@@ -144,6 +156,7 @@ func New(cfg config.Config, st *store.Store, blobs *blob.Store, bus *events.Bus,
 		ingestor:        ing,
 		renderer:        rend,
 		hasher:          hasher,
+		smtpCipher:      smtpCipher,
 		clk:             clk,
 		log:             log,
 		version:         ver,

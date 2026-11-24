@@ -40,6 +40,8 @@ type routeAuthzSpec struct {
 	expected map[authzRole]int
 	// viewerTechOff overrides expected[roleViewer] when viewer_hide_technical=false.
 	viewerTechOff int
+	// memberRevealOn overrides expected[roleMember] when members_can_reveal_smtp=true.
+	memberRevealOn int
 	// makeReq builds a request (path + optional JSON body) for testing this route
 	// with the given principal. Fresh disposable resources are created when the
 	// principal is expected to succeed on a mutating/destructive route.
@@ -73,9 +75,10 @@ func TestAuthorizationMatrix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
-	// Second project with viewer_hide_technical=false to test PermViewerTech unlock.
+	// Second project with viewer_hide_technical=false and members_can_reveal_smtp=true to test dynamic setting unlocks.
 	techOffSettings := store.DefaultProjectSettings()
 	techOffSettings.ViewerHideTechnical = false
+	techOffSettings.MembersCanRevealSMTP = true
 	projTechOff, err := env.store.CreateProject(t.Context(), store.CreateProjectParams{
 		Slug:     "matrix-tech-off",
 		Name:     "Matrix Tech Off",
@@ -148,6 +151,29 @@ func TestAuthorizationMatrix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTag: %v", err)
 	}
+
+	createSeedCred := func(slug, label string) int64 {
+		t.Helper()
+		oc := credsByRole[roleOwner]
+		rec := doReq(t, h, http.MethodPost, "/api/v1/projects/"+slug+"/smtp-credentials", map[string]any{
+			"label": label,
+		}, oc.cookie, csrfHeaders(oc.csrf))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("seed smtp credential(%s) status = %d, want 201; body=%s", slug, rec.Code, rec.Body.String())
+		}
+		var out struct {
+			Credential struct {
+				ID int64 `json:"id"`
+			} `json:"credential"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("unmarshal seed credential: %v", err)
+		}
+		return out.Credential.ID
+	}
+
+	seedCredID := createSeedCred(proj.Slug, "seed-cred")
+	seedCredRevealID := createSeedCred(projTechOff.Slug, "seed-cred-reveal")
 
 	seq := 0
 	nextSeq := func() int {
@@ -507,6 +533,43 @@ func TestAuthorizationMatrix(t *testing.T) {
 			},
 		},
 
+		// SMTP Credentials
+		"GET /api/v1/projects/{project}/smtp-credentials": {
+			expected: memberOK,
+			makeReq:  constPath("/api/v1/projects/"+proj.Slug+"/smtp-credentials", nil),
+		},
+		"POST /api/v1/projects/{project}/smtp-credentials": {
+			expected: owner201,
+			makeReq: func(*testing.T, authzRole, roleCreds) (string, any, *http.Cookie, string) {
+				return "/api/v1/projects/" + proj.Slug + "/smtp-credentials", map[string]any{
+					"label": "cred-" + strconv.Itoa(nextSeq()),
+				}, nil, ""
+			},
+		},
+		"POST /api/v1/projects/{project}/smtp-credentials/{id}/reveal": {
+			expected:       ownerOK,
+			memberRevealOn: 200,
+			makeReq:        constPath("/api/v1/projects/"+proj.Slug+"/smtp-credentials/"+strconv.FormatInt(seedCredID, 10)+"/reveal", nil),
+		},
+		"POST /api/v1/projects/{project}/smtp-credentials/{id}/rotate": {
+			expected: ownerOK,
+			makeReq:  constPath("/api/v1/projects/"+proj.Slug+"/smtp-credentials/"+strconv.FormatInt(seedCredID, 10)+"/rotate", nil),
+		},
+		"PATCH /api/v1/projects/{project}/smtp-credentials/{id}": {
+			expected: ownerOK,
+			makeReq:  constPath("/api/v1/projects/"+proj.Slug+"/smtp-credentials/"+strconv.FormatInt(seedCredID, 10), map[string]any{"label": "seed-cred"}),
+		},
+		"DELETE /api/v1/projects/{project}/smtp-credentials/{id}": {
+			expected: owner204,
+			makeReq: func(t *testing.T, role authzRole, _ roleCreds) (string, any, *http.Cookie, string) {
+				if role == roleOwner || role == roleAdmin {
+					id := createSeedCred(proj.Slug, "del-cred-"+strconv.Itoa(nextSeq()))
+					return "/api/v1/projects/" + proj.Slug + "/smtp-credentials/" + strconv.FormatInt(id, 10), nil, nil, ""
+				}
+				return "/api/v1/projects/" + proj.Slug + "/smtp-credentials/" + strconv.FormatInt(seedCredID, 10), nil, nil, ""
+			},
+		},
+
 		// Admin
 		"GET /api/v1/admin/users": {expected: adminOK, makeReq: constPath("/api/v1/admin/users", nil)},
 		"POST /api/v1/admin/users": {
@@ -625,6 +688,17 @@ func TestAuthorizationMatrix(t *testing.T) {
 			rec := doReq(t, h, rt.Method, techOffPath, nil, credsByRole[roleViewer].cookie, nil)
 			if rec.Code != spec.viewerTechOff {
 				t.Errorf("%s [viewer, hide_tech=false]: status = %d, want %d; body=%s", key, rec.Code, spec.viewerTechOff, rec.Body.String())
+			}
+		}
+
+		// 3b. Also verify member with members_can_reveal_smtp=true for credential reveal.
+		if spec.memberRevealOn != 0 {
+			revealPath := strings.ReplaceAll(rt.Pattern, "{project}", projTechOff.Slug)
+			revealPath = strings.ReplaceAll(revealPath, "{id}", strconv.FormatInt(seedCredRevealID, 10))
+			mc := credsByRole[roleMember]
+			rec := doReq(t, h, rt.Method, revealPath, nil, mc.cookie, csrfHeaders(mc.csrf))
+			if rec.Code != spec.memberRevealOn {
+				t.Errorf("%s [member, members_can_reveal_smtp=true]: status = %d, want %d; body=%s", key, rec.Code, spec.memberRevealOn, rec.Body.String())
 			}
 		}
 	}

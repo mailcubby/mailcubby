@@ -613,6 +613,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/smtp-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        /** List project SMTP credentials and public connection info (server mode) */
+        get: operations["listSMTPCredentials"];
+        put?: never;
+        /** Create a new SMTP credential and return its password (server mode) */
+        post: operations["createSMTPCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/smtp-credentials/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete an SMTP credential (server mode) */
+        delete: operations["deleteSMTPCredential"];
+        options?: never;
+        head?: never;
+        /** Update an SMTP credential's label or disabled status (server mode) */
+        patch: operations["updateSMTPCredential"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/smtp-credentials/{id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reveal the decrypted password of an SMTP credential (audited, server mode) */
+        post: operations["revealSMTPCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/smtp-credentials/{id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate an SMTP credential's password (username unchanged, server mode) */
+        post: operations["rotateSMTPCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -760,12 +841,42 @@ export interface components {
                 recipient_routing: boolean;
             };
             inbox_domain: string;
-            smtp: {
-                host: string;
-                port: number;
-                /** @enum {string} */
-                tls_mode: "starttls" | "tls" | "none";
-            };
+            smtp: components["schemas"]["SMTPConnectionInfo"];
+        };
+        SMTPConnectionInfo: {
+            host: string;
+            port: number;
+            /** @enum {string} */
+            tls_mode: "starttls" | "tls" | "none";
+        };
+        SMTPCredential: {
+            /** Format: int64 */
+            id: number;
+            label: string;
+            username: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+            disabled: boolean;
+        };
+        SMTPCredentialListResponse: {
+            connection: components["schemas"]["SMTPConnectionInfo"];
+            items: components["schemas"]["SMTPCredential"][];
+        };
+        CreateSMTPCredentialRequest: {
+            label: string;
+        };
+        CreateSMTPCredentialResponse: {
+            credential: components["schemas"]["SMTPCredential"];
+            password: string;
+        };
+        RevealSMTPCredentialResponse: {
+            password: string;
+        };
+        UpdateSMTPCredentialRequest: {
+            label?: string;
+            disabled?: boolean;
         };
         AuthUser: {
             /** Format: int64 */
@@ -1656,7 +1767,7 @@ export interface operations {
                 query?: string;
                 /** @description Tag name filter (case-insensitive) */
                 tag?: string;
-                /** @description SMTP credential ID filter (implemented in Phase 8) */
+                /** @description Filter messages received via the given SMTP credential ID */
                 credential?: number;
                 /** @description Opaque pagination cursor from next_cursor */
                 cursor?: string;
@@ -2268,6 +2379,174 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    listSMTPCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SMTP connection info and credentials list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SMTPCredentialListResponse"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    createSMTPCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSMTPCredentialRequest"];
+            };
+        };
+        responses: {
+            /** @description SMTP credential created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateSMTPCredentialResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteSMTPCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SMTP credential deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    updateSMTPCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSMTPCredentialRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated SMTP credential */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SMTPCredential"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            422: components["responses"]["ErrorResponse"];
+        };
+    };
+    revealSMTPCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Decrypted SMTP password */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevealSMTPCredentialResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    rotateSMTPCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rotated SMTP credential and new password */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateSMTPCredentialResponse"];
+                };
             };
             400: components["responses"]["ErrorResponse"];
             401: components["responses"]["ErrorResponse"];

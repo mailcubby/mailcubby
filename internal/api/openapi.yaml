@@ -438,10 +438,11 @@ paths:
         - name: credential
           in: query
           required: false
-          description: SMTP credential ID filter (implemented in Phase 8)
+          description: Filter messages received via the given SMTP credential ID
           schema:
             type: integer
             format: int64
+            minimum: 1
         - name: cursor
           in: query
           required: false
@@ -958,6 +959,160 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "404":
           $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/smtp-credentials:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+    get:
+      operationId: listSMTPCredentials
+      summary: List project SMTP credentials and public connection info (server mode)
+      responses:
+        "200":
+          description: SMTP connection info and credentials list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SMTPCredentialListResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      operationId: createSMTPCredential
+      summary: Create a new SMTP credential and return its password (server mode)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSMTPCredentialRequest"
+      responses:
+        "201":
+          description: SMTP credential created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSMTPCredentialResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/smtp-credentials/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    patch:
+      operationId: updateSMTPCredential
+      summary: Update an SMTP credential's label or disabled status (server mode)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSMTPCredentialRequest"
+      responses:
+        "200":
+          description: Updated SMTP credential
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SMTPCredential"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ErrorResponse"
+    delete:
+      operationId: deleteSMTPCredential
+      summary: Delete an SMTP credential (server mode)
+      responses:
+        "204":
+          description: SMTP credential deleted
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/smtp-credentials/{id}/reveal:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    post:
+      operationId: revealSMTPCredential
+      summary: Reveal the decrypted password of an SMTP credential (audited, server mode)
+      responses:
+        "200":
+          description: Decrypted SMTP password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevealSMTPCredentialResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/smtp-credentials/{id}/rotate:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    post:
+      operationId: rotateSMTPCredential
+      summary: Rotate an SMTP credential's password (username unchanged, server mode)
+      responses:
+        "200":
+          description: Rotated SMTP credential and new password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSMTPCredentialResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
         "409":
           $ref: "#/components/responses/ErrorResponse"
 
@@ -1298,16 +1453,85 @@ components:
         inbox_domain:
           type: string
         smtp:
-          type: object
-          required: [host, port, tls_mode]
-          properties:
-            host:
-              type: string
-            port:
-              type: integer
-            tls_mode:
-              type: string
-              enum: [starttls, tls, none]
+          $ref: "#/components/schemas/SMTPConnectionInfo"
+
+    SMTPConnectionInfo:
+      type: object
+      required: [host, port, tls_mode]
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        tls_mode:
+          type: string
+          enum: [starttls, tls, none]
+
+    SMTPCredential:
+      type: object
+      required: [id, label, username, created_at, last_used_at, disabled]
+      properties:
+        id:
+          type: integer
+          format: int64
+        label:
+          type: string
+        username:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: ["string", "null"]
+          format: date-time
+        disabled:
+          type: boolean
+
+    SMTPCredentialListResponse:
+      type: object
+      required: [connection, items]
+      properties:
+        connection:
+          $ref: "#/components/schemas/SMTPConnectionInfo"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SMTPCredential"
+
+    CreateSMTPCredentialRequest:
+      type: object
+      required: [label]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+
+    CreateSMTPCredentialResponse:
+      type: object
+      required: [credential, password]
+      properties:
+        credential:
+          $ref: "#/components/schemas/SMTPCredential"
+        password:
+          type: string
+
+    RevealSMTPCredentialResponse:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+
+    UpdateSMTPCredentialRequest:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+        disabled:
+          type: boolean
 
     AuthUser:
       type: object

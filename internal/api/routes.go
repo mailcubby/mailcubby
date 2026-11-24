@@ -28,6 +28,12 @@ const (
 	PermMember Permission = "member"
 	// PermListMembers requires member role or higher to list project members (non-token).
 	PermListMembers Permission = "list_members"
+	// PermReadSMTP requires member role or higher to view SMTP credentials and connection info (non-token).
+	PermReadSMTP Permission = "read_smtp"
+	// PermRevealSMTP requires owner role or member when members_can_reveal_smtp is enabled (non-token).
+	PermRevealSMTP Permission = "reveal_smtp"
+	// PermManageSMTP requires owner role or admin to create/rotate/update/delete SMTP credentials (non-token).
+	PermManageSMTP Permission = "manage_smtp"
 	// PermOwner requires owner role or admin on the resolved project.
 	PermOwner Permission = "owner"
 	// PermLeave requires a session user with project access to leave the project (FR-051).
@@ -99,6 +105,14 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/invites", Need: PermOwner, ServerOnly: true, Handler: s.handleListProjectInvites},
 		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/invites", Need: PermOwner, ServerOnly: true, Handler: s.handleCreateProjectInvite},
 		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}/invites/{id}", Need: PermOwner, ServerOnly: true, Handler: s.handleRevokeProjectInvite},
+
+		// SMTP Credentials (SPEC 8.6)
+		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/smtp-credentials", Need: PermReadSMTP, ServerOnly: true, Handler: s.handleListSMTPCredentials},
+		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/smtp-credentials", Need: PermManageSMTP, ServerOnly: true, Handler: s.handleCreateSMTPCredential},
+		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/smtp-credentials/{id}/reveal", Need: PermRevealSMTP, ServerOnly: true, Handler: s.handleRevealSMTPCredential},
+		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/smtp-credentials/{id}/rotate", Need: PermManageSMTP, ServerOnly: true, Handler: s.handleRotateSMTPCredential},
+		{Method: http.MethodPatch, Pattern: "/api/v1/projects/{project}/smtp-credentials/{id}", Need: PermManageSMTP, ServerOnly: true, Handler: s.handleUpdateSMTPCredential},
+		{Method: http.MethodDelete, Pattern: "/api/v1/projects/{project}/smtp-credentials/{id}", Need: PermManageSMTP, ServerOnly: true, Handler: s.handleDeleteSMTPCredential},
 
 		// Admin (SPEC 8.8)
 		{Method: http.MethodGet, Pattern: "/api/v1/admin/users", Need: PermAdmin, ServerOnly: true, Handler: s.handleAdminListUsers},

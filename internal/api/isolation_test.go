@@ -61,7 +61,7 @@ func TestTwoTenantIsolation(t *testing.T) {
 	cookieA, csrfA := loginAndGetCSRF(t, h, userA.Email, pass)
 	cookieB, csrfB := loginAndGetCSRF(t, h, userB.Email, pass)
 
-	seedTenantResources := func(slug string, cookie *http.Cookie, csrf string, tagName, invEmail string) (msgID string, attID, tagID, invID int64) {
+	seedTenantResources := func(slug string, cookie *http.Cookie, csrf string, tagName, invEmail, credLabel string) (msgID string, attID, tagID, invID, credID int64, credUsername string) {
 		t.Helper()
 		rec := doReq(t, h, http.MethodPost, "/api/v1/projects/"+slug+"/send-test", nil, cookie, csrfHeaders(csrf))
 		if rec.Code != http.StatusCreated {
@@ -108,11 +108,27 @@ func TestTwoTenantIsolation(t *testing.T) {
 		}
 		_ = json.Unmarshal(invRec.Body.Bytes(), &inv)
 		invID = inv.Invite.ID
+
+		credRec := doReq(t, h, http.MethodPost, "/api/v1/projects/"+slug+"/smtp-credentials", map[string]any{
+			"label": credLabel,
+		}, cookie, csrfHeaders(csrf))
+		if credRec.Code != http.StatusCreated {
+			t.Fatalf("create smtp credential(%s) status = %d, want 201", slug, credRec.Code)
+		}
+		var cred struct {
+			Credential struct {
+				ID       int64  `json:"id"`
+				Username string `json:"username"`
+			} `json:"credential"`
+		}
+		_ = json.Unmarshal(credRec.Body.Bytes(), &cred)
+		credID = cred.Credential.ID
+		credUsername = cred.Credential.Username
 		return
 	}
 
-	msgA, _, _, _ := seedTenantResources("tenant-a", cookieA, csrfA, "tag-alpha", "inva@tenant-a.test")
-	msgB, attB, tagB, invB := seedTenantResources("tenant-b", cookieB, csrfB, "tag-beta", "invb@tenant-b.test")
+	msgA, _, _, _, _, _ := seedTenantResources("tenant-a", cookieA, csrfA, "tag-alpha", "inva@tenant-a.test", "cred-alpha")
+	msgB, attB, tagB, invB, credB, credUserB := seedTenantResources("tenant-b", cookieB, csrfB, "tag-beta", "invb@tenant-b.test", "cred-beta")
 
 	// 1. Direct access by User A to Tenant B's slug must return 404 across all routes.
 	bRoutes := []struct {
@@ -147,6 +163,12 @@ func TestTwoTenantIsolation(t *testing.T) {
 		{http.MethodGet, "/api/v1/projects/tenant-b/invites", nil},
 		{http.MethodPost, "/api/v1/projects/tenant-b/invites", map[string]any{"email": "x@y.test", "role": "viewer"}},
 		{http.MethodDelete, "/api/v1/projects/tenant-b/invites/" + strconv.FormatInt(invB, 10), nil},
+		{http.MethodGet, "/api/v1/projects/tenant-b/smtp-credentials", nil},
+		{http.MethodPost, "/api/v1/projects/tenant-b/smtp-credentials", map[string]any{"label": "pwn"}},
+		{http.MethodPost, "/api/v1/projects/tenant-b/smtp-credentials/" + strconv.FormatInt(credB, 10) + "/reveal", nil},
+		{http.MethodPost, "/api/v1/projects/tenant-b/smtp-credentials/" + strconv.FormatInt(credB, 10) + "/rotate", nil},
+		{http.MethodPatch, "/api/v1/projects/tenant-b/smtp-credentials/" + strconv.FormatInt(credB, 10), map[string]any{"label": "pwn"}},
+		{http.MethodDelete, "/api/v1/projects/tenant-b/smtp-credentials/" + strconv.FormatInt(credB, 10), nil},
 		{http.MethodGet, "/api/v1/events?project=tenant-b", nil},
 		{http.MethodGet, "/render/tenant-b/" + msgB, nil},
 	}
@@ -183,6 +205,10 @@ func TestTwoTenantIsolation(t *testing.T) {
 		{http.MethodPatch, "/api/v1/projects/tenant-a/members/" + strconv.FormatInt(memberB.ID, 10), map[string]any{"role": "viewer"}},
 		{http.MethodDelete, "/api/v1/projects/tenant-a/members/" + strconv.FormatInt(memberB.ID, 10), nil},
 		{http.MethodDelete, "/api/v1/projects/tenant-a/invites/" + strconv.FormatInt(invB, 10), nil},
+		{http.MethodPost, "/api/v1/projects/tenant-a/smtp-credentials/" + strconv.FormatInt(credB, 10) + "/reveal", nil},
+		{http.MethodPost, "/api/v1/projects/tenant-a/smtp-credentials/" + strconv.FormatInt(credB, 10) + "/rotate", nil},
+		{http.MethodPatch, "/api/v1/projects/tenant-a/smtp-credentials/" + strconv.FormatInt(credB, 10), map[string]any{"label": "stolen"}},
+		{http.MethodDelete, "/api/v1/projects/tenant-a/smtp-credentials/" + strconv.FormatInt(credB, 10), nil},
 	}
 
 	for _, tc := range subRoutes {
@@ -215,8 +241,9 @@ func TestTwoTenantIsolation(t *testing.T) {
 		"/api/v1/projects/tenant-a/tags",
 		"/api/v1/projects/tenant-a/members",
 		"/api/v1/projects/tenant-a/invites",
+		"/api/v1/projects/tenant-a/smtp-credentials",
 	}
-	forbiddenTokens := []string{"tenant-b", msgB, "tag-beta", "ownerb@tenant-b.test", "memberb@tenant-b.test", "invb@tenant-b.test"}
+	forbiddenTokens := []string{"tenant-b", msgB, "tag-beta", "ownerb@tenant-b.test", "memberb@tenant-b.test", "invb@tenant-b.test", "cred-beta", credUserB}
 	for _, p := range listEndpoints {
 		rec := doReq(t, h, http.MethodGet, p, nil, cookieA, nil)
 		if rec.Code != http.StatusOK {
