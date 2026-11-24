@@ -82,6 +82,10 @@ export type BulkMessagesRequest = components["schemas"]["BulkMessagesRequest"];
 export type TagSummary = components["schemas"]["TagSummary"];
 export type CreateTagRequest = components["schemas"]["CreateTagRequest"];
 export type UpdateTagRequest = components["schemas"]["UpdateTagRequest"];
+export type APITokenScope = components["schemas"]["APITokenScope"];
+export type APITokenInfo = components["schemas"]["APITokenInfo"];
+export type CreateAPITokenRequest = components["schemas"]["CreateAPITokenRequest"];
+export type CreateAPITokenResponse = components["schemas"]["CreateAPITokenResponse"];
 export type ErrorEnvelope = components["schemas"]["ErrorEnvelope"];
 
 export class ApiError extends Error {

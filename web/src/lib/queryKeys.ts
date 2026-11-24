@@ -12,6 +12,7 @@ export const queryKeys = {
   meta: () => ["meta"] as const,
   authMe: () => ["auth", "me"] as const,
   authSessions: () => ["auth", "sessions"] as const,
+  apiTokens: () => ["tokens"] as const,
   projects: () => ["projects"] as const,
   project: (slug: string) => ["projects", slug] as const,
   projectMembers: (slug: string) => ["projects", slug, "members"] as const,

@@ -31,6 +31,14 @@ export function authSessionsQueryOptions() {
   });
 }
 
+export function apiTokensQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.apiTokens(),
+    queryFn: async () => unwrap(await api.GET("/api/v1/tokens")),
+    staleTime: 10_000,
+  });
+}
+
 export function projectsQueryOptions() {
   return queryOptions({
     queryKey: queryKeys.projects(),

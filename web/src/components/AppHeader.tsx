@@ -5,6 +5,7 @@ import {
   Eye,
   Inbox,
   Keyboard,
+  KeyRound,
   LogOut,
   Monitor,
   Moon,
@@ -162,6 +163,16 @@ function AccountMenu() {
             >
               <Shield className="size-3.5 text-muted-foreground" aria-hidden="true" />
               <span>Security &amp; sessions</span>
+            </Link>
+            <Link
+              to="/account/tokens"
+              search={{}}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs text-foreground hover:bg-muted"
+            >
+              <KeyRound className="size-3.5 text-muted-foreground" aria-hidden="true" />
+              <span>API tokens</span>
             </Link>
             <Link
               to="/account/preferences"

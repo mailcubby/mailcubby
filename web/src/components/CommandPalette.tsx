@@ -494,6 +494,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               },
             },
             {
+              id: "action:account-tokens",
+              group: "Actions",
+              label: "Account API tokens",
+              keywords: "account api tokens bearer automation ci",
+              icon: "security",
+              onSelect: () => {
+                void navigate({ to: "/account/tokens", search: {} });
+              },
+            },
+            {
               id: "action:sign-out",
               group: "Actions",
               label: "Sign out",

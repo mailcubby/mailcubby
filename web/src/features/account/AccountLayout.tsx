@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, Shield, SlidersHorizontal, User } from "lucide-react";
+import { ArrowLeft, KeyRound, Shield, SlidersHorizontal, User } from "lucide-react";
 import type { ReactNode } from "react";
 import { metaQueryOptions } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-export type AccountSection = "profile" | "security" | "preferences";
+export type AccountSection = "profile" | "security" | "tokens" | "preferences";
 
 export interface AccountLayoutProps {
   section: AccountSection;
@@ -21,12 +21,13 @@ export function AccountLayout({ section, title, description, children }: Account
   const navItems: ReadonlyArray<{
     id: AccountSection;
     label: string;
-    to: "/account/profile" | "/account/security" | "/account/preferences";
+    to: "/account/profile" | "/account/security" | "/account/tokens" | "/account/preferences";
     Icon: typeof User;
   }> = isServer
     ? [
         { id: "profile", label: "Profile", to: "/account/profile", Icon: User },
         { id: "security", label: "Security", to: "/account/security", Icon: Shield },
+        { id: "tokens", label: "API tokens", to: "/account/tokens", Icon: KeyRound },
         {
           id: "preferences",
           label: "Preferences",
