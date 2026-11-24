@@ -26,7 +26,8 @@ const (
 	// DefaultCacheSize is the default LRU entry capacity for rendered messages (ARCHITECTURE 3.11).
 	DefaultCacheSize = 32
 
-	headInjectHTML = `<meta name="referrer" content="no-referrer"><base target="_blank">`
+	maxRewriteDepth = 16
+	headInjectHTML  = `<meta name="referrer" content="no-referrer"><base target="_blank">`
 )
 
 // ErrNoHTML is returned when a message does not contain an HTML part (SPEC 12.1).
@@ -236,14 +237,54 @@ func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int)
 		return uri, true
 	}
 
+	out, remoteCount := rewriteHTMLPass(rawHTML, resolveCID, true, false, false, 0)
+	return Result{
+		HTML:                out,
+		RemoteResourceCount: remoteCount,
+	}
+}
+
+// isTokenizerRawTextTag reports whether golang.org/x/net/html switches into
+// raw-text mode for tag. Inside foreign content (<svg>, <math>), browsers stay
+// in normal HTML/foreign parsing mode rather than RAWTEXT, so elements like
+// <meta http-equiv="refresh"> inside <svg><style> can break out and execute.
+// Likewise, inside sandboxed iframes (scripts disabled), browsers parse
+// <noscript> children as normal HTML rather than raw text.
+func isTokenizerRawTextTag(tag string) bool {
+	switch tag {
+	case "iframe", "noembed", "noframes", "noscript", "plaintext", "script", "style", "textarea", "title", "xmp":
+		return true
+	default:
+		return false
+	}
+}
+
+func rewriteHTMLPass(
+	rawHTML string,
+	resolveCID func(string) (string, bool),
+	injectHead bool,
+	startInForeign bool,
+	rewriteTextAsCSS bool,
+	depth int,
+) ([]byte, int) {
 	var (
-		out         bytes.Buffer
-		injected    bool
-		inStyle     bool
-		inScript    bool
-		remoteCount int
+		out             bytes.Buffer
+		injected        = !injectHead
+		inStyle         bool
+		inScript        bool
+		inNoscript      bool
+		inForeignRawTag string
+		foreignDepth    int
+		remoteCount     int
 	)
-	out.Grow(len(rawHTML) + len(headInjectHTML) + 32)
+	if startInForeign {
+		foreignDepth = 1
+	}
+	extra := 0
+	if injectHead {
+		extra = len(headInjectHTML) + 32
+	}
+	out.Grow(len(rawHTML) + extra)
 
 	injectSyntheticHead := func() {
 		if injected {
@@ -269,11 +310,31 @@ func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int)
 			out.Write(raw)
 
 		case html.TextToken:
+			if inNoscript {
+				if depth < maxRewriteDepth {
+					subOut, subRemote := rewriteHTMLPass(string(raw), resolveCID, false, foreignDepth > 0, false, depth+1)
+					remoteCount += subRemote
+					out.Write(subOut)
+				} else {
+					out.WriteString(html.EscapeString(string(raw)))
+				}
+				continue
+			}
+			if inForeignRawTag != "" {
+				if depth < maxRewriteDepth {
+					subOut, subRemote := rewriteHTMLPass(string(raw), resolveCID, false, true, inForeignRawTag == "style", depth+1)
+					remoteCount += subRemote
+					out.Write(subOut)
+				} else {
+					out.WriteString(html.EscapeString(string(raw)))
+				}
+				continue
+			}
 			if inScript {
 				out.Write(raw)
 				continue
 			}
-			if inStyle {
+			if inStyle || rewriteTextAsCSS {
 				rewritten, n, _ := rewriteCSS(string(raw), resolveCID)
 				remoteCount += n
 				out.WriteString(rewritten)
@@ -294,6 +355,15 @@ func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int)
 				inStyle = false
 			case "script":
 				inScript = false
+			case "noscript":
+				inNoscript = false
+			case "svg", "math":
+				if foreignDepth > 0 {
+					foreignDepth--
+				}
+			}
+			if inForeignRawTag == tag {
+				inForeignRawTag = ""
 			}
 			out.Write(raw)
 
@@ -301,12 +371,12 @@ func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int)
 			tok := z.Token()
 			tag := strings.ToLower(tok.Data)
 
-			if tag == "html" {
+			if injectHead && tag == "html" {
 				out.Write(raw)
 				continue
 			}
 
-			if tag == "head" {
+			if injectHead && tag == "head" {
 				out.Write(raw)
 				if !injected && tt == html.StartTagToken {
 					out.WriteString(headInjectHTML)
@@ -325,10 +395,24 @@ func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int)
 
 			if tt == html.StartTagToken {
 				switch tag {
+				case "svg", "math":
+					foreignDepth++
+				case "noscript":
+					inNoscript = true
 				case "style":
 					inStyle = true
+					if foreignDepth > 0 {
+						inForeignRawTag = tag
+					}
 				case "script":
 					inScript = true
+					if foreignDepth > 0 {
+						inForeignRawTag = tag
+					}
+				default:
+					if foreignDepth > 0 && isTokenizerRawTextTag(tag) {
+						inForeignRawTag = tag
+					}
 				}
 			}
 
@@ -337,12 +421,21 @@ func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int)
 				key := strings.ToLower(tok.Attr[i].Key)
 				val := tok.Attr[i].Val
 				switch key {
-				case "src", "background":
+				case "src", "background", "poster":
 					if dataURI, ok := resolveCID(val); ok {
 						tok.Attr[i].Val = dataURI
 						modified = true
 					} else if isRemoteURL(val) {
 						remoteCount++
+					}
+				case "href", "xlink:href":
+					if tag == "image" || tag == "feimage" {
+						if dataURI, ok := resolveCID(val); ok {
+							tok.Attr[i].Val = dataURI
+							modified = true
+						} else if isRemoteURL(val) {
+							remoteCount++
+						}
 					}
 				case "srcset":
 					newVal, n, changed := rewriteSrcset(val, resolveCID)
@@ -356,6 +449,18 @@ func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int)
 					remoteCount += n
 					if changed {
 						tok.Attr[i].Val = newCSS
+						modified = true
+					}
+				case "srcdoc":
+					if depth < maxRewriteDepth {
+						subOut, subRemote := rewriteHTMLPass(val, resolveCID, false, false, false, depth+1)
+						remoteCount += subRemote
+						if string(subOut) != val {
+							tok.Attr[i].Val = string(subOut)
+							modified = true
+						}
+					} else if val != "" {
+						tok.Attr[i].Val = ""
 						modified = true
 					}
 				}
@@ -376,16 +481,10 @@ func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int)
 		prefixed.WriteString(headInjectHTML)
 		prefixed.WriteString("</head>")
 		prefixed.Write(out.Bytes())
-		return Result{
-			HTML:                prefixed.Bytes(),
-			RemoteResourceCount: remoteCount,
-		}
+		return prefixed.Bytes(), remoteCount
 	}
 
-	return Result{
-		HTML:                out.Bytes(),
-		RemoteResourceCount: remoteCount,
-	}
+	return out.Bytes(), remoteCount
 }
 
 func shouldDropTag(tag string, attrs []html.Attribute) bool {
@@ -405,7 +504,7 @@ func shouldDropTag(tag string, attrs []html.Attribute) bool {
 			}
 			for _, token := range strings.Fields(strings.ToLower(a.Val)) {
 				switch token {
-				case "dns-prefetch", "preconnect", "prefetch", "prerender", "preload":
+				case "dns-prefetch", "preconnect", "prefetch", "prerender", "preload", "modulepreload":
 					return true
 				}
 			}

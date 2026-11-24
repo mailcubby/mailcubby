@@ -1,0 +1,21 @@
+From: Attacker <attacker@evil.example>
+To: Victim <victim@example.test>
+Subject: Hostile 04 SVG Style Meta Refresh
+Date: Tue, 24 Nov 2026 12:03:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<!doctype html>
+<html>
+<body>
+  <svg>
+    <style>
+      <meta http-equiv="refresh" content="0;url=https://evil.example/svg-style-refresh">
+      <link rel="preload" as="image" href="https://evil.example/svg-style-preload.png">
+      .leak { background: url("https://evil.example/svg-style-bg.png"); }
+    </style>
+    <title><meta http-equiv="refresh" content="0;url=https://evil.example/svg-title-refresh"></title>
+  </svg>
+  <p>SVG foreign content rawtext breakout test</p>
+</body>
+</html>

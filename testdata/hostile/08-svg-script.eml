@@ -1,0 +1,18 @@
+From: Attacker <attacker@evil.example>
+To: Victim <victim@example.test>
+Subject: Hostile 08 SVG With Script
+Date: Tue, 24 Nov 2026 12:07:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<!doctype html>
+<html>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" onload="window.__pwned='svg-onload'">
+    <script>window.__pwned = "svg-script"; fetch("https://evil.example/svg-script");</script>
+    <image href="https://evil.example/svg-image.png" width="10" height="10"/>
+    <circle cx="10" cy="10" r="8"/>
+  </svg>
+  <p>SVG script and image test</p>
+</body>
+</html>

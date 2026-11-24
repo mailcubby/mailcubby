@@ -6,6 +6,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -118,6 +121,60 @@ func TestRewriteHTMLSpec121Rules(t *testing.T) {
 			input:           `<style>@import "https://cdn.test/a.css";</style><img src="//cdn.test/pixel.png">`,
 			wantRemoteCount: 2,
 		},
+		{
+			name: "strips meta refresh and prefetch inside noscript and counts remote images",
+			input: `<html><head><noscript><meta http-equiv="refresh" content="0;url=https://evil.test/ns"></noscript></head>` +
+				`<body><noscript><base href="https://evil.test/"><link rel="prefetch" href="https://evil.test/p"><img src="https://evil.test/px.png"><p>ok</p></noscript></body></html>`,
+			wantContain: []string{
+				`<noscript></noscript>`,
+				`<p>ok</p>`,
+			},
+			wantNotContain: []string{
+				`http-equiv="refresh"`,
+				`https://evil.test/ns`,
+				`https://evil.test/p"`,
+				`<base href="https://evil.test/">`,
+			},
+			wantRemoteCount: 1,
+		},
+		{
+			name: "strips meta refresh and preload inside svg style and svg title foreign rawtext",
+			input: `<html><body><svg><style><meta http-equiv="refresh" content="0;url=https://evil.test/svg">` +
+				`<link rel="preload" as="image" href="https://evil.test/pre.png">` +
+				`.a { background: url("https://evil.test/bg.png"); }</style>` +
+				`<title><meta http-equiv="refresh" content="0;url=https://evil.test/title"></title>` +
+				`<image href="https://evil.test/img.png"/></svg></body></html>`,
+			wantContain: []string{
+				`<svg><style>`,
+				`url("https://evil.test/bg.png")`,
+			},
+			wantNotContain: []string{
+				`http-equiv="refresh"`,
+				`https://evil.test/svg`,
+				`https://evil.test/pre.png`,
+				`https://evil.test/title`,
+			},
+			wantRemoteCount: 2,
+		},
+		{
+			name:  "strips meta refresh inside iframe srcdoc and counts remote images",
+			input: `<html><body><iframe srcdoc="<script>window.__pwned=1</script><meta http-equiv='refresh' content='0;url=https://evil.test/sd'><img src='https://evil.test/sd.png'>"></iframe></body></html>`,
+			wantContain: []string{
+				`<iframe srcdoc=`,
+				`window.__pwned=1`,
+			},
+			wantNotContain: []string{
+				`evil.test/sd'`,
+				`http-equiv`,
+			},
+			wantRemoteCount: 1,
+		},
+		{
+			name:            "drops modulepreload link",
+			input:           `<head><link rel="modulepreload" href="https://evil.test/m.js"></head><body>ok</body>`,
+			wantNotContain:  []string{`modulepreload`, `evil.test/m.js`},
+			wantRemoteCount: 0,
+		},
 	}
 
 	for _, tc := range cases {
@@ -226,5 +283,87 @@ func TestRendererCacheAndNoHTML(t *testing.T) {
 	}
 	if opener.opens.Load() != opensBeforeEvicted+1 {
 		t.Fatalf("expected m2 to be evicted and reopened")
+	}
+}
+
+func TestHostileCorpusRewrite(t *testing.T) {
+	t.Parallel()
+
+	hostileFS := os.DirFS(filepath.Join("..", "..", "testdata", "hostile"))
+	matches, err := fs.Glob(hostileFS, "*.eml")
+	if err != nil {
+		t.Fatalf("glob hostile fixtures: %v", err)
+	}
+	if len(matches) < 12 {
+		t.Fatalf("expected at least 12 hostile fixtures, found %d", len(matches))
+	}
+
+	wantRemote := map[string]bool{
+		"03-noscript-meta-refresh.eml":  true,
+		"04-svg-style-meta-refresh.eml": true,
+		"08-svg-script.eml":             true,
+		"09-css-url-exfil.eml":          true,
+		"11-iframe-object.eml":          true,
+		"12-srcset-tracking.eml":        true,
+	}
+
+	for _, name := range matches {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			raw, err := fs.ReadFile(hostileFS, name)
+			if err != nil {
+				t.Fatalf("read fixture %s: %v", name, err)
+			}
+			opener := &fakeBlobOpener{blobs: map[string][]byte{name: raw}}
+			r := render.New(opener)
+			res, err := r.Render(context.Background(), 1, name, name)
+			if err != nil {
+				t.Fatalf("Render(%s): %v", name, err)
+			}
+			got := string(res.HTML)
+			lower := strings.ToLower(got)
+
+			if !strings.Contains(got, `<meta name="referrer" content="no-referrer"><base target="_blank">`) {
+				t.Errorf("%s: missing injected referrer/base tags", name)
+			}
+			for _, forbidden := range []string{
+				`http-equiv="refresh"`,
+				`http-equiv='refresh'`,
+				`http-equiv=refresh`,
+				`<base href=`,
+				`rel="dns-prefetch"`,
+				`rel="preconnect"`,
+				`rel="prefetch"`,
+				`rel="preload"`,
+				`rel="prerender"`,
+				`rel="modulepreload"`,
+			} {
+				if strings.Contains(lower, forbidden) {
+					t.Errorf("%s: rewritten HTML still contains forbidden %q\nhtml: %s", name, forbidden, got)
+				}
+			}
+			if wantRemote[name] && res.RemoteResourceCount <= 0 {
+				t.Errorf("%s: expected RemoteResourceCount > 0, got %d", name, res.RemoteResourceCount)
+			}
+		})
+	}
+}
+
+func TestRewriteHTMLDeepNoscriptBounded(t *testing.T) {
+	t.Parallel()
+
+	var b strings.Builder
+	for range 25 {
+		b.WriteString("<noscript>")
+	}
+	b.WriteString(`<meta http-equiv="refresh" content="0;url=https://evil.test/deep">`)
+	for range 25 {
+		b.WriteString("</noscript>")
+	}
+
+	res := render.RewriteHTML(b.String(), nil, render.MaxInlineBytes)
+	lower := strings.ToLower(string(res.HTML))
+	if strings.Contains(lower, `<meta http-equiv="refresh"`) {
+		t.Fatalf("deeply nested noscript allowed raw meta refresh through: %s", lower)
 	}
 }

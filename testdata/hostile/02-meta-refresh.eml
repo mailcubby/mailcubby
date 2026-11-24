@@ -1,0 +1,18 @@
+From: Attacker <attacker@evil.example>
+To: Victim <victim@example.test>
+Subject: Hostile 02 Meta Refresh
+Date: Tue, 24 Nov 2026 12:01:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<!doctype html>
+<html>
+<head>
+  <meta http-equiv="refresh" content="0;url=https://evil.example/meta-refresh-head">
+  <meta HTTP-EQUIV="  Refresh " content="0; url=https://evil.example/meta-refresh-case">
+</head>
+<body>
+  <meta http-equiv="refresh" content="0;url=https://evil.example/meta-refresh-body">
+  <p>Meta refresh must be stripped</p>
+</body>
+</html>

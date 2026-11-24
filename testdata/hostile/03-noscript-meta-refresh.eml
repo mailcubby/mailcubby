@@ -1,0 +1,21 @@
+From: Attacker <attacker@evil.example>
+To: Victim <victim@example.test>
+Subject: Hostile 03 Noscript Meta Refresh
+Date: Tue, 24 Nov 2026 12:02:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<!doctype html>
+<html>
+<head>
+  <noscript><meta http-equiv="refresh" content="0;url=https://evil.example/noscript-head"></noscript>
+</head>
+<body>
+  <noscript>
+    <meta http-equiv="refresh" content="0;url=https://evil.example/noscript-body">
+    <link rel="prefetch" href="https://evil.example/noscript-prefetch">
+    <img src="https://evil.example/noscript-pixel.png" alt="blocked">
+    <p>Fallback inside noscript</p>
+  </noscript>
+</body>
+</html>

@@ -1,0 +1,19 @@
+From: Attacker <attacker@evil.example>
+To: Victim <victim@example.test>
+Subject: Hostile 05 Base Href Hijack
+Date: Tue, 24 Nov 2026 12:04:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<!doctype html>
+<html>
+<head>
+  <base href="https://evil.example/phish/" target="_top">
+</head>
+<body>
+  <base href="https://evil.example/body-base/">
+  <p>Base href test</p>
+  <a href="/account">Relative link</a>
+  <img src="/pixel.gif" alt="relative pixel">
+</body>
+</html>

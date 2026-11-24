@@ -1,0 +1,25 @@
+From: Attacker <attacker@evil.example>
+To: Victim <victim@example.test>
+Subject: Hostile 01 Script and Event Handlers
+Date: Tue, 24 Nov 2026 12:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<!doctype html>
+<html>
+<head>
+  <title>Script and handlers</title>
+  <script>
+    window.__pwned = "head-script";
+    try { window.top.__pwned = "top-from-head"; } catch (e) {}
+    try { window.top.location = "https://evil.example/top"; } catch (e) {}
+    fetch("https://evil.example/script-beacon");
+  </script>
+</head>
+<body onload="window.__pwned = 'body-onload'; fetch('https://evil.example/onload');">
+  <p>Hostile script and event handler test</p>
+  <img src="x" onerror="window.__pwned = 'img-onerror'; fetch('https://evil.example/onerror');">
+  <button autofocus onfocus="window.__pwned = 'btn-onfocus'">Trap</button>
+  <script>window.__pwned = "body-script";</script>
+</body>
+</html>

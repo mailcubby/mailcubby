@@ -1,0 +1,17 @@
+From: Attacker <attacker@evil.example>
+To: Victim <victim@example.test>
+Subject: Hostile 11 Iframe and Object Embeds
+Date: Tue, 24 Nov 2026 12:10:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<!doctype html>
+<html>
+<body>
+  <p>Nested iframe, srcdoc, object, and embed test</p>
+  <iframe src="https://evil.example/nested-frame"></iframe>
+  <iframe srcdoc="<script>window.__pwned='srcdoc';</script><meta http-equiv='refresh' content='0;url=https://evil.example/srcdoc-refresh'><img src='https://evil.example/srcdoc.png'>"></iframe>
+  <object data="https://evil.example/object.html" type="text/html"></object>
+  <embed src="https://evil.example/embed.svg" type="image/svg+xml">
+</body>
+</html>

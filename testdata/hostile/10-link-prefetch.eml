@@ -1,0 +1,22 @@
+From: Attacker <attacker@evil.example>
+To: Victim <victim@example.test>
+Subject: Hostile 10 Link Prefetch and Preload
+Date: Tue, 24 Nov 2026 12:09:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<!doctype html>
+<html>
+<head>
+  <link rel="dns-prefetch" href="https://evil.example">
+  <link rel="preconnect" href="https://evil.example">
+  <link rel="prefetch" href="https://evil.example/prefetch.html">
+  <link rel="preload" as="image" href="https://evil.example/preload.png">
+  <link rel="prerender" href="https://evil.example/prerender.html">
+  <link rel="modulepreload" href="https://evil.example/mod.js">
+  <link rel="stylesheet" href="https://evil.example/blocked.css">
+</head>
+<body>
+  <p>Prefetch and preload link test</p>
+</body>
+</html>
