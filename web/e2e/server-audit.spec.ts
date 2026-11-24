@@ -130,17 +130,17 @@ test.describe("Phase 11 audit log UI (project and admin)", () => {
       // Sign in as bootstrapped admin.
       await page.goto(`${srv.httpURL}/login`);
       await page.getByLabel("Email").fill(ADMIN_EMAIL);
-      await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+      await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
       await page.getByRole("button", { name: "Sign in" }).click();
       await expect(page).toHaveURL(`${srv.httpURL}/`);
 
-      // Create a project and perform audited actions via UI / authenticated page fetch.
-      await page.getByRole("button", { name: "New project" }).click();
-      await page.getByLabel("Project name").fill("Audit Portal");
+      // Create a project and perform audited actions via UI.
+      await page.getByRole("button", { name: "New project" }).first().click();
+      await page.getByLabel("Name").fill("Audit Portal");
       await page.getByRole("button", { name: "Create project" }).click();
       await expect(page).toHaveURL(/\/p\/audit-portal/);
 
-      // Navigate to Project Settings -> SMTP to create and reveal a credential.
+      // Navigate to Project Settings -> SMTP to create a credential.
       await page.goto(`${srv.httpURL}/p/audit-portal/settings/smtp`);
       await page.getByRole("button", { name: /New credential/i }).click();
       await page.getByLabel("Label").fill("staging-app");
@@ -151,30 +151,32 @@ test.describe("Phase 11 audit log UI (project and admin)", () => {
       // Open Project Settings -> Audit log and verify project events + action filter + metadata expansion.
       await page.getByRole("link", { name: "Audit log" }).click();
       await expect(page).toHaveURL(`${srv.httpURL}/p/audit-portal/settings/audit`);
-      await expect(page.getByText("smtp_credential.create")).toBeVisible();
-      await expect(page.getByText("project.create")).toBeVisible();
+      const projectTable = page.getByRole("table");
+      await expect(projectTable.getByText("smtp_credential.create")).toBeVisible();
+      await expect(projectTable.getByText("project.create")).toBeVisible();
 
       // Filter by action.
       await page.getByLabel("Action").selectOption("smtp_credential.create");
-      await expect(page.getByText("smtp_credential.create")).toBeVisible();
-      await expect(page.getByText("project.create")).toHaveCount(0);
+      await expect(projectTable.getByText("smtp_credential.create")).toBeVisible();
+      await expect(projectTable.getByText("project.create")).toHaveCount(0);
 
       // Expand metadata row.
-      await page.getByRole("button", { name: "Show metadata" }).first().click();
-      await expect(page.getByText(/"staging-app"/)).toBeVisible();
+      await projectTable.getByRole("button", { name: "Show metadata" }).first().click();
+      await expect(projectTable.getByText(/"staging-app"/)).toBeVisible();
 
       // Open Admin -> Audit log and verify action, project, and actor filters.
       await page.goto(`${srv.httpURL}/admin/audit`);
       await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
-      await expect(page.getByText("auth.login")).toBeVisible();
-      await expect(page.getByText("smtp_credential.create")).toBeVisible();
+      const adminTable = page.getByRole("table");
+      await expect(adminTable.getByText("auth.login")).toBeVisible();
+      await expect(adminTable.getByText("smtp_credential.create")).toBeVisible();
 
       await page.getByLabel("Project").selectOption("audit-portal");
       await page.getByLabel("Action").selectOption("project.create");
       await page.getByLabel(/Actor/).fill(ADMIN_EMAIL);
 
-      await expect(page.getByText("project.create")).toBeVisible();
-      await expect(page.getByText("auth.login")).toHaveCount(0);
+      await expect(adminTable.getByText("project.create")).toBeVisible();
+      await expect(adminTable.getByText("auth.login")).toHaveCount(0);
 
       await ctx.close();
     } finally {
