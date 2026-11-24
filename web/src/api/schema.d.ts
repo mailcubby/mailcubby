@@ -851,9 +851,9 @@ export interface operations {
     listMessages: {
         parameters: {
             query?: {
-                /** @description Search query (implemented in Phase 5) */
+                /** @description Full-text search query with operators (SPEC FR-081) */
                 query?: string;
-                /** @description Tag name filter (implemented in Phase 5) */
+                /** @description Tag name filter (case-insensitive) */
                 tag?: string;
                 /** @description SMTP credential ID filter (implemented in Phase 8) */
                 credential?: number;
@@ -886,7 +886,7 @@ export interface operations {
     deleteAllMessages: {
         parameters: {
             query?: {
-                /** @description Search query filter (implemented in Phase 5; rejected if non-empty until then) */
+                /** @description Optional search query filter (SPEC FR-081); absent deletes all messages */
                 query?: string;
             };
             header?: never;
@@ -913,7 +913,7 @@ export interface operations {
     waitMessage: {
         parameters: {
             query?: {
-                /** @description Search query filter (implemented in Phase 5; rejected if non-empty until then) */
+                /** @description Optional search query filter (SPEC FR-081); absent deletes all messages */
                 query?: string;
                 /** @description ULID, RFC 3339 timestamp, or 'now' (default) */
                 since?: string;

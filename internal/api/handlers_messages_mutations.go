@@ -9,6 +9,7 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"github.com/mailcubby/mailcubby/internal/events"
+	"github.com/mailcubby/mailcubby/internal/search"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
@@ -223,9 +224,41 @@ func (s *Server) handleDeleteAllMessages(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// TODO(phase-5): support ?query filter on DELETE /messages.
-	if strings.TrimSpace(r.URL.Query().Get("query")) != "" {
-		writeError(w, http.StatusBadRequest, ErrCodeBadRequest, "query filter is not implemented yet", nil)
+	rawQuery := strings.TrimSpace(r.URL.Query().Get("query"))
+	if rawQuery != "" {
+		parsedQuery, parseErr := search.Parse(rawQuery)
+		if parseErr != nil {
+			writeError(w, http.StatusBadRequest, ErrCodeBadRequest, parseErr.Error(), nil)
+			return
+		}
+		if parsedQuery.IsEmpty() {
+			writeError(w, http.StatusBadRequest, ErrCodeBadRequest, "query must contain at least one search term", nil)
+			return
+		}
+
+		deleted, proj, delErr := search.DeleteMessagesByQuery(r.Context(), s.store, pctx.Project.ID, parsedQuery, s.clk.Now().UTC())
+		if delErr != nil {
+			s.log.Error("delete messages by query failed",
+				"request_id", RequestIDFromContext(r.Context()),
+				"project_id", pctx.Project.ID,
+				"error", delErr,
+			)
+			writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+			return
+		}
+		if len(deleted) > 0 {
+			ids := make([]string, 0, len(deleted))
+			paths := make([]string, 0, len(deleted))
+			for _, d := range deleted {
+				ids = append(ids, d.ID)
+				paths = append(paths, d.BlobPath)
+			}
+			s.removeBlobsBestEffort(r, pctx.Project.ID, paths)
+			s.invalidateSparkline(pctx.Project.ID)
+			s.publishMessageDeleted(proj, ids, false)
+			s.publishProjectUpdated(proj)
+		}
+		writeJSON(w, http.StatusOK, affectedResponse{Affected: int64(len(deleted))})
 		return
 	}
 
@@ -303,9 +336,10 @@ func (s *Server) handleWaitMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := r.URL.Query()
-	// TODO(phase-5): support ?query filter on GET /messages/wait.
-	if strings.TrimSpace(q.Get("query")) != "" {
-		writeError(w, http.StatusBadRequest, ErrCodeBadRequest, "query filter is not implemented yet", nil)
+	rawQuery := strings.TrimSpace(q.Get("query"))
+	parsedQuery, parseErr := search.Parse(rawQuery)
+	if parseErr != nil {
+		writeError(w, http.StatusBadRequest, ErrCodeBadRequest, parseErr.Error(), nil)
 		return
 	}
 
@@ -344,7 +378,26 @@ func (s *Server) handleWaitMessage(w http.ResponseWriter, r *http.Request) {
 	// Check existing messages if caller supplied an explicit ULID or RFC 3339 timestamp.
 	switch mode {
 	case waitSinceULID:
-		existing, lookupErr := s.store.GetLatestMessageAfterID(r.Context(), pctx.Project.ID, sinceID)
+		var (
+			existing  store.Message
+			lookupErr error
+		)
+		if parsedQuery.IsEmpty() {
+			existing, lookupErr = s.store.GetLatestMessageAfterID(r.Context(), pctx.Project.ID, sinceID)
+		} else {
+			matches, searchErr := search.Messages(r.Context(), s.store, pctx.Project.ID, parsedQuery, search.BuildOptions{
+				AfterID: sinceID,
+				Limit:   1,
+			})
+			switch {
+			case searchErr != nil:
+				lookupErr = searchErr
+			case len(matches) == 0:
+				lookupErr = store.ErrNotFound
+			default:
+				existing = matches[0]
+			}
+		}
 		if lookupErr == nil {
 			writeJSON(w, http.StatusOK, toMessageSummary(existing))
 			return
@@ -359,7 +412,27 @@ func (s *Server) handleWaitMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case waitSinceTime:
-		existing, lookupErr := s.store.GetLatestMessageSinceTime(r.Context(), pctx.Project.ID, sinceTime)
+		var (
+			existing  store.Message
+			lookupErr error
+		)
+		if parsedQuery.IsEmpty() {
+			existing, lookupErr = s.store.GetLatestMessageSinceTime(r.Context(), pctx.Project.ID, sinceTime)
+		} else {
+			ts := sinceTime
+			matches, searchErr := search.Messages(r.Context(), s.store, pctx.Project.ID, parsedQuery, search.BuildOptions{
+				SinceTime: &ts,
+				Limit:     1,
+			})
+			switch {
+			case searchErr != nil:
+				lookupErr = searchErr
+			case len(matches) == 0:
+				lookupErr = store.ErrNotFound
+			default:
+				existing = matches[0]
+			}
+		}
 		if lookupErr == nil {
 			writeJSON(w, http.StatusOK, toMessageSummary(existing))
 			return
@@ -406,6 +479,27 @@ func (s *Server) handleWaitMessage(w http.ResponseWriter, r *http.Request) {
 			}
 			if mode == waitSinceTime && payload.Message.ReceivedAt.Before(sinceTime) {
 				continue
+			}
+			if !parsedQuery.IsEmpty() {
+				matches, searchErr := search.Messages(r.Context(), s.store, pctx.Project.ID, parsedQuery, search.BuildOptions{
+					MessageID: payload.Message.ID,
+					Limit:     1,
+				})
+				if searchErr != nil {
+					s.log.Error("wait search match failed",
+						"request_id", RequestIDFromContext(r.Context()),
+						"project_id", pctx.Project.ID,
+						"message_id", payload.Message.ID,
+						"error", searchErr,
+					)
+					writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+					return
+				}
+				if len(matches) == 0 {
+					continue
+				}
+				writeJSON(w, http.StatusOK, toMessageSummary(matches[0]))
+				return
 			}
 			msg, fetchErr := s.store.GetMessageByID(r.Context(), pctx.Project.ID, payload.Message.ID)
 			if fetchErr != nil {

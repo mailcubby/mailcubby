@@ -274,10 +274,10 @@ func TestIntegrationMutationsAndSendTest(t *testing.T) {
 	}
 	assertProjectCounts(1, 1)
 
-	// DELETE /messages?query=foo rejected with 400 until Phase 5.
-	res = doJSON(t, client, http.MethodDelete, base+"/api/v1/projects/default/messages?query=foo", nil)
+	// DELETE /messages?query=before:invalid rejected with 400.
+	res = doJSON(t, client, http.MethodDelete, base+"/api/v1/projects/default/messages?query=before:invalid", nil)
 	if res.status != http.StatusBadRequest {
-		t.Fatalf("DELETE with query status = %d, want 400", res.status)
+		t.Fatalf("DELETE with invalid query status = %d, want 400", res.status)
 	}
 
 	// DELETE /messages deletes remaining m3 and resets counters.
@@ -671,7 +671,7 @@ func TestIntegrationWaitMessage(t *testing.T) {
 		"?timeout=0s",
 		"?timeout=999s",
 		"?timeout=bogus",
-		"?query=from:alice",
+		"?query=before:not-a-date",
 	} {
 		r := doJSON(t, client, http.MethodGet, base+"/api/v1/projects/default/messages/wait"+bad, nil)
 		if r.status != http.StatusBadRequest {

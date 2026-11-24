@@ -178,13 +178,13 @@ paths:
         - name: query
           in: query
           required: false
-          description: Search query (implemented in Phase 5)
+          description: Full-text search query with operators (SPEC FR-081)
           schema:
             type: string
         - name: tag
           in: query
           required: false
-          description: Tag name filter (implemented in Phase 5)
+          description: Tag name filter (case-insensitive)
           schema:
             type: string
         - name: credential
@@ -227,7 +227,7 @@ paths:
         - name: query
           in: query
           required: false
-          description: Search query filter (implemented in Phase 5; rejected if non-empty until then)
+          description: Optional search query filter (SPEC FR-081); absent deletes all messages
           schema:
             type: string
       responses:
@@ -252,7 +252,7 @@ paths:
         - name: query
           in: query
           required: false
-          description: Search query filter (implemented in Phase 5; rejected if non-empty until then)
+          description: Optional search query filter (SPEC FR-081); absent deletes all messages
           schema:
             type: string
         - name: since

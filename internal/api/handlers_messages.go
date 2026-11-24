@@ -13,6 +13,7 @@ import (
 
 	"github.com/mailcubby/mailcubby/internal/ingest"
 	"github.com/mailcubby/mailcubby/internal/render"
+	"github.com/mailcubby/mailcubby/internal/search"
 	"github.com/mailcubby/mailcubby/internal/store"
 )
 
@@ -136,11 +137,28 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 		beforeID = decoded
 	}
 
-	// Phase 3a accepts query, tag, and credential parameters and ignores them until Phases 5 and 8.
-	// TODO(phase-5): wire query and tag filters.
+	rawQuery := strings.TrimSpace(q.Get("query"))
+	rawTag := strings.TrimSpace(q.Get("tag"))
 	// TODO(phase-8): wire credential filter.
 
-	msgs, err := s.store.ListMessagesPage(r.Context(), pctx.Project.ID, beforeID, limit+1)
+	var (
+		msgs []store.Message
+		err  error
+	)
+	if rawQuery == "" && rawTag == "" {
+		msgs, err = s.store.ListMessagesPage(r.Context(), pctx.Project.ID, beforeID, limit+1)
+	} else {
+		parsedQuery, parseErr := search.Parse(rawQuery)
+		if parseErr != nil {
+			writeError(w, http.StatusBadRequest, ErrCodeBadRequest, parseErr.Error(), nil)
+			return
+		}
+		msgs, err = search.Messages(r.Context(), s.store, pctx.Project.ID, parsedQuery, search.BuildOptions{
+			Tag:      rawTag,
+			BeforeID: beforeID,
+			Limit:    limit + 1,
+		})
+	}
 	if err != nil {
 		s.log.Error("list messages failed",
 			"request_id", RequestIDFromContext(r.Context()),
