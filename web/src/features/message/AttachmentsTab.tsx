@@ -1,13 +1,6 @@
-import {
-  Calendar,
-  Download,
-  File,
-  FileArchive,
-  FileImage,
-  FileText,
-  Paperclip,
-} from "lucide-react";
+import { Download, Paperclip } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { attachmentUrl, getAttachmentIcon } from "@/features/message/attachments";
 import type { AttachmentSummary } from "@/lib/api";
 import { formatBytes, isRasterImageMime } from "@/lib/format";
 
@@ -15,28 +8,6 @@ export interface AttachmentsTabProps {
   projectSlug: string;
   messageId: string;
   attachments: ReadonlyArray<AttachmentSummary>;
-}
-
-function getAttachmentIcon(contentType: string) {
-  const mime = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
-  if (mime.startsWith("image/")) {
-    return FileImage;
-  }
-  if (mime === "application/pdf" || mime.startsWith("text/")) {
-    return FileText;
-  }
-  if (mime === "text/calendar" || mime === "application/ics") {
-    return Calendar;
-  }
-  if (
-    mime === "application/zip" ||
-    mime === "application/gzip" ||
-    mime === "application/x-tar" ||
-    mime === "application/x-7z-compressed"
-  ) {
-    return FileArchive;
-  }
-  return File;
 }
 
 export function AttachmentsTab({ projectSlug, messageId, attachments }: AttachmentsTabProps) {
@@ -58,7 +29,7 @@ export function AttachmentsTab({ projectSlug, messageId, attachments }: Attachme
         {attachments.map((att) => {
           const Icon = getAttachmentIcon(att.content_type);
           const isRaster = isRasterImageMime(att.content_type);
-          const baseUrl = `/api/v1/projects/${encodeURIComponent(projectSlug)}/messages/${encodeURIComponent(messageId)}/attachments/${att.id}`;
+          const baseUrl = attachmentUrl(projectSlug, messageId, att.id);
           const inlineUrl = `${baseUrl}?inline=1`;
           const filename = att.filename || `attachment-${att.id}`;
 
@@ -88,6 +59,9 @@ export function AttachmentsTab({ projectSlug, messageId, attachments }: Attachme
                     <span aria-hidden="true">·</span>
                     <span className="truncate font-mono text-[11px]">{att.content_type}</span>
                     <Badge variant="outline">{att.disposition}</Badge>
+                    {att.referenced_by_html ? (
+                      <Badge variant="secondary">shown in preview</Badge>
+                    ) : null}
                     {att.content_id ? (
                       <span className="truncate font-mono text-[11px]">cid:{att.content_id}</span>
                     ) : null}
