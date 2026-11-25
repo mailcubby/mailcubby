@@ -496,7 +496,7 @@ func TestIntegrationMetaAuthMeProjectsCRUDAndIsolation(t *testing.T) {
 		t.Fatalf("unexpected /auth/me: %+v", me)
 	}
 
-	// POST /projects (auto slugify)
+	// POST /projects (auto slugify, FR-030, FR-031)
 	res = doJSON(t, client, http.MethodPost, base+"/api/v1/projects", map[string]any{
 		"name":  "Shop Staging",
 		"color": "blue",
@@ -536,7 +536,7 @@ func TestIntegrationMetaAuthMeProjectsCRUDAndIsolation(t *testing.T) {
 		t.Fatalf("invalid create status = %d, want 422", res.status)
 	}
 
-	// PATCH /projects/{project}: rename slug and set then clear retention override.
+	// PATCH /projects/{project}: rename slug (FR-032) and set then clear retention override.
 	res = doJSON(t, client, http.MethodPatch, base+"/api/v1/projects/shop-staging", map[string]any{
 		"slug": "shop-qa",
 		"settings": map[string]any{
