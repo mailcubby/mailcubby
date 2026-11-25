@@ -5,12 +5,15 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mailcubby/mailcubby/internal/app"
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/secrets"
+	"github.com/mailcubby/mailcubby/internal/store"
 )
 
 func TestVersionSubcommand(t *testing.T) {
@@ -171,5 +174,40 @@ func TestHealthcheckSubcommandInvalidArgs(t *testing.T) {
 	code := run([]string{"healthcheck", "extra"}, strings.NewReader(""), &stdout, &stderr, func(string) (string, bool) { return "", false })
 	if code != 2 {
 		t.Fatalf("expected exit code 2, got %d", code)
+	}
+}
+
+// SPEC 5: serve exits non-zero when a data dir with users is opened without MAILCUBBY_MODE.
+func TestServeRefusesImplicitLocalModeWithUsers(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	st, err := store.Open(t.Context(), filepath.Join(dir, store.DBFilename))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	if _, err := st.CreateUser(t.Context(), store.CreateUserParams{Email: "owner@example.com", Name: "Owner", Now: time.Now().UTC()}); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("store.Close: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"serve"}, strings.NewReader(""), &stdout, &stderr, func(k string) (string, bool) {
+		switch k {
+		case "MAILCUBBY_DATA_DIR":
+			return dir, true
+		case "MAILCUBBY_SMTP_ADDR", "MAILCUBBY_HTTP_ADDR":
+			return "127.0.0.1:0", true
+		default:
+			return "", false
+		}
+	})
+	if code == 0 {
+		t.Fatal("serve exited 0, want non-zero")
+	}
+	if !strings.Contains(stdout.String()+stderr.String(), "MAILCUBBY_MODE") {
+		t.Fatalf("output does not name MAILCUBBY_MODE:\nstdout: %s\nstderr: %s", stdout.String(), stderr.String())
 	}
 }

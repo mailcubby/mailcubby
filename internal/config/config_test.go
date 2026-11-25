@@ -549,3 +549,37 @@ func TestLoadValidationErrors(t *testing.T) {
 		})
 	}
 }
+
+// SPEC 5: config distinguishes an explicit MAILCUBBY_MODE from the local default.
+func TestLoadModeExplicit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		env          map[string]string
+		wantMode     Mode
+		wantExplicit bool
+	}{
+		{name: "unset defaults to local", env: nil, wantMode: ModeLocal},
+		{name: "blank counts as unset", env: map[string]string{"MAILCUBBY_MODE": "  "}, wantMode: ModeLocal},
+		{name: "explicit local", env: map[string]string{"MAILCUBBY_MODE": "local"}, wantMode: ModeLocal, wantExplicit: true},
+		{name: "explicit server", env: map[string]string{
+			"MAILCUBBY_MODE":                     "server",
+			"MAILCUBBY_BASE_URL":                 "https://mail.example.com",
+			"MAILCUBBY_APP_KEY":                  testAppKeyBase64(),
+			"MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH": "true",
+		}, wantMode: ModeServer, wantExplicit: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := Load(mapLookup(tc.env))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.Mode != tc.wantMode || cfg.ModeExplicit != tc.wantExplicit {
+				t.Fatalf("Mode = (%q, explicit=%v), want (%q, %v)", cfg.Mode, cfg.ModeExplicit, tc.wantMode, tc.wantExplicit)
+			}
+		})
+	}
+}

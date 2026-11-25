@@ -49,7 +49,7 @@ See section 14 for the roadmap.
 
 ## 5. Modes
 
-`MAILCUBBY_MODE` selects the mode at startup. It cannot change at runtime. Switching a data directory from `local` to `server` is supported (projects and messages are kept; the setup wizard runs). Switching from `server` to `local` is supported but logs a warning that all projects become visible without login.
+`MAILCUBBY_MODE` selects the mode at startup. It cannot change at runtime. Switching a data directory from `local` to `server` is supported (projects and messages are kept; the setup wizard runs). Switching from `server` to `local` is supported but requires an explicit `MAILCUBBY_MODE=local` and logs a warning that all projects become visible without login. If `MAILCUBBY_MODE` is not set (so it defaults to `local`) and the database has users (a server-mode data directory), startup fails with an error naming `MAILCUBBY_MODE` (set `server` to keep login, or `local` to open every project on purpose); nothing is written to the data directory (no `app.key` is generated).
 
 ### 5.1 Local mode (`MAILCUBBY_MODE=local`, default)
 

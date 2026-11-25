@@ -88,7 +88,10 @@ const (
 // Config holds all validated runtime configuration for Mailcubby.
 type Config struct {
 	// General (SPEC 9.1)
-	Mode           Mode
+	Mode Mode
+	// ModeExplicit reports whether MAILCUBBY_MODE was set, as opposed to
+	// defaulting to local (SPEC 5: a data dir with users refuses an implicit local start).
+	ModeExplicit   bool
 	DataDir        string
 	BaseURL        string
 	AppKey         []byte
@@ -233,6 +236,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 
 	// General (SPEC 9.1)
 	if v, ok := get("MAILCUBBY_MODE"); ok {
+		cfg.ModeExplicit = true
 		switch Mode(strings.ToLower(v)) {
 		case ModeLocal:
 			cfg.Mode = ModeLocal

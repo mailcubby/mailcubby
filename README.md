@@ -255,7 +255,7 @@ All configuration is via `MAILCUBBY_*` environment variables (see `.env.example`
 
 | Variable | Default | Description |
 |---|---|---|
-| `MAILCUBBY_MODE` | `local` | `local` (no login) or `server` (multi-tenant with login). |
+| `MAILCUBBY_MODE` | `local` | `local` (no login) or `server` (multi-tenant with login). A data directory that has users (used in server mode) refuses to start unless `MAILCUBBY_MODE` is set explicitly. |
 | `MAILCUBBY_DATA_DIR` | `/data` (Docker), `./data` (binary) | SQLite database (`app.db`), blobs, local `app.key`. |
 | `MAILCUBBY_BASE_URL` | (empty) | Public URL of the web UI. Required in server mode. |
 | `MAILCUBBY_APP_KEY` | (empty) | 32-byte base64 key encrypting SMTP secrets (`_FILE` supported). Required in server mode. |

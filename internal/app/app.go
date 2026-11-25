@@ -44,6 +44,12 @@ const (
 	defaultBootstrapName = "Admin"
 )
 
+// ErrImplicitLocalMode is returned by Open when MAILCUBBY_MODE is not set (so
+// it defaults to local) but the data directory has users, i.e. it belongs to a
+// server-mode instance (SPEC 5).
+var ErrImplicitLocalMode = errors.New("the data directory has users (it was used in server mode) but MAILCUBBY_MODE is not set; " +
+	"set MAILCUBBY_MODE=server to keep login and project isolation, or MAILCUBBY_MODE=local to open every project without login on purpose")
+
 // Options customizes dependencies for App construction (defaults are production-ready).
 type Options struct {
 	Clock       clock.Clock
@@ -108,20 +114,37 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		smtpTLSConfig = reloader.TLSConfig()
 	}
 
+	st, err := store.Open(ctx, filepath.Join(cfg.DataDir, store.DBFilename))
+	if err != nil {
+		return nil, fmt.Errorf("app: open store: %w", err)
+	}
+
 	if cfg.Mode == config.ModeLocal {
+		// SPEC 5: a data dir with users is a server-mode data dir. Opening it in
+		// local mode exposes every project without login, so that needs an
+		// explicit MAILCUBBY_MODE=local. Checked before app.key is generated so a
+		// refused start leaves nothing behind.
+		userCount, err := st.CountUsers(ctx)
+		if err != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("app: check user count: %w", err)
+		}
+		if userCount > 0 {
+			if !cfg.ModeExplicit {
+				_ = st.Close()
+				return nil, fmt.Errorf("app: %w", ErrImplicitLocalMode)
+			}
+			log.Warn("switching from server mode to local mode: all projects are visible without login", "user_count", userCount)
+		}
 		log.Warn("running in local mode without authentication; do not expose to the internet")
 		if len(cfg.AppKey) == 0 {
 			key, err := secrets.LoadOrCreateLocalKey(cfg.DataDir)
 			if err != nil {
+				_ = st.Close()
 				return nil, fmt.Errorf("app: init local app key: %w", err)
 			}
 			cfg.AppKey = key
 		}
-	}
-
-	st, err := store.Open(ctx, filepath.Join(cfg.DataDir, store.DBFilename))
-	if err != nil {
-		return nil, fmt.Errorf("app: open store: %w", err)
 	}
 
 	blobs, err := blob.NewStore(cfg.DataDir, cfg.ZstdLevel)
@@ -136,9 +159,6 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 
 	switch cfg.Mode {
 	case config.ModeLocal:
-		if userCount, err := st.CountUsers(ctx); err == nil && userCount > 0 {
-			log.Warn("switching from server mode to local mode: all projects are visible without login", "user_count", userCount)
-		}
 		if _, _, err := st.EnsureProject(ctx, store.CreateProjectParams{
 			Slug:     cfg.DefaultProject,
 			Name:     cfg.DefaultProject,
