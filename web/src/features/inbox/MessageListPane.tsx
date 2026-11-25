@@ -294,6 +294,11 @@ export function MessageListPane({
     },
   });
 
+  // Key virtualizer rows by message ID, not index. Rows are measured dynamically
+  // (measureElement), and the virtualizer caches sizes and observed elements by key.
+  // With index keys, a message inserted at the top (SSE) or removed (delete, undo,
+  // filter change) shifts every row to an index whose cached size belonged to another
+  // message, and the reused row nodes are never re-measured, so rows overlap or leave gaps.
   const getItemKey = useCallback((index: number) => messages[index]?.id ?? index, [messages]);
   const rowEstimate = density === "compact" ? 68 : 80;
   const rowVirtualizer = useVirtualizer({
