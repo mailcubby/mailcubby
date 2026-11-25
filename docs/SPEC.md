@@ -895,11 +895,10 @@ Listed so v1 design does not block them. Do not implement in v1.
 12. Remote image proxy (load images without exposing viewer IP).
 13. App key rotation command (`mailcubby admin rotate-app-key`).
 14. Invite and reset emails via an outbound SMTP setting.
-15. Mailpit API compatibility shim; Mailpit data import.
-16. Message links/OTP extraction endpoint for tests.
-17. Per-user read state.
-18. Built-in ACME certificates (certmagic) for SMTP and HTTP; v1 uses certificate files only.
-19. Serving the UI and API under a sub-path (`MAILCUBBY_BASE_PATH`); v1 is served from the root of its host.
-20. Inline PDF preview of attachments (needs a PDF-specific CSP that browser viewers accept).
-21. PROXY protocol v1/v2 support for SMTP behind TCP load balancers (`MAILCUBBY_SMTP_PROXY_PROTOCOL` / `MAILCUBBY_SMTP_PROXY_PROTOCOL_TRUSTED`).
-22. Direct HTTPS listener (`MAILCUBBY_HTTP_TLS_CERT` / `MAILCUBBY_HTTP_TLS_KEY`); v1 terminates HTTPS at a reverse proxy (Caddy, Traefik, nginx).
+15. Message links/OTP extraction endpoint for tests.
+16. Per-user read state.
+17. Built-in ACME certificates (certmagic) for SMTP and HTTP; v1 uses certificate files only.
+18. Serving the UI and API under a sub-path (`MAILCUBBY_BASE_PATH`); v1 is served from the root of its host.
+19. Inline PDF preview of attachments (needs a PDF-specific CSP that browser viewers accept).
+20. PROXY protocol v1/v2 support for SMTP behind TCP load balancers (`MAILCUBBY_SMTP_PROXY_PROTOCOL` / `MAILCUBBY_SMTP_PROXY_PROTOCOL_TRUSTED`).
+21. Direct HTTPS listener (`MAILCUBBY_HTTP_TLS_CERT` / `MAILCUBBY_HTTP_TLS_KEY`); v1 terminates HTTPS at a reverse proxy (Caddy, Traefik, nginx).
