@@ -118,11 +118,14 @@ type Config struct {
 	RenderRemoteImages       RenderRemoteImages
 
 	// SMTP (SPEC 9.3)
-	SMTPAddr                string
-	SMTPSAddr               string
-	SMTPHostname            string
-	SMTPPublicHost          string
-	SMTPPublicPort          int
+	SMTPAddr       string
+	SMTPSAddr      string
+	SMTPHostname   string
+	SMTPPublicHost string
+	SMTPPublicPort int
+	// SMTPPublicPortExplicit reports whether MAILCUBBY_SMTP_PUBLIC_PORT was set.
+	// When it was not, local mode announces the bound SMTP listener port (FR-063).
+	SMTPPublicPortExplicit  bool
 	SMTPTLSCert             string
 	SMTPTLSKey              string
 	SMTPAllowInsecureAuth   bool
@@ -433,6 +436,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 			addErr("MAILCUBBY_SMTP_PUBLIC_PORT", fmt.Errorf("invalid port %q: expected integer in 1..65535", v))
 		} else {
 			cfg.SMTPPublicPort = p
+			cfg.SMTPPublicPortExplicit = true
 		}
 	}
 

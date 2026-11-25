@@ -215,7 +215,7 @@ Acceptance is single-use: `accepted_at` is set in the same transaction with a `W
 
 **FR-062 Reveal, copy, rotate, disable, delete.** Reveal (`POST .../smtp-credentials/{id}/reveal`) returns the plaintext and writes an audit entry. Rotate generates a new password (username unchanged) and returns it. Disabled credentials fail AUTH with `535 5.7.8`. `last_used_at` is updated at most once per minute.
 
-**FR-063 Connection info.** `GET /api/v1/projects/{p}/smtp-credentials` includes the public SMTP host (`MAILCUBBY_SMTP_PUBLIC_HOST`, default the host of `MAILCUBBY_BASE_URL`), port (`MAILCUBBY_SMTP_PUBLIC_PORT`, default `587` in server mode, `1025` in local mode), and TLS mode (`starttls`, `tls` or `none`) so the UI can render snippets.
+**FR-063 Connection info.** `GET /api/v1/projects/{p}/smtp-credentials` includes the public SMTP host (`MAILCUBBY_SMTP_PUBLIC_HOST`, default the host of `MAILCUBBY_BASE_URL`), port (`MAILCUBBY_SMTP_PUBLIC_PORT`, default `587` in server mode; in local mode the port the SMTP listener actually bound from `MAILCUBBY_SMTP_ADDR`, so `MAILCUBBY_SMTP_ADDR=:2525` announces `2525`), and TLS mode (`starttls`, `tls` or `none`) so the UI can render snippets.
 
 ### 6.8 API tokens (server mode)
 
@@ -570,7 +570,7 @@ Environment variables only (no config file in v1). Variables marked (secret) als
 | `MAILCUBBY_SMTPS_ADDR` | empty | Implicit TLS listen address, e.g. `:1465`. |
 | `MAILCUBBY_SMTP_HOSTNAME` | `mailcubby` | Name in the greeting and `Received`-style logs. |
 | `MAILCUBBY_SMTP_PUBLIC_HOST` | host of `BASE_URL`, else `localhost` | Shown in connection info and snippets. |
-| `MAILCUBBY_SMTP_PUBLIC_PORT` | `587` (server), `1025` (local) | Shown in connection info and snippets. |
+| `MAILCUBBY_SMTP_PUBLIC_PORT` | `587` (server), the bound port of `MAILCUBBY_SMTP_ADDR` (local) | Shown in connection info and snippets. Set it in local mode only when clients reach SMTP on a different port (for example a Docker port mapping). |
 | `MAILCUBBY_SMTP_TLS_CERT` / `MAILCUBBY_SMTP_TLS_KEY` | empty | PEM files. Re-read when their mtime changes (checked every 30 s). |
 | `MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH` | `false` (server), `true` (local) | Allow AUTH without TLS. |
 | `MAILCUBBY_SMTP_MAX_MESSAGE_BYTES` | `25MiB` | Max message size, at most `100MiB` (NFR-008). |

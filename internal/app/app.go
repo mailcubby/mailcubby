@@ -200,6 +200,15 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		return nil, fmt.Errorf("app: listen smtp %s: %w", cfg.SMTPAddr, err)
 	}
 
+	// FR-063: in local mode the announced SMTP port (meta, quick copy, snippets)
+	// is the port actually bound from MAILCUBBY_SMTP_ADDR, unless
+	// MAILCUBBY_SMTP_PUBLIC_PORT overrides it (e.g. a Docker port mapping).
+	if cfg.Mode == config.ModeLocal && !cfg.SMTPPublicPortExplicit {
+		if tcpAddr, ok := smtpLn.Addr().(*net.TCPAddr); ok {
+			cfg.SMTPPublicPort = tcpAddr.Port
+		}
+	}
+
 	var smtpsLn net.Listener
 	if cfg.SMTPSAddr != "" {
 		if smtpTLSConfig == nil {

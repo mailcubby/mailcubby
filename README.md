@@ -260,7 +260,7 @@ All configuration is via `MAILCUBBY_*` environment variables (see `.env.example`
 | `MAILCUBBY_BASE_URL` | (empty) | Public URL of the web UI. Required in server mode. |
 | `MAILCUBBY_APP_KEY` | (empty) | 32-byte base64 key encrypting SMTP secrets (`_FILE` supported). Required in server mode. |
 | `MAILCUBBY_HTTP_ADDR` | `:8025` | Web UI and REST API listen address. |
-| `MAILCUBBY_SMTP_ADDR` | `:1025` | SMTP listen address (STARTTLS if cert configured). |
+| `MAILCUBBY_SMTP_ADDR` | `:1025` | SMTP listen address (STARTTLS if cert configured). In local mode the UI snippets and `/api/v1/meta` announce this port. |
 | `MAILCUBBY_SMTPS_ADDR` | (empty) | Optional implicit TLS listen address (e.g. `:1465`). Requires TLS cert and key. |
 | `MAILCUBBY_SMTP_TLS_CERT` / `_KEY` | (empty) | PEM files for STARTTLS and SMTPS; hot-reloaded every 30 s when modified. |
 | `MAILCUBBY_INBOX_DOMAIN` | (empty) | Enables recipient routing, e.g. `inbox.example.com`. |
