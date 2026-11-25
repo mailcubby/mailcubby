@@ -49,7 +49,8 @@ const STEPS: ReadonlyArray<{ num: WizardStep; label: string }> = [
 const SETUP_TOKEN_COMMANDS: ReadonlyArray<{ label: string; command: string }> = [
   {
     label: "Docker Compose",
-    command: 'docker compose logs mailcubby | grep "setup token" | tail -1',
+    command:
+      'docker compose -f deploy/compose.server.yml logs mailcubby | grep "setup token" | tail -1',
   },
   {
     label: "Docker",

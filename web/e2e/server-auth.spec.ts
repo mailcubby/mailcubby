@@ -143,7 +143,7 @@ test.describe("Server mode setup wizard, login, account, and logout", () => {
       // Step 1 explains where to find the token: Docker Compose, docker logs and the binary.
       const tokenHelp = page.getByRole("list", { name: "Where to find the token" });
       await expect(tokenHelp).toContainText(
-        'docker compose logs mailcubby | grep "setup token" | tail -1',
+        'docker compose -f deploy/compose.server.yml logs mailcubby | grep "setup token" | tail -1',
       );
       await expect(tokenHelp).toContainText(
         'docker logs <container> 2>&1 | grep "setup token" | tail -1',

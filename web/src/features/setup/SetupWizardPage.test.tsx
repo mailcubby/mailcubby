@@ -60,7 +60,9 @@ describe("SetupWizardPage step 1 (FR-040, UI 3.2)", () => {
     renderWithQuery(<SetupWizardPage />);
 
     expect(
-      screen.getByText('docker compose logs mailcubby | grep "setup token" | tail -1'),
+      screen.getByText(
+        'docker compose -f deploy/compose.server.yml logs mailcubby | grep "setup token" | tail -1',
+      ),
     ).toBeTruthy();
     expect(
       screen.getByText('docker logs <container> 2>&1 | grep "setup token" | tail -1'),
