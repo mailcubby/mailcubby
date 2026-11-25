@@ -1,4 +1,4 @@
-import { createProjectViaAPI, expect, sendFixture, test } from "./helpers";
+import { createProjectViaAPI, expect, sendFixture, sendRawMail, test } from "./helpers";
 
 test.describe("Phase 4b realtime, keyboard shortcuts, command palette, and focus", () => {
   test("incoming sendmail message appears live without reload and updates document title count", async ({
@@ -19,6 +19,77 @@ test.describe("Phase 4b realtime, keyboard shortcuts, command palette, and focus
     await sendFixture("02_multipart_alternative.eml", { user: project.slug });
     await expect(page.getByRole("option", { name: /Order #1042 confirmed/ })).toBeVisible();
     await expect(page).toHaveTitle(/^\(2\) Realtime Shop/);
+  });
+
+  test("burst of live SSE arrivals preserves virtualized row heights without overlap", async ({
+    page,
+  }) => {
+    const project = await createProjectViaAPI("Burst Layout", "e2e-burst-layout");
+    await page.goto(`/p/${project.slug}`);
+
+    await expect(page.getByText("Live connected")).toBeVisible();
+
+    // Alternate messages with and without body snippets so rows have distinct real heights
+    // as each new SSE arrival prepends at index 0.
+    const count = 6;
+    for (let i = 1; i <= count; i += 1) {
+      const body =
+        i % 2 === 1
+          ? `Snippet line for burst message #${i} with extra text to populate the preview row.\r\n`
+          : "";
+      const raw = [
+        `From: Sender ${i} <sender${i}@example.test>`,
+        "To: recipient@example.test",
+        `Subject: Burst message #${i}`,
+        "MIME-Version: 1.0",
+        "Content-Type: text/plain; charset=utf-8",
+        "",
+        body,
+      ].join("\r\n");
+      await sendRawMail(raw, { user: project.slug });
+      await expect(
+        page.getByRole("option", { name: new RegExp(`Burst message #${i}`) }),
+      ).toBeVisible();
+    }
+
+    const rows = page.getByRole("option");
+    await expect(rows).toHaveCount(count);
+
+    // Wait for virtualizer measurements to settle, then verify consecutive rows are flush
+    // (no overlap and no mis-keyed height gaps).
+    await expect
+      .poll(async () => {
+        const rects = await rows.evaluateAll((elements) =>
+          elements
+            .map((el) => {
+              const rect = el.getBoundingClientRect();
+              return {
+                index: Number(el.getAttribute("data-index")),
+                top: rect.top,
+                bottom: rect.bottom,
+                height: rect.height,
+              };
+            })
+            .sort((a, b) => a.index - b.index),
+        );
+        if (rects.length !== count) {
+          return false;
+        }
+        for (let i = 0; i < rects.length; i += 1) {
+          const curr = rects[i];
+          if (!curr || curr.height <= 0) {
+            return false;
+          }
+          if (i > 0) {
+            const prev = rects[i - 1];
+            if (!prev || Math.abs(curr.top - prev.bottom) > 1.5) {
+              return false;
+            }
+          }
+        }
+        return true;
+      })
+      .toBe(true);
   });
 
   test("j/k navigation, 1-7 tab switching, e delete with undo, Cmd/Ctrl+K palette, and ? help", async ({

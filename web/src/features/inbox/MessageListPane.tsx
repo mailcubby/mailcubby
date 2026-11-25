@@ -294,10 +294,12 @@ export function MessageListPane({
     },
   });
 
-  const rowEstimate = density === "compact" ? 56 : 70;
+  const getItemKey = useCallback((index: number) => messages[index]?.id ?? index, [messages]);
+  const rowEstimate = density === "compact" ? 68 : 80;
   const rowVirtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scrollRef.current,
+    getItemKey,
     estimateSize: () => rowEstimate,
     overscan: 8,
   });
