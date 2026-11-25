@@ -4,8 +4,6 @@ We are excited to release **Mailcubby v1.0.0** — a self-hosted, multi-tenant e
 
 Mailcubby ships as a single static Go binary (~9 MB compressed container image) with an embedded React UI, SQLite (WAL + FTS5) metadata/search, and zstd-compressed `.eml` blob storage.
 
-Mailcubby is a pre-release: expect rough edges and back up your data before upgrading.
-
 Mailcubby is source-available under the [PolyForm Shield License 1.0.0](https://polyformproject.org/licenses/shield/1.0.0): free to use, including commercially, but not to build a competing product.
 
 ## Highlights
