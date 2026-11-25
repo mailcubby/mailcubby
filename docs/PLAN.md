@@ -483,6 +483,37 @@ Acceptance:
 
 ---
 
+## Backlog (after v1.0.0)
+
+Not scheduled. When an item is picked up it becomes a phase above. Items marked "SPEC 14.n" are in the SPEC roadmap.
+
+### v1.0.x (small, no design change)
+
+- `mailcubby backup` command for an online SQLite backup that works in the distroless image and compose volumes (audit V6).
+- Docs: password reset does not revoke API tokens; long-poll `/messages/wait` limits; `MAILCUBBY_TRUSTED_PROXIES` scope in compose (audit S5, S6, S7).
+- Invite accepted by a user whose email differs from the invite: warning in the accept UI (audit S8).
+- Attachment content types: map `*+xml`, `*/xml` and invalid values to `application/octet-stream` (audit S9).
+- Startup warnings for insecure SMTP AUTH and an `http://` base URL; hint at `keygen` when the app key has the wrong length; CLI `list-users` / `enable-user` (audit V8).
+- Server mode as a plain binary: systemd unit and docs (audit V4).
+- Framework snippets, a `curl` example for `/messages/wait` and a `host.docker.internal` note in the README; `sendmail` dial timeout; quieter access log (audit L4, L5).
+- OCI labels in `deploy/Dockerfile`, healthcheck `start_period`, pinned Caddy image (audit I7).
+
+### v1.1 (features)
+
+1. HTML compatibility check (caniemail data, offline). Most useful for agencies building templates. SPEC 14.2.
+2. Link checker, opt-in per instance, with SSRF protection (no private, loopback or link-local targets, timeouts, size caps) because the server fetches URLs found in untrusted email. SPEC 14.2.
+3. Inline PDF preview of attachments. SPEC 14.20.
+4. Visual polish pass over all screens (owner review first).
+5. Webhooks on `message.created` and the MCP endpoint for AI agents. SPEC 14.4, 14.5.
+6. Mailpit data import and API compatibility shim, to ease switching. SPEC 14.15.
+
+### Later
+
+- Spam check (SpamAssassin / rspamd). SPEC 14.3.
+- Invite and reset emails through an outbound SMTP setting. SPEC 14.14.
+- OIDC / SSO, PostgreSQL, S3 blobs, metrics/tracing. SPEC 14.6, 14.7, 14.8, 14.11.
+- Commercial offering (hosted service or paid license); see ADR 0007. Needs its own ADR.
+
 ## Open questions
 
 Agents: record spec ambiguities and the decision taken here, newest last, with phase and date. Items starting with **Owner** need a decision from the owner; agents continue with the stated default meanwhile.
