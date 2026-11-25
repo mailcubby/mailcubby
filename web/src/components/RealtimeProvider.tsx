@@ -158,6 +158,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       onReconnect: () => {
         void queryClient.invalidateQueries();
       },
+      onClosedError: () => {
+        // Re-check auth when EventSource closes on a non-200 response (e.g. 401 session expiry).
+        void queryClient.invalidateQueries({ queryKey: queryKeys.authMe() });
+      },
       onEvent: (event) => {
         const result = applySSEEvent(queryClient, event);
         if (result.needsProjectsRefetch) {

@@ -165,17 +165,27 @@ check: ## Verify generated code is up to date, then lint, test, and build-all
 			if [ -f web/src/api/schema.d.ts ]; then echo web/src/api/schema.d.ts; fi; \
 		} | while IFS= read -r f; do $$hcmd "$$f"; done; \
 	}; \
+	hash_file() { \
+		if command -v sha256sum >/dev/null 2>&1; then hcmd="sha256sum"; else hcmd="shasum -a 256"; fi; \
+		if [ -f "$$1" ]; then $$hcmd "$$1"; fi; \
+	}; \
 	before=$$(hash_gen); \
 	$(MAKE) generate; \
 	after=$$(hash_gen); \
 	if [ "$$before" != "$$after" ]; then \
 		echo "check: generated files changed after 'make generate'; commit updated generated code" >&2; \
 		exit 1; \
-	fi
-	$(MAKE) lint
-	$(MAKE) test
-	$(MAKE) test-web
-	$(MAKE) build-all
+	fi; \
+	rt_before=$$(hash_file web/src/routeTree.gen.ts); \
+	$(MAKE) lint; \
+	$(MAKE) test; \
+	$(MAKE) test-web; \
+	$(MAKE) build-all; \
+	rt_after=$$(hash_file web/src/routeTree.gen.ts); \
+	if [ "$$rt_before" != "$$rt_after" ]; then \
+		echo "check: web/src/routeTree.gen.ts changed during build; commit updated routeTree.gen.ts" >&2; \
+		exit 1; \
+	fi; \
 	pnpm --dir web check:bundle
 
 bench: ## Run Go benchmarks (store, search, ingest)

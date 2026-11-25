@@ -19,9 +19,15 @@ import {
 
 const UNDO_WINDOW_MS = 5000;
 
+interface RemovedListSnapshot {
+  queryKey: readonly unknown[];
+  pageIndex: number;
+}
+
 interface PendingDeleteEntry {
   projectSlug: string;
   message: MessageSummary;
+  removedFrom: RemovedListSnapshot[];
   timerId: number;
   toastId: string | number;
   queryClient: QueryClient;
@@ -67,11 +73,25 @@ function adjustProjectCounters(
   );
 }
 
+function findMessagePageIndex(data: MessageInfiniteData | undefined, messageId: string): number {
+  if (!data) {
+    return -1;
+  }
+  for (let i = 0; i < data.pages.length; i++) {
+    const page = data.pages[i];
+    if (page?.items.some((item) => item.id === messageId)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 function removeFromCachedLists(
   queryClient: QueryClient,
   projectSlug: string,
   messageId: string,
-): void {
+): RemovedListSnapshot[] {
+  const removedFrom: RemovedListSnapshot[] = [];
   const listQueries = queryClient.getQueriesData<MessageInfiniteData>({
     predicate: (q) =>
       q.queryKey.length === 4 &&
@@ -82,31 +102,61 @@ function removeFromCachedLists(
       q.queryKey[3] !== null,
   });
   for (const [key, current] of listQueries) {
+    const pageIndex = findMessagePageIndex(current, messageId);
+    if (pageIndex === -1) {
+      continue;
+    }
     const next = removeMessagesFromPages(current, [messageId], false);
     if (next !== current) {
+      removedFrom.push({ queryKey: key, pageIndex });
       queryClient.setQueryData<MessageInfiniteData>(key, next);
     }
   }
+  return removedFrom;
+}
+
+function restoreIntoPage(
+  data: MessageInfiniteData,
+  message: MessageSummary,
+  preferredPageIndex: number,
+): { data: MessageInfiniteData; inserted: boolean } {
+  // Prevent duplicates across all pages (e.g. if the query refetched while pending).
+  if (findMessagePageIndex(data, message.id) !== -1) {
+    return { data, inserted: false };
+  }
+
+  const targetPage = data.pages[preferredPageIndex];
+  if (targetPage) {
+    const nextItems = [...targetPage.items];
+    const insertAt = nextItems.findIndex((item) => item.id < message.id);
+    if (insertAt === -1) {
+      nextItems.push(message);
+    } else {
+      nextItems.splice(insertAt, 0, message);
+    }
+    const nextPages = data.pages.map((page, idx) =>
+      idx === preferredPageIndex ? { ...page, items: nextItems } : page,
+    );
+    return { data: { ...data, pages: nextPages }, inserted: true };
+  }
+
+  const fallback = insertMessageIntoPages(data, message);
+  return { data: fallback.data ?? data, inserted: fallback.inserted };
 }
 
 function restoreToCachedLists(
   queryClient: QueryClient,
-  projectSlug: string,
+  removedFrom: ReadonlyArray<RemovedListSnapshot>,
   message: MessageSummary,
 ): void {
-  const listQueries = queryClient.getQueriesData<MessageInfiniteData>({
-    predicate: (q) =>
-      q.queryKey.length === 4 &&
-      q.queryKey[0] === "projects" &&
-      q.queryKey[1] === projectSlug &&
-      q.queryKey[2] === "messages" &&
-      typeof q.queryKey[3] === "object" &&
-      q.queryKey[3] !== null,
-  });
-  for (const [key, current] of listQueries) {
-    const result = insertMessageIntoPages(current, message);
+  for (const snapshot of removedFrom) {
+    const current = queryClient.getQueryData<MessageInfiniteData>(snapshot.queryKey);
+    if (!current) {
+      continue;
+    }
+    const result = restoreIntoPage(current, message, snapshot.pageIndex);
     if (result.inserted) {
-      queryClient.setQueryData<MessageInfiniteData>(key, result.data);
+      queryClient.setQueryData<MessageInfiniteData>(snapshot.queryKey, result.data);
     }
   }
 }
@@ -136,7 +186,7 @@ function ensurePagehideFlush(): void {
 }
 
 async function commitDelete(entry: PendingDeleteEntry): Promise<void> {
-  const { projectSlug, message, queryClient } = entry;
+  const { projectSlug, message, removedFrom, queryClient } = entry;
   try {
     unwrapVoid(
       await api.DELETE("/api/v1/projects/{project}/messages/{id}", {
@@ -148,7 +198,7 @@ async function commitDelete(entry: PendingDeleteEntry): Promise<void> {
     if (err instanceof ApiError && err.status === 404) {
       return;
     }
-    restoreToCachedLists(queryClient, projectSlug, message);
+    restoreToCachedLists(queryClient, removedFrom, message);
     adjustProjectCounters(queryClient, projectSlug, 1, message.seen ? 0 : 1, message.size_bytes);
     handleApiError(err, "Failed to delete message");
   }
@@ -162,7 +212,7 @@ export function undoPendingDelete(messageId: string): boolean {
   window.clearTimeout(entry.timerId);
   pendingDeletes.delete(messageId);
   toast.dismiss(entry.toastId);
-  restoreToCachedLists(entry.queryClient, entry.projectSlug, entry.message);
+  restoreToCachedLists(entry.queryClient, entry.removedFrom, entry.message);
   adjustProjectCounters(
     entry.queryClient,
     entry.projectSlug,
@@ -190,7 +240,7 @@ export function scheduleOptimisticDelete(
 
   ensurePagehideFlush();
 
-  removeFromCachedLists(queryClient, projectSlug, message.id);
+  const removedFrom = removeFromCachedLists(queryClient, projectSlug, message.id);
   adjustProjectCounters(queryClient, projectSlug, -1, message.seen ? 0 : -1, -message.size_bytes);
 
   const toastId = toast("Message deleted", {
@@ -217,6 +267,7 @@ export function scheduleOptimisticDelete(
   pendingDeletes.set(message.id, {
     projectSlug,
     message,
+    removedFrom,
     timerId,
     toastId,
     queryClient,

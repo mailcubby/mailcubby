@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Ban,
   CheckCircle2,
@@ -36,6 +37,7 @@ import { authMeQueryOptions, metaQueryOptions } from "@/lib/queries";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function AdminUsersPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [clock24h] = useClock24hPreference();
   const { data: meta } = useQuery(metaQueryOptions());
@@ -59,6 +61,7 @@ export function AdminUsersPage() {
   } | null>(null);
   const [disablingUser, setDisablingUser] = useState<AdminUser | null>(null);
   const [deletingUser, setDeletingUser] = useState<AdminUser | null>(null);
+  const [demotingAdmin, setDemotingAdmin] = useState<AdminUser | null>(null);
 
   const searchId = useId();
   const nameId = useId();
@@ -139,7 +142,9 @@ export function AdminUsersPage() {
       ),
     onSuccess: async (updated, vars) => {
       setDisablingUser(null);
+      setDemotingAdmin(null);
       await invalidateUsers();
+      const isSelfDemotion = updated.id === me?.user.id && vars.body.is_admin === false;
       if (updated.id === me?.user.id) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.authMe() });
       }
@@ -150,9 +155,13 @@ export function AdminUsersPage() {
       } else {
         toast.success(`Updated ${updated.email}`);
       }
+      if (isSelfDemotion) {
+        await navigate({ to: "/", replace: true });
+      }
     },
     onError: (err) => {
       setDisablingUser(null);
+      setDemotingAdmin(null);
       handleApiError(err, "Failed to update user");
     },
   });
@@ -340,12 +349,16 @@ export function AdminUsersPage() {
                             aria-label={`Instance admin for ${user.email}`}
                             checked={user.is_admin}
                             disabled={updateUserMutation.isPending}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              if (!e.target.checked) {
+                                setDemotingAdmin(user);
+                                return;
+                              }
                               updateUserMutation.mutate({
                                 id: user.id,
-                                body: { is_admin: e.target.checked },
-                              })
-                            }
+                                body: { is_admin: true },
+                              });
+                            }}
                             className="size-4 cursor-pointer accent-accent disabled:cursor-not-allowed"
                           />
                         </td>
@@ -673,6 +686,37 @@ export function AdminUsersPage() {
           </div>
         ) : null}
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(demotingAdmin)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDemotingAdmin(null);
+          }
+        }}
+        title={
+          demotingAdmin
+            ? demotingAdmin.id === me?.user.id
+              ? "Remove your own admin privileges?"
+              : `Remove admin privileges from ${demotingAdmin.name}?`
+            : "Remove admin privileges?"
+        }
+        description={
+          demotingAdmin
+            ? demotingAdmin.id === me?.user.id
+              ? "You will immediately lose access to the admin panel and implicit owner access to projects you are not a member of."
+              : `${demotingAdmin.email} will lose instance administrator privileges and implicit access to projects they do not belong to.`
+            : ""
+        }
+        confirmLabel="Remove admin"
+        destructive
+        pending={updateUserMutation.isPending}
+        onConfirm={() => {
+          if (demotingAdmin) {
+            updateUserMutation.mutate({ id: demotingAdmin.id, body: { is_admin: false } });
+          }
+        }}
+      />
 
       <ConfirmDialog
         open={Boolean(disablingUser)}

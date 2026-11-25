@@ -388,15 +388,16 @@ export function InboxLayout() {
     },
   });
 
+  const seenMutate = seenMutation.mutate;
   const toggleMessageSeen = useCallback(
     (message: MessageSummary, nextSeen?: boolean) => {
       if (effectiveRole === "viewer") {
         return;
       }
       const targetSeen = nextSeen ?? !message.seen;
-      seenMutation.mutate({ id: message.id, seen: targetSeen });
+      seenMutate({ id: message.id, seen: targetSeen });
     },
-    [effectiveRole, seenMutation],
+    [effectiveRole, seenMutate],
   );
 
   const tagsMutation = useMutation({
@@ -435,14 +436,15 @@ export function InboxLayout() {
     },
   });
 
+  const tagsMutate = tagsMutation.mutate;
   const updateMessageTags = useCallback(
     (message: MessageSummary, nextTags: string[]) => {
       if (effectiveRole === "viewer") {
         return;
       }
-      tagsMutation.mutate({ id: message.id, tags: nextTags });
+      tagsMutate({ id: message.id, tags: nextTags });
     },
-    [effectiveRole, tagsMutation],
+    [effectiveRole, tagsMutate],
   );
 
   const deleteMessageWithUndo = useCallback(

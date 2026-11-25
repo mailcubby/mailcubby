@@ -109,6 +109,10 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
   const [removingMember, setRemovingMember] = useState<ProjectMember | null>(null);
   const [revokingInvite, setRevokingInvite] = useState<ProjectInvite | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
+  const [pendingRoleChange, setPendingRoleChange] = useState<{
+    member: ProjectMember;
+    role: ProjectRole;
+  } | null>(null);
 
   const emailId = useId();
   const roleId = useId();
@@ -122,14 +126,21 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
         }),
       ),
     onSuccess: async (updated) => {
+      setPendingRoleChange(null);
       toast.success(`Updated ${updated.user.name} to ${updated.role}`);
+      const isSelfViewerDemotion =
+        updated.user.id === me?.user.id && updated.role === "viewer" && !me?.user.is_admin;
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(project.slug) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.project(project.slug) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.authMe() }),
       ]);
+      if (isSelfViewerDemotion) {
+        await navigate({ to: "/p/$project", params: { project: project.slug }, replace: true });
+      }
     },
     onError: (err) => {
+      setPendingRoleChange(null);
       handleApiError(err, "Failed to update role");
     },
   });
@@ -143,6 +154,17 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
       ),
     onSuccess: async (_data, member) => {
       setRemovingMember(null);
+      const removedSelfWithoutAccess = member.user.id === me?.user.id && !me?.user.is_admin;
+      if (removedSelfWithoutAccess) {
+        queryClient.removeQueries({ queryKey: queryKeys.project(project.slug) });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.projects() }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.authMe() }),
+        ]);
+        toast.success(`Removed yourself from ${project.name}`);
+        await navigate({ to: "/", replace: true });
+        return;
+      }
       toast.success(`Removed ${member.user.name} from ${project.name}`);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(project.slug) }),
@@ -336,12 +358,19 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
                             aria-label={`Role for ${member.user.email}`}
                             value={member.role}
                             disabled={updateRoleMutation.isPending}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const nextRole = e.target.value as ProjectRole;
+                              const isDemotingOwner =
+                                member.role === "owner" && nextRole !== "owner";
+                              if (isSelf && isDemotingOwner) {
+                                setPendingRoleChange({ member, role: nextRole });
+                                return;
+                              }
                               updateRoleMutation.mutate({
                                 userId: member.user.id,
-                                role: e.target.value as ProjectRole,
-                              })
-                            }
+                                role: nextRole,
+                              });
+                            }}
                             className="h-7 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
                           >
                             <option value="owner">owner</option>
@@ -627,6 +656,38 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
           </form>
         )}
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(pendingRoleChange)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingRoleChange(null);
+          }
+        }}
+        title={
+          pendingRoleChange ? `Change your role to ${pendingRoleChange.role}?` : "Change your role?"
+        }
+        description={
+          pendingRoleChange
+            ? `You will give up owner permissions on ${project.name}${
+                pendingRoleChange.role === "viewer"
+                  ? " and become read-only."
+                  : " and will no longer be able to manage settings, members, or SMTP credentials."
+              }`
+            : ""
+        }
+        confirmLabel="Change role"
+        destructive
+        pending={updateRoleMutation.isPending}
+        onConfirm={() => {
+          if (pendingRoleChange) {
+            updateRoleMutation.mutate({
+              userId: pendingRoleChange.member.user.id,
+              role: pendingRoleChange.role,
+            });
+          }
+        }}
+      />
 
       <ConfirmDialog
         open={Boolean(removingMember)}

@@ -74,7 +74,10 @@ function renderWithQuery(ui: ReactNode) {
       mutations: { retry: false },
     },
   });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  return {
+    queryClient: client,
+    ...render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>),
+  };
 }
 
 describe("InviteAcceptPage (FR-056)", () => {
@@ -328,6 +331,56 @@ describe("InviteAcceptPage (FR-056)", () => {
 
     renderWithQuery(<InviteAcceptPage token="tok-inst-signed-in" />);
     expect(await screen.findByRole("button", { name: "Sign out to accept" })).toBeTruthy();
+  });
+
+  it("clears all cached tenant queries when signing out from an invite page", async () => {
+    let signedIn = true;
+    mockGet.mockImplementation(async (path: string) => {
+      if (path === "/api/v1/meta") {
+        return ok(SERVER_META);
+      }
+      if (path === "/api/v1/invites/{token}") {
+        return ok({
+          role: null,
+          email: "other@agency.test",
+          invited_by: "Admin",
+          expires_at: "2026-12-01T00:00:00.000Z",
+        });
+      }
+      if (signedIn) {
+        return ok({
+          user: {
+            id: 1,
+            email: "admin@agency.test",
+            name: "Admin",
+            is_admin: true,
+            can_create_projects: true,
+          },
+          csrf_token: "csrf-1",
+          memberships: [],
+        });
+      }
+      return err(401, "unauthorized", "authentication required");
+    });
+    mockPost.mockImplementation(async (path: string) => {
+      if (path === "/api/v1/auth/logout") {
+        signedIn = false;
+        return { data: undefined, response: new Response(null, { status: 204 }) };
+      }
+      throw new Error(`unexpected POST ${path}`);
+    });
+
+    const { queryClient } = renderWithQuery(<InviteAcceptPage token="tok-clear-cache" />);
+    queryClient.setQueryData(["projects", "secret-tenant", "messages", {}], { pages: [] });
+
+    const signOutBtn = await screen.findByRole("button", { name: "Sign out to accept" });
+    fireEvent.click(signOutBtn);
+
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData(["projects", "secret-tenant", "messages", {}]),
+      ).toBeUndefined();
+    });
   });
 
   it("renders unavailable state when invite preview returns 410 gone", async () => {

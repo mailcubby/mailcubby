@@ -72,11 +72,14 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
     },
     onSuccess: async () => {
       setCsrfToken("");
-      queryClient.removeQueries({ queryKey: queryKeys.authMe() });
-      queryClient.removeQueries({ queryKey: queryKeys.projects() });
+      queryClient.clear();
       setErrorMessage(null);
       setLoginRequired(false);
-      await authQuery.refetch();
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: queryKeys.meta() }),
+        queryClient.refetchQueries({ queryKey: queryKeys.invitePreview(token) }),
+        authQuery.refetch(),
+      ]);
     },
     onError: (err) => {
       handleApiError(err, "Failed to sign out");
