@@ -10,13 +10,14 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  default: "bg-accent text-accent-foreground hover:opacity-90 border border-transparent shadow-xs",
+  default:
+    "bg-primary text-primary-foreground hover:opacity-90 border border-transparent shadow-xs",
   secondary: "bg-secondary text-secondary-foreground hover:bg-muted border border-border",
   outline: "bg-surface text-foreground hover:bg-muted border border-border",
   ghost:
     "bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent",
   destructive:
-    "bg-destructive text-destructive-foreground hover:opacity-90 border border-transparent shadow-xs",
+    "bg-destructive-solid text-destructive-foreground hover:opacity-90 border border-transparent shadow-xs",
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {

@@ -1,6 +1,6 @@
 import { createProjectViaAPI, expect, sendFixture, test } from "./helpers";
 
-test.describe("Phase 4a local-mode inbox and message view", () => {
+test.describe("Phase 4a local-mode inbox and message view (FR-072)", () => {
   test("send fixture, inspect tabs 1 to 7, and verify sandboxed preview iframe", async ({
     page,
   }) => {
@@ -16,7 +16,7 @@ test.describe("Phase 4a local-mode inbox and message view", () => {
 
     await expect(page).toHaveURL(new RegExp(`/p/${projectSlug}$`));
 
-    const messageRow = page.getByRole("button", { name: /Inline CID logo preview/ });
+    const messageRow = page.getByRole("option", { name: /Inline CID logo preview/ });
     await expect(messageRow).toBeVisible();
     await messageRow.click();
 
@@ -90,7 +90,7 @@ test.describe("Phase 4a local-mode inbox and message view", () => {
     await sendFixture("05_attachments_utf8_rfc2231.eml", { user: projectSlug });
 
     await page.goto(`/p/${projectSlug}`);
-    const row = page.getByRole("button", { name: /Documents attached/ });
+    const row = page.getByRole("option", { name: /Documents attached/ });
     await expect(row).toBeVisible();
     await row.click();
 
@@ -113,7 +113,7 @@ test.describe("Phase 4a local-mode inbox and message view", () => {
 
     await page.goto(`/p/${projectSlug}`);
 
-    const checkboxes = page.locator('input[type="checkbox"]');
+    const checkboxes = page.locator('[data-testid="message-select-checkbox"]');
     await expect(checkboxes).toHaveCount(3);
 
     await checkboxes.nth(0).click();
@@ -129,6 +129,6 @@ test.describe("Phase 4a local-mode inbox and message view", () => {
     await expect(confirmDialog).toBeVisible();
     await confirmDialog.getByRole("button", { name: "Delete", exact: true }).click();
 
-    await expect(page.locator('input[type="checkbox"]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="message-select-checkbox"]')).toHaveCount(1);
   });
 });

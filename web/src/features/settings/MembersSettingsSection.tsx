@@ -551,7 +551,7 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
       >
         {createdInvite ? (
           <div className="flex flex-col gap-4">
-            <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-xs text-emerald-700 dark:text-emerald-400">
+            <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-xs text-emerald-800 dark:text-emerald-300">
               <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               <div>
                 Invite created for{" "}

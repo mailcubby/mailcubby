@@ -704,7 +704,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               onKeyDown={handleInputKeyDown}
               className="h-7 min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-offset-4"
             />
-            <kbd className="rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+            <kbd className="rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground/80">
               Esc
             </kbd>
           </div>
@@ -767,7 +767,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                               {item.label}
                             </span>
                             {item.subtitle ? (
-                              <span className="truncate text-xs text-muted-foreground">
+                              <span
+                                className={cn(
+                                  "truncate text-xs",
+                                  isSelected ? "text-foreground/80" : "text-muted-foreground",
+                                )}
+                              >
                                 {item.subtitle}
                               </span>
                             ) : null}
@@ -775,7 +780,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                           <span className="flex shrink-0 items-center gap-1.5">
                             {item.badge ? <Badge variant="accent">{item.badge}</Badge> : null}
                             {item.shortcut ? (
-                              <kbd className="rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                              <kbd className="rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground/80">
                                 {item.shortcut}
                               </kbd>
                             ) : null}

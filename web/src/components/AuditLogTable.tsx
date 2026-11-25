@@ -186,7 +186,11 @@ export function AuditLogTable({
                           <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                             Metadata
                           </div>
-                          <pre className="overflow-x-auto rounded-md border border-border bg-background p-2.5 font-mono text-xs text-foreground">
+                          <pre
+                            // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable JSON region needs keyboard focus (WCAG 2.1.1).
+                            tabIndex={0}
+                            className="overflow-x-auto rounded-md border border-border bg-background p-2.5 font-mono text-xs text-foreground"
+                          >
                             {JSON.stringify(entry.metadata, null, 2)}
                           </pre>
                         </div>

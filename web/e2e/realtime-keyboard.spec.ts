@@ -13,11 +13,11 @@ test.describe("Phase 4b realtime, keyboard shortcuts, command palette, and focus
     await sendFixture("01_plain_text.eml", { user: project.slug });
 
     // Appears automatically via SSE without reloading.
-    await expect(page.getByRole("button", { name: /Plain text greeting/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Plain text greeting/ })).toBeVisible();
     await expect(page).toHaveTitle(/^\(1\) Realtime Shop/);
 
     await sendFixture("02_multipart_alternative.eml", { user: project.slug });
-    await expect(page.getByRole("button", { name: /Order #1042 confirmed/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Order #1042 confirmed/ })).toBeVisible();
     await expect(page).toHaveTitle(/^\(2\) Realtime Shop/);
   });
 
@@ -33,8 +33,8 @@ test.describe("Phase 4b realtime, keyboard shortcuts, command palette, and focus
     await sendFixture("04_multipart_related_cid.eml", { user: mainProject.slug });
 
     await page.goto(`/p/${mainProject.slug}`);
-    await expect(page.getByRole("button", { name: /Inline CID logo preview/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Order #1042 confirmed/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Inline CID logo preview/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Order #1042 confirmed/ })).toBeVisible();
 
     // j selects and opens first message; j again moves to second; k moves back to first.
     await page.keyboard.press("j");
@@ -66,11 +66,11 @@ test.describe("Phase 4b realtime, keyboard shortcuts, command palette, and focus
 
     // e deletes optimistically and the Undo toast restores the row.
     await page.keyboard.press("e");
-    await expect(page.getByRole("button", { name: /Inline CID logo preview/ })).toHaveCount(0);
+    await expect(page.getByRole("option", { name: /Inline CID logo preview/ })).toHaveCount(0);
     const undoButton = page.getByRole("button", { name: "Undo" });
     await expect(undoButton).toBeVisible();
     await undoButton.click();
-    await expect(page.getByRole("button", { name: /Inline CID logo preview/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Inline CID logo preview/ })).toBeVisible();
 
     // ? opens keyboard shortcuts help overlay; Escape closes it.
     await page.keyboard.press("?");
@@ -104,7 +104,7 @@ test.describe("Phase 4b realtime, keyboard shortcuts, command palette, and focus
     await sendFixture("04_multipart_related_cid.eml", { user: project.slug });
 
     await page.goto(`/p/${project.slug}`);
-    const row = page.getByRole("button", { name: /Inline CID logo preview/ });
+    const row = page.getByRole("option", { name: /Inline CID logo preview/ });
     await expect(row).toBeVisible();
     await row.click();
     await expect(page.getByRole("heading", { name: "Inline CID logo preview" })).toBeVisible();

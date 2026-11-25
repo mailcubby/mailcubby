@@ -142,7 +142,11 @@ export function IntegrationSnippetsPanel({
           </div>
         ) : null}
 
-        <pre className="overflow-x-auto p-4 font-mono text-xs leading-5 text-foreground">
+        <pre
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable code region needs keyboard focus (WCAG 2.1.1).
+          tabIndex={0}
+          className="overflow-x-auto p-4 font-mono text-xs leading-5 text-foreground"
+        >
           <code>{activeSnippet.code}</code>
         </pre>
       </div>

@@ -123,7 +123,7 @@ function AccountMenu() {
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Account menu"
+        aria-label={`${displayName} — Account menu`}
         onClick={() => setOpen((prev) => !prev)}
         className="inline-flex h-7 max-w-44 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground transition-colors hover:bg-muted"
       >
@@ -271,12 +271,13 @@ export function AppHeader() {
 
         <button
           type="button"
-          aria-label="Open command palette"
+          title="Search and open command palette (Cmd/Ctrl+K)"
           onClick={openPalette}
           className="inline-flex h-7 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <Search className="size-3.5" aria-hidden="true" />
           <span className="hidden sm:inline">Search</span>
+          <span className="sr-only sm:hidden">Search</span>
           <kbd className="rounded-xs border border-border bg-surface px-1 py-0.25 font-mono text-[10px] text-muted-foreground">
             ⌘K
           </kbd>

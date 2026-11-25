@@ -450,7 +450,7 @@ export function SetupWizardPage() {
                     className={cn(
                       "flex size-4.5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums",
                       current
-                        ? "bg-accent text-accent-foreground"
+                        ? "bg-primary text-primary-foreground"
                         : done
                           ? "bg-foreground text-background"
                           : "border border-border text-muted-foreground",
@@ -458,7 +458,14 @@ export function SetupWizardPage() {
                   >
                     {done ? <Check className="size-2.5" aria-hidden="true" /> : item.num}
                   </span>
-                  <span className="hidden truncate sm:inline">{item.label}</span>
+                  <span
+                    className={cn(
+                      "hidden truncate sm:inline",
+                      current || done ? "text-foreground" : "text-muted-foreground",
+                    )}
+                  >
+                    {item.label}
+                  </span>
                 </li>
               );
             })}
@@ -479,7 +486,11 @@ export function SetupWizardPage() {
                 Mailcubby prints a one-time setup token to its logs on startup. Restarting the
                 server generates a new token.
               </p>
-              <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-background px-3 py-2 font-mono text-[11px] text-foreground">
+              <pre
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable code region needs keyboard focus (WCAG 2.1.1).
+                tabIndex={0}
+                className="mt-2 overflow-x-auto rounded-md border border-border bg-background px-3 py-2 font-mono text-[11px] text-foreground"
+              >
                 docker compose logs mailcubby | grep &quot;setup token&quot;
               </pre>
             </div>
@@ -650,7 +661,7 @@ export function SetupWizardPage() {
                   fieldErrors.password
                     ? "text-destructive"
                     : strength.ok
-                      ? "text-emerald-700 dark:text-emerald-400"
+                      ? "text-emerald-800 dark:text-emerald-300"
                       : "text-muted-foreground",
                 )}
               >
@@ -726,7 +737,7 @@ export function SetupWizardPage() {
                     {configuredBaseURL || "Not configured"}
                   </div>
                   {!originMatches && currentOrigin ? (
-                    <div className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+                    <div className="mt-0.5 text-[11px] text-amber-800 dark:text-amber-300">
                       Browser origin is {currentOrigin} — Origin checks require these to match.
                     </div>
                   ) : null}
@@ -741,7 +752,7 @@ export function SetupWizardPage() {
                     {meta ? `${meta.smtp.host}:${meta.smtp.port}` : "Loading..."} · TLS: {tlsMode}
                   </div>
                   {!tlsEnabled ? (
-                    <div className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+                    <div className="mt-0.5 text-[11px] text-amber-800 dark:text-amber-300">
                       TLS is off (insecure AUTH allowed). Configure a certificate for production.
                     </div>
                   ) : null}
@@ -935,7 +946,7 @@ export function SetupWizardPage() {
                   ) : (
                     <>
                       <div className="font-medium">Waiting for first message...</div>
-                      <div className="text-[11px] text-muted-foreground">
+                      <div className="text-[11px] text-foreground/80">
                         Send an email via SMTP or click &quot;Send test email&quot; to test right
                         now.
                       </div>
@@ -1062,8 +1073,8 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
       className={cn(
         "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
         ok
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-          : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+          : "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300",
       )}
     >
       {ok ? (

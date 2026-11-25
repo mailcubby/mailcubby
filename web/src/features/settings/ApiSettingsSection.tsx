@@ -52,7 +52,7 @@ function ApiSettingsContent({ project }: { project: ProjectDetail }) {
             <Link
               to="/account/tokens"
               search={{ project: project.slug }}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 text-xs font-medium text-accent-foreground hover:opacity-90"
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90"
             >
               <KeyRound className="size-3.5" aria-hidden="true" />
               <span>Create token for this project</span>
@@ -96,7 +96,11 @@ function ApiSettingsContent({ project }: { project: ProjectDetail }) {
                 <span>Copy</span>
               </Button>
             </div>
-            <pre className="overflow-x-auto p-4 font-mono text-xs leading-5 text-foreground">
+            <pre
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable code region needs keyboard focus (WCAG 2.1.1).
+              tabIndex={0}
+              className="overflow-x-auto p-4 font-mono text-xs leading-5 text-foreground"
+            >
               <code>{ex.code}</code>
             </pre>
           </div>

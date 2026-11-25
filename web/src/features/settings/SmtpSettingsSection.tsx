@@ -354,27 +354,25 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
               copyValue: connection?.tls_mode,
             },
           ].map((item) => (
-            <div key={item.label} className="flex items-center justify-between gap-2 px-5 py-3">
-              <div className="min-w-0">
-                <dt className="text-[11px] text-muted-foreground">{item.label}</dt>
-                <dd className="mt-0.5 truncate font-mono text-xs font-medium text-foreground">
-                  {item.value}
-                </dd>
-              </div>
-              {connection ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Copy ${item.label}`}
-                  onClick={() =>
-                    void copyToClipboard(item.copyValue ?? item.value, item.label.toLowerCase())
-                  }
-                  className="size-7 shrink-0"
-                >
-                  <Copy className="size-3.5" aria-hidden="true" />
-                </Button>
-              ) : null}
+            <div key={item.label} className="flex flex-col gap-0.5 px-5 py-3">
+              <dt className="text-[11px] text-muted-foreground">{item.label}</dt>
+              <dd className="flex min-w-0 items-center justify-between gap-2 font-mono text-xs font-medium text-foreground">
+                <span className="truncate">{item.value}</span>
+                {connection ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Copy ${item.label}`}
+                    onClick={() =>
+                      void copyToClipboard(item.copyValue ?? item.value, item.label.toLowerCase())
+                    }
+                    className="size-7 shrink-0"
+                  >
+                    <Copy className="size-3.5" aria-hidden="true" />
+                  </Button>
+                ) : null}
+              </dd>
             </div>
           ))}
         </dl>

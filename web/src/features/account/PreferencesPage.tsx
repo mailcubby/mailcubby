@@ -126,7 +126,14 @@ export function PreferencesPage() {
                   )}
                 >
                   <span className="text-[13px] font-medium text-foreground">{opt.label}</span>
-                  <span className="text-xs text-muted-foreground">{opt.description}</span>
+                  <span
+                    className={cn(
+                      "text-xs",
+                      active ? "text-foreground/80" : "text-muted-foreground",
+                    )}
+                  >
+                    {opt.description}
+                  </span>
                 </button>
               );
             })}

@@ -205,7 +205,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
           </div>
           <Link
             to="/"
-            className="inline-flex h-8 w-full items-center justify-center rounded-md bg-accent px-3 text-[13px] font-medium text-accent-foreground hover:bg-accent/90"
+            className="inline-flex h-8 w-full items-center justify-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90"
           >
             Go to projects
           </Link>
@@ -239,7 +239,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
             {currentUser ? (
               <Link
                 to="/"
-                className="inline-flex h-8 w-full items-center justify-center rounded-md bg-accent px-3 text-[13px] font-medium text-accent-foreground hover:bg-accent/90"
+                className="inline-flex h-8 w-full items-center justify-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90"
               >
                 Go to projects
               </Link>
@@ -247,7 +247,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
               <Link
                 to="/login"
                 search={{ returnTo: undefined }}
-                className="inline-flex h-8 w-full items-center justify-center rounded-md bg-accent px-3 text-[13px] font-medium text-accent-foreground hover:bg-accent/90"
+                className="inline-flex h-8 w-full items-center justify-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90"
               >
                 Sign in
               </Link>
@@ -469,7 +469,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
                   <Link
                     to="/login"
                     search={{ returnTo: loginReturnTo }}
-                    className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md bg-accent px-2.5 text-xs font-medium text-accent-foreground hover:bg-accent/90"
+                    className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:opacity-90"
                   >
                     <LogIn className="size-3.5" aria-hidden="true" />
                     <span>Sign in to accept</span>

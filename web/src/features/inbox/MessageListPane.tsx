@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ArrowUp,
+  Check,
   CheckSquare,
   Mail,
   MailOpen,
@@ -727,7 +728,7 @@ export function MessageListPane({
               scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
               setNewSinceScrolled(0);
             }}
-            className="pointer-events-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-accent px-3 py-1 text-xs font-medium text-accent-foreground shadow-md transition-opacity hover:opacity-95"
+            className="pointer-events-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground shadow-md transition-opacity hover:opacity-95"
           >
             <ArrowUp className="size-3" aria-hidden="true" />
             <span className="tabular-nums">{formatCount(newSinceScrolled)} new</span>
@@ -737,11 +738,6 @@ export function MessageListPane({
 
       <div
         ref={scrollRef}
-        role="listbox"
-        tabIndex={0}
-        aria-multiselectable="true"
-        aria-activedescendant={activeMessageId ? `msg-row-${activeMessageId}` : undefined}
-        aria-label={`${project.name} messages`}
         onScroll={(e) => {
           if (e.currentTarget.scrollTop <= 16 && newSinceScrolled > 0) {
             setNewSinceScrolled(0);
@@ -787,7 +783,15 @@ export function MessageListPane({
             ) : null}
           </div>
         ) : (
-          <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+          <div
+            role="listbox"
+            tabIndex={0}
+            aria-multiselectable="true"
+            aria-activedescendant={activeMessageId ? `msg-row-${activeMessageId}` : undefined}
+            aria-label={`${project.name} messages`}
+            className="relative w-full"
+            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+          >
             {virtualItems.map((virtualRow) => {
               const msg = messages[virtualRow.index];
               if (!msg) {
@@ -803,19 +807,17 @@ export function MessageListPane({
               const visibleTags = msg.tags.slice(0, 2);
               const extraTags = Math.max(0, msg.tags.length - 2);
 
-              const ariaLabelParts = [
-                msg.seen ? "Read" : "Unread",
-                `From ${sender}`,
-                subject,
-                relTime,
-                msg.attachment_count > 0
-                  ? `${msg.attachment_count} ${msg.attachment_count === 1 ? "attachment" : "attachments"}`
-                  : null,
-              ].filter(Boolean);
-
-              const handleCheckboxClick = (e: MouseEvent<HTMLInputElement>) => {
+              const handleCheckboxClick = (e: MouseEvent<HTMLSpanElement>) => {
                 e.stopPropagation();
                 handleToggleSelect(msg.id, virtualRow.index, e.shiftKey);
+              };
+
+              const handleOpenMessage = () => {
+                void navigate({
+                  to: "/p/$project/m/$messageId",
+                  params: { project: project.slug, messageId: msg.id },
+                  search: (prev) => prev,
+                });
               };
 
               return (
@@ -825,15 +827,22 @@ export function MessageListPane({
                   data-index={virtualRow.index}
                   ref={rowVirtualizer.measureElement}
                   role="option"
-                  tabIndex={-1}
+                  tabIndex={0}
                   aria-selected={isActive || isSelected}
+                  onClick={handleOpenMessage}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleOpenMessage();
+                    }
+                  }}
                   onMouseEnter={() => scheduleHoverPrefetch(msg.id)}
                   onMouseLeave={cancelHoverPrefetch}
                   style={{
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   className={cn(
-                    "absolute top-0 left-0 flex w-full items-start gap-2.5 border-b border-border px-3 transition-colors duration-150",
+                    "absolute top-0 left-0 flex w-full cursor-pointer items-start gap-2.5 border-b border-border px-3 transition-colors duration-150 focus-visible:z-10",
                     density === "compact" ? "py-1.5" : "py-3",
                     isActive ? "bg-accent/10" : isSelected ? "bg-muted/70" : "hover:bg-muted/40",
                     isArrived && "arrival-highlight",
@@ -841,14 +850,19 @@ export function MessageListPane({
                 >
                   <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
                     {!isViewer ? (
-                      <input
-                        type="checkbox"
-                        aria-label={`Select message: ${subject}`}
-                        checked={isSelected}
-                        onChange={() => {}}
+                      <span
+                        data-testid="message-select-checkbox"
+                        aria-hidden="true"
                         onClick={handleCheckboxClick}
-                        className="size-3.5 cursor-pointer rounded-xs border border-border accent-accent"
-                      />
+                        className={cn(
+                          "flex size-3.5 cursor-pointer items-center justify-center rounded-xs border transition-colors",
+                          isSelected
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-background hover:border-foreground/50",
+                        )}
+                      >
+                        {isSelected ? <Check className="size-2.5" aria-hidden="true" /> : null}
+                      </span>
                     ) : null}
                     <span
                       className={cn(
@@ -859,18 +873,11 @@ export function MessageListPane({
                     />
                   </div>
 
-                  <button
-                    type="button"
-                    aria-label={ariaLabelParts.join(". ")}
-                    onClick={() => {
-                      void navigate({
-                        to: "/p/$project/m/$messageId",
-                        params: { project: project.slug, messageId: msg.id },
-                        search: (prev) => prev,
-                      });
-                    }}
-                    className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 text-left"
-                  >
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
+                    <span className="sr-only">
+                      {msg.seen ? "Read. " : "Unread. "}
+                      From{" "}
+                    </span>
                     <div className="flex items-baseline justify-between gap-2">
                       <span
                         className={cn(
@@ -884,7 +891,10 @@ export function MessageListPane({
                       </span>
                       <span
                         title={exactTime}
-                        className="shrink-0 text-[11px] text-muted-foreground tabular-nums"
+                        className={cn(
+                          "shrink-0 text-[11px] tabular-nums",
+                          isActive ? "text-foreground/80" : "text-muted-foreground",
+                        )}
                       >
                         {relTime}
                       </span>
@@ -901,7 +911,19 @@ export function MessageListPane({
                       </span>
                       <div className="flex shrink-0 items-center gap-1">
                         {msg.attachment_count > 0 ? (
-                          <Paperclip className="size-3 text-muted-foreground" aria-hidden="true" />
+                          <>
+                            <Paperclip
+                              className={cn(
+                                "size-3",
+                                isActive ? "text-foreground/80" : "text-muted-foreground",
+                              )}
+                              aria-hidden="true"
+                            />
+                            <span className="sr-only">
+                              {msg.attachment_count}{" "}
+                              {msg.attachment_count === 1 ? "attachment" : "attachments"}
+                            </span>
+                          </>
                         ) : null}
                         {visibleTags.map((tag) => {
                           const dot =
@@ -925,9 +947,16 @@ export function MessageListPane({
                     </div>
 
                     {msg.snippet ? (
-                      <p className="truncate text-xs text-muted-foreground">{msg.snippet}</p>
+                      <p
+                        className={cn(
+                          "truncate text-xs",
+                          isActive ? "text-foreground/80" : "text-muted-foreground",
+                        )}
+                      >
+                        {msg.snippet}
+                      </p>
                     ) : null}
-                  </button>
+                  </div>
                 </div>
               );
             })}

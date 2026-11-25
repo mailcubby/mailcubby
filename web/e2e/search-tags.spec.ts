@@ -34,8 +34,8 @@ test.describe("Phase 5 search and tags", () => {
     await page.goto(`/p/${project.slug}`);
 
     // Both messages and auto-tags from FR-086 appear.
-    await expect(page.getByRole("button", { name: /Order 12 for João/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Weekly status report/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Order 12 for João/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Weekly status report/ })).toBeVisible();
     await expect(page.getByTestId("sidebar-tag-invoice")).toBeVisible();
     await expect(page.getByTestId("sidebar-tag-count-invoice")).toHaveText("1");
     await expect(page.getByTestId("sidebar-tag-Staging")).toBeVisible();
@@ -50,22 +50,22 @@ test.describe("Phase 5 search and tags", () => {
     // Chip `from:alice` is visible and list filters to Alice only.
     const aliceChip = page.getByTestId("search-chip").filter({ hasText: "from:alice" });
     await expect(aliceChip).toBeVisible();
-    await expect(page.getByRole("button", { name: /Order 12 for João/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Weekly status report/ })).toHaveCount(0);
+    await expect(page.getByRole("option", { name: /Order 12 for João/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Weekly status report/ })).toHaveCount(0);
 
     // Removing the chip restores Bob's message.
     await page.getByRole("button", { name: "Remove filter from:alice" }).click();
-    await expect(page.getByRole("button", { name: /Weekly status report/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Weekly status report/ })).toBeVisible();
 
     // Diacritic-insensitive search: `joao` finds `João`.
     await searchInput.fill("joao");
-    await expect(page.getByRole("button", { name: /Order 12 for João/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Weekly status report/ })).toHaveCount(0);
+    await expect(page.getByRole("option", { name: /Order 12 for João/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Weekly status report/ })).toHaveCount(0);
     await page.getByRole("button", { name: "Clear search" }).click();
-    await expect(page.getByRole("button", { name: /Weekly status report/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Weekly status report/ })).toBeVisible();
 
     // Open Bob's message and add a tag using the `t` shortcut in the message header.
-    await page.getByRole("button", { name: /Weekly status report/ }).click();
+    await page.getByRole("option", { name: /Weekly status report/ }).click();
     await expect(page.getByRole("heading", { name: "Weekly status report" })).toBeVisible();
 
     await page.keyboard.press("t");
@@ -80,8 +80,8 @@ test.describe("Phase 5 search and tags", () => {
 
     // Clicking the sidebar tag filters the list to Bob's message only.
     await page.getByTestId("sidebar-tag-reviewed").click();
-    await expect(page.getByRole("button", { name: /Weekly status report/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Order 12 for João/ })).toHaveCount(0);
+    await expect(page.getByRole("option", { name: /Weekly status report/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Order 12 for João/ })).toHaveCount(0);
   });
 
   test("command palette exposes search operators and tags", async ({ page }) => {

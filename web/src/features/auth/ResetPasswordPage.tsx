@@ -88,14 +88,14 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
 
         {completed ? (
           <div className="flex flex-col items-center gap-4 text-center">
-            <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400">
+            <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300">
               <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
               <span>Your password has been updated and all previous sessions were signed out.</span>
             </div>
             <Link
               to="/login"
               search={{ returnTo: undefined }}
-              className="inline-flex h-8 w-full items-center justify-center rounded-md bg-accent px-3 text-[13px] font-medium text-accent-foreground transition-colors hover:bg-accent/90"
+              className="inline-flex h-8 w-full items-center justify-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground transition-colors hover:opacity-90"
             >
               Sign in
             </Link>
