@@ -234,3 +234,26 @@ func smtpCredentialFromRow(r sqlc.SmtpCredential) SMTPCredential {
 		DisabledAt:  timePtrFromNullMs(r.DisabledAt),
 	}
 }
+
+// SMTPCredentialSecret is the encrypted password of one SMTP credential, used
+// only by the startup MAILCUBBY_APP_KEY check.
+type SMTPCredentialSecret struct {
+	ID          int64
+	Username    string
+	PasswordEnc []byte
+}
+
+// ListSMTPCredentialSecrets returns the encrypted password of every SMTP
+// credential across all projects. It is system-only (the startup
+// MAILCUBBY_APP_KEY check, SPEC 12.4) and must never back an API handler.
+func (s *Store) ListSMTPCredentialSecrets(ctx context.Context) ([]SMTPCredentialSecret, error) {
+	rows, err := s.readQ.ListSMTPCredentialSecrets(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("store: list smtp credential secrets: %w", mapError(err))
+	}
+	out := make([]SMTPCredentialSecret, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, SMTPCredentialSecret{ID: r.ID, Username: r.Username, PasswordEnc: r.PasswordEnc})
+	}
+	return out, nil
+}

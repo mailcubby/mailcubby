@@ -11,7 +11,9 @@ services:
     #   dockerfile: deploy/Dockerfile
     restart: unless-stopped
     environment:
-      MAILCUBBY_MODE: local
+      # MAILCUBBY_MODE is left unset on purpose: it defaults to local, and an
+      # unset mode makes Mailcubby refuse a data dir that already has users
+      # (server-mode data), instead of opening it without login.
       MAILCUBBY_DATA_DIR: /data
     ports:
       - "127.0.0.1:8025:8025" # Web UI and REST API

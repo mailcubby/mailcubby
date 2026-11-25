@@ -44,6 +44,12 @@ const (
 	defaultBootstrapName = "Admin"
 )
 
+// ErrImplicitLocalMode is returned by Open when MAILCUBBY_MODE is not set (so
+// it defaults to local) but the data directory has users, i.e. it belongs to a
+// server-mode instance (SPEC 5).
+var ErrImplicitLocalMode = errors.New("the data directory has users (it was used in server mode) but MAILCUBBY_MODE is not set; " +
+	"set MAILCUBBY_MODE=server to keep login and project isolation, or MAILCUBBY_MODE=local to open every project without login on purpose")
+
 // Options customizes dependencies for App construction (defaults are production-ready).
 type Options struct {
 	Clock       clock.Clock
@@ -108,20 +114,37 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		smtpTLSConfig = reloader.TLSConfig()
 	}
 
+	st, err := store.Open(ctx, filepath.Join(cfg.DataDir, store.DBFilename))
+	if err != nil {
+		return nil, fmt.Errorf("app: open store: %w", err)
+	}
+
 	if cfg.Mode == config.ModeLocal {
+		// SPEC 5: a data dir with users is a server-mode data dir. Opening it in
+		// local mode exposes every project without login, so that needs an
+		// explicit MAILCUBBY_MODE=local. Checked before app.key is generated so a
+		// refused start leaves nothing behind.
+		userCount, err := st.CountUsers(ctx)
+		if err != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("app: check user count: %w", err)
+		}
+		if userCount > 0 {
+			if !cfg.ModeExplicit {
+				_ = st.Close()
+				return nil, fmt.Errorf("app: %w", ErrImplicitLocalMode)
+			}
+			log.Warn("switching from server mode to local mode: all projects are visible without login", "user_count", userCount)
+		}
 		log.Warn("running in local mode without authentication; do not expose to the internet")
 		if len(cfg.AppKey) == 0 {
 			key, err := secrets.LoadOrCreateLocalKey(cfg.DataDir)
 			if err != nil {
+				_ = st.Close()
 				return nil, fmt.Errorf("app: init local app key: %w", err)
 			}
 			cfg.AppKey = key
 		}
-	}
-
-	st, err := store.Open(ctx, filepath.Join(cfg.DataDir, store.DBFilename))
-	if err != nil {
-		return nil, fmt.Errorf("app: open store: %w", err)
 	}
 
 	blobs, err := blob.NewStore(cfg.DataDir, cfg.ZstdLevel)
@@ -136,9 +159,6 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 
 	switch cfg.Mode {
 	case config.ModeLocal:
-		if userCount, err := st.CountUsers(ctx); err == nil && userCount > 0 {
-			log.Warn("switching from server mode to local mode: all projects are visible without login", "user_count", userCount)
-		}
 		if _, _, err := st.EnsureProject(ctx, store.CreateProjectParams{
 			Slug:     cfg.DefaultProject,
 			Name:     cfg.DefaultProject,
@@ -151,6 +171,10 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		}
 	case config.ModeServer:
 		if err := initServerSetup(ctx, cfg, st, auth.NewHasher(), clk, log); err != nil {
+			_ = st.Close()
+			return nil, err
+		}
+		if err := checkSMTPCredentialKey(ctx, cfg.AppKey, st, log); err != nil {
 			_ = st.Close()
 			return nil, err
 		}
@@ -178,6 +202,15 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 		bus.Close()
 		_ = st.Close()
 		return nil, fmt.Errorf("app: listen smtp %s: %w", cfg.SMTPAddr, err)
+	}
+
+	// FR-063: in local mode the announced SMTP port (meta, quick copy, snippets)
+	// is the port actually bound from MAILCUBBY_SMTP_ADDR, unless
+	// MAILCUBBY_SMTP_PUBLIC_PORT overrides it (e.g. a Docker port mapping).
+	if cfg.Mode == config.ModeLocal && !cfg.SMTPPublicPortExplicit {
+		if tcpAddr, ok := smtpLn.Addr().(*net.TCPAddr); ok {
+			cfg.SMTPPublicPort = tcpAddr.Port
+		}
 	}
 
 	var smtpsLn net.Listener
@@ -329,6 +362,8 @@ func (a *App) Serve(ctx context.Context) error {
 		return nil
 	})
 
+	a.logReady()
+
 	g.Go(func() error {
 		<-gctx.Done()
 		a.listenersReady.Store(false)
@@ -372,6 +407,37 @@ func (a *App) Serve(ctx context.Context) error {
 	// 3. Close event bus and SQLite store.
 	closeErr := a.Close()
 	return errors.Join(serveErr, closeErr)
+}
+
+// logReady logs one startup line with the URL to open, the SMTP address
+// clients should use and the absolute data directory.
+func (a *App) logReady() {
+	dataDir, err := filepath.Abs(a.cfg.DataDir)
+	if err != nil {
+		dataDir = a.cfg.DataDir
+	}
+	a.log.Info("mailcubby ready",
+		"url", a.publicURL(),
+		"smtp", net.JoinHostPort(a.cfg.SMTPPublicHost, strconv.Itoa(a.cfg.SMTPPublicPort)),
+		"data_dir", dataDir,
+	)
+}
+
+// publicURL returns MAILCUBBY_BASE_URL, or else an http URL for the bound HTTP
+// listener (localhost when it listens on all interfaces or loopback).
+func (a *App) publicURL() string {
+	if a.cfg.BaseURL != "" {
+		return a.cfg.BaseURL
+	}
+	host := "localhost"
+	port := ""
+	if tcpAddr, ok := a.httpLn.Addr().(*net.TCPAddr); ok {
+		port = strconv.Itoa(tcpAddr.Port)
+		if ip := tcpAddr.IP; ip != nil && !ip.IsUnspecified() && !ip.IsLoopback() {
+			host = ip.String()
+		}
+	}
+	return "http://" + net.JoinHostPort(host, port)
 }
 
 // Close releases listeners, closes the event bus, and closes the SQLite store.
@@ -572,6 +638,40 @@ func initServerSetup(
 	}
 
 	log.Warn("setup token: "+token, "setup_url", cfg.BaseURL+"/setup")
+	return nil
+}
+
+// checkSMTPCredentialKey trial-decrypts every SMTP credential with appKey and
+// logs one ERROR when some cannot be decrypted (a wrong or lost
+// MAILCUBBY_APP_KEY). It does not refuse to start: rotating the affected
+// credentials in the UI is the recovery, and that needs a running server.
+// Every credential is checked, not a sample, because rotating under a wrong
+// key can leave credentials encrypted under different keys.
+func checkSMTPCredentialKey(ctx context.Context, appKey []byte, st *store.Store, log *slog.Logger) error {
+	creds, err := st.ListSMTPCredentialSecrets(ctx)
+	if err != nil {
+		return fmt.Errorf("app: check smtp credentials: %w", err)
+	}
+	if len(creds) == 0 {
+		return nil
+	}
+	cipher, err := secrets.NewSMTPCredentialCipher(appKey)
+	if err != nil {
+		return fmt.Errorf("app: init smtp credential cipher: %w", err)
+	}
+	failed := 0
+	for _, c := range creds {
+		if _, err := cipher.Open(c.PasswordEnc, []byte(c.Username)); err != nil {
+			failed++
+		}
+	}
+	if failed > 0 {
+		log.Error(fmt.Sprintf("%d of %d SMTP credentials cannot be decrypted with MAILCUBBY_APP_KEY", failed, len(creds)),
+			"failed", failed,
+			"total", len(creds),
+			"hint", "restore the original MAILCUBBY_APP_KEY; only if it is lost, rotate the affected credentials in each project's SMTP settings",
+		)
+	}
 	return nil
 }
 

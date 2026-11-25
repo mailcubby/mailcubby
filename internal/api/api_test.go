@@ -471,8 +471,13 @@ func TestIntegrationMetaAuthMeProjectsCRUDAndIsolation(t *testing.T) {
 	if err := json.Unmarshal(res.body, &meta); err != nil {
 		t.Fatalf("unmarshal /meta: %v", err)
 	}
-	if meta.Mode != "local" || meta.SetupRequired || meta.SMTP.Host != "localhost" || meta.SMTP.Port != 1025 || meta.SMTP.TLSMode != "none" {
-		t.Fatalf("unexpected /meta: %+v", meta)
+	// FR-063: local mode announces the bound SMTP listener port.
+	wantSMTPPort, err := strconv.Atoi(srv.SMTPAddr[strings.LastIndex(srv.SMTPAddr, ":")+1:])
+	if err != nil {
+		t.Fatalf("parse SMTP port from %q: %v", srv.SMTPAddr, err)
+	}
+	if meta.Mode != "local" || meta.SetupRequired || meta.SMTP.Host != "localhost" || meta.SMTP.Port != wantSMTPPort || meta.SMTP.TLSMode != "none" {
+		t.Fatalf("unexpected /meta: %+v (want smtp.port %d)", meta, wantSMTPPort)
 	}
 
 	// GET /auth/me

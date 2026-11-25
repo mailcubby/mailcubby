@@ -100,6 +100,8 @@ Or with the standalone binary:
 mailcubby serve
 ```
 
+It stores data in `./data` (relative to the current directory) and logs one line with everything you need, for example `msg="mailcubby ready" url=http://localhost:8025 smtp=localhost:1025 data_dir=/home/me/project/data`. `mailcubby serve --help` lists the common environment variables.
+
 Open http://localhost:8025 and point your application's SMTP settings at `localhost:1025`:
 
 - Any username and password are accepted.
@@ -107,6 +109,8 @@ Open http://localhost:8025 and point your application's SMTP settings at `localh
 - Without SMTP credentials, mail goes to the `default` project (or routes by recipient when `MAILCUBBY_INBOX_DOMAIN` is set).
 
 > **Warning:** Local mode has no authentication. Never expose it to the internet.
+
+Local mode rejects cross-origin `POST`/`PUT`/`PATCH`/`DELETE` requests from browsers (`403`), so a web page you visit cannot change your inbox. curl, SDKs, test clients, the Vite dev proxy and reverse proxies are not affected; behind a proxy that rewrites `Host`, set `MAILCUBBY_BASE_URL` to the URL you open.
 
 ### Server mode (team / agency)
 
@@ -255,17 +259,19 @@ All configuration is via `MAILCUBBY_*` environment variables (see `.env.example`
 
 | Variable | Default | Description |
 |---|---|---|
-| `MAILCUBBY_MODE` | `local` | `local` (no login) or `server` (multi-tenant with login). |
+| `MAILCUBBY_MODE` | `local` | `local` (no login) or `server` (multi-tenant with login). A data directory that has users (used in server mode) refuses to start unless `MAILCUBBY_MODE` is set explicitly. |
 | `MAILCUBBY_DATA_DIR` | `/data` (Docker), `./data` (binary) | SQLite database (`app.db`), blobs, local `app.key`. |
 | `MAILCUBBY_BASE_URL` | (empty) | Public URL of the web UI. Required in server mode. |
 | `MAILCUBBY_APP_KEY` | (empty) | 32-byte base64 key encrypting SMTP secrets (`_FILE` supported). Required in server mode. |
 | `MAILCUBBY_HTTP_ADDR` | `:8025` | Web UI and REST API listen address. |
-| `MAILCUBBY_SMTP_ADDR` | `:1025` | SMTP listen address (STARTTLS if cert configured). |
+| `MAILCUBBY_SMTP_ADDR` | `:1025` | SMTP listen address (STARTTLS if cert configured). In local mode the UI snippets and `/api/v1/meta` announce this port. |
 | `MAILCUBBY_SMTPS_ADDR` | (empty) | Optional implicit TLS listen address (e.g. `:1465`). Requires TLS cert and key. |
 | `MAILCUBBY_SMTP_TLS_CERT` / `_KEY` | (empty) | PEM files for STARTTLS and SMTPS; hot-reloaded every 30 s when modified. |
 | `MAILCUBBY_INBOX_DOMAIN` | (empty) | Enables recipient routing, e.g. `inbox.example.com`. |
 | `MAILCUBBY_TRUSTED_PROXIES` | (empty) | Comma-separated proxy CIDRs trusted for `X-Forwarded-For`. |
 | `MAILCUBBY_SMTP_MAX_MESSAGE_BYTES` | `25MiB` | Max accepted message size (up to `100MiB`). |
+| `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` | `5` | Server mode: failed AUTH attempts per (client IP, username) within `MAILCUBBY_SMTP_AUTH_LOCKOUT` before that pair gets `454` until the window passes; an IP is locked for all usernames after 5x this many. Restarting clears lockouts. |
+| `MAILCUBBY_SMTP_AUTH_LOCKOUT` | `15m` | Lockout window and duration. |
 | `MAILCUBBY_RETENTION_MAX_AGE` | `30d` | Default per-project age retention (`0` disables). |
 | `MAILCUBBY_RETENTION_MAX_MESSAGES` | `5000` | Default per-project message cap (`0` disables). |
 | `MAILCUBBY_RETENTION_MAX_BYTES` | `1GiB` | Default per-project raw size cap (`0` disables). |
@@ -304,6 +310,21 @@ rsync -a /path/to/data/blobs/ /backups/mailcubby/blobs/
 To restore, stop Mailcubby, replace `app.db` (remove any old `app.db-wal`/`app.db-shm`) and `blobs/` with permissions owned by UID `65532` (in Docker), and start Mailcubby again.
 
 > **Important:** Back up `MAILCUBBY_APP_KEY` separately from `app.db` (for example in your password manager or secret store). Without the original `MAILCUBBY_APP_KEY`, existing encrypted SMTP credentials cannot be decrypted after a restore.
+
+### Wrong or lost `MAILCUBBY_APP_KEY`
+
+`MAILCUBBY_APP_KEY` encrypts only the SMTP credential passwords. If Mailcubby starts with a different key (a typo in `.env`, a regenerated key, a volume moved to another host), it still starts, but:
+
+- the startup log shows `ERROR "N of M SMTP credentials cannot be decrypted with MAILCUBBY_APP_KEY"`;
+- SMTP AUTH with those credentials gets `454 4.7.0` (temporary), so well-behaved senders queue and retry instead of dropping mail, and these attempts do not count towards the brute-force lockout;
+- revealing or copying such a password in the UI shows a clear error (`409 conflict`) instead of the password.
+
+To recover:
+
+1. **Restore the original key** if you still have it, and restart. Everything works again, including mail queued by senders.
+2. **Only if the original key is lost**, rotate each affected credential (project settings, SMTP credentials, Rotate) and update the new password in the applications that use it. Rotation encrypts with the current key. Do not rotate while the original key may still turn up: credentials rotated under the new key stop working if you later restore the old one.
+
+Keep the key in your secret store next to the backup of `app.db`.
 
 > **Durability note:** SQLite uses `WAL` with `synchronous=NORMAL`. Every SMTP `250 OK` message survives an application crash, though a sudden host power loss may lose the most recently committed transactions.
 

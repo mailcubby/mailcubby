@@ -49,7 +49,7 @@ See section 14 for the roadmap.
 
 ## 5. Modes
 
-`MAILCUBBY_MODE` selects the mode at startup. It cannot change at runtime. Switching a data directory from `local` to `server` is supported (projects and messages are kept; the setup wizard runs). Switching from `server` to `local` is supported but logs a warning that all projects become visible without login.
+`MAILCUBBY_MODE` selects the mode at startup. It cannot change at runtime. Switching a data directory from `local` to `server` is supported (projects and messages are kept; the setup wizard runs). Switching from `server` to `local` is supported but requires an explicit `MAILCUBBY_MODE=local` and logs a warning that all projects become visible without login. If `MAILCUBBY_MODE` is not set (so it defaults to `local`) and the database has users (a server-mode data directory), startup fails with an error naming `MAILCUBBY_MODE` (set `server` to keep login, or `local` to open every project on purpose). The check runs after the database is opened (and migrated if needed) but before `app.key` is generated.
 
 ### 5.1 Local mode (`MAILCUBBY_MODE=local`, default)
 
@@ -154,7 +154,8 @@ Routing rules are defined precisely in section 7.
 **FR-044 Sessions.** Server-side sessions. The cookie `mailcubby_session` holds a 32-byte random token (base64url); the DB stores only its SHA-256. Cookie flags: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` when `MAILCUBBY_BASE_URL` is https. Absolute lifetime `MAILCUBBY_SESSION_TTL` (default `30d`), idle timeout `MAILCUBBY_SESSION_IDLE_TIMEOUT` (default `7d`). `last_seen_at` is updated at most once per minute. New token on every login. Logout deletes the session. Password change deletes all other sessions of the user. Disabling a user deletes all their sessions and revokes their API tokens.
 - AC: a session unused for longer than the idle timeout returns `401`.
 
-**FR-045 CSRF.** Cookie-authenticated unsafe requests (POST, PUT, PATCH, DELETE) MUST carry header `X-CSRF-Token` equal to the session's CSRF token (returned by `GET /api/v1/auth/me`), AND the `Origin` header (or `Referer` if Origin is absent) MUST match `MAILCUBBY_BASE_URL`. Bearer-token requests are exempt. Unauthenticated unsafe endpoints (login, setup, invite accept, password reset) check Origin only. Local mode has no cookies and no CSRF check.
+**FR-045 CSRF.** Cookie-authenticated unsafe requests (POST, PUT, PATCH, DELETE) MUST carry header `X-CSRF-Token` equal to the session's CSRF token (returned by `GET /api/v1/auth/me`), AND the `Origin` header (or `Referer` if Origin is absent) MUST match `MAILCUBBY_BASE_URL`. Bearer-token requests are exempt. Unauthenticated unsafe endpoints (login, setup, invite accept, password reset) check Origin only. Local mode has no cookies and no CSRF token; instead it rejects cross-origin unsafe requests from browsers with `403 forbidden` using Go's `http.CrossOriginProtection`: a request is rejected when `Sec-Fetch-Site` is present and is not `same-origin` or `none`, or, without `Sec-Fetch-Site`, when the `Origin` host differs from the `Host` header. `MAILCUBBY_BASE_URL`, when set, is also a trusted origin (for reverse proxies that rewrite `Host`). Requests without either header (curl, SDKs, test clients) and same-origin requests (the UI, the Vite dev proxy, which keeps `Host`) pass. There is no `Host` allowlist and no `Content-Type` requirement.
+- AC (local mode): a `POST` with a foreign `Origin` or `Sec-Fetch-Site: cross-site` returns `403`; the same request without `Origin`, or same-origin, succeeds.
 - AC: a POST with a valid cookie but missing `X-CSRF-Token` returns `403`.
 
 **FR-046 Password reset.** No email. An admin generates a single-use reset link (`POST /api/v1/admin/users/{id}/password-reset`, also `mailcubby admin reset-password --email x`) valid for 1 hour; the token is stored hashed. Using it sets a new password and deletes all the user's sessions.
@@ -213,9 +214,9 @@ Acceptance is single-use: `accepted_at` is set in the same transaction with a `W
 **FR-061 Encrypted storage.** Passwords are encrypted with AES-256-GCM using a subkey derived from `MAILCUBBY_APP_KEY` via HKDF-SHA256 (info `mailcubby/smtp-credential/v1`). Stored value: version byte `0x01` || 12-byte random nonce || ciphertext+tag. AAD: the credential username. Verification decrypts and compares with `crypto/subtle.ConstantTimeCompare`. Decrypted passwords are never logged.
 - AC: a DB dump does not contain the plaintext password; decrypting with a different key fails.
 
-**FR-062 Reveal, copy, rotate, disable, delete.** Reveal (`POST .../smtp-credentials/{id}/reveal`) returns the plaintext and writes an audit entry. Rotate generates a new password (username unchanged) and returns it. Disabled credentials fail AUTH with `535 5.7.8`. `last_used_at` is updated at most once per minute.
+**FR-062 Reveal, copy, rotate, disable, delete.** Reveal (`POST .../smtp-credentials/{id}/reveal`) returns the plaintext and writes an audit entry. Rotate generates a new password (username unchanged) and returns it. Disabled credentials fail AUTH with `535 5.7.8`. `last_used_at` is updated at most once per minute. If the stored password cannot be decrypted with the current `MAILCUBBY_APP_KEY` (wrong or lost key), reveal returns `409 conflict` with a message saying to restore the original key or rotate the credential (no audit entry); rotate still works and is the recovery for a lost key. In server mode, startup trial-decrypts every credential and, if any fail, logs one ERROR `N of M SMTP credentials cannot be decrypted with MAILCUBBY_APP_KEY`; it does not refuse to start.
 
-**FR-063 Connection info.** `GET /api/v1/projects/{p}/smtp-credentials` includes the public SMTP host (`MAILCUBBY_SMTP_PUBLIC_HOST`, default the host of `MAILCUBBY_BASE_URL`), port (`MAILCUBBY_SMTP_PUBLIC_PORT`, default `587` in server mode, `1025` in local mode), and TLS mode (`starttls`, `tls` or `none`) so the UI can render snippets.
+**FR-063 Connection info.** `GET /api/v1/projects/{p}/smtp-credentials` includes the public SMTP host (`MAILCUBBY_SMTP_PUBLIC_HOST`, default the host of `MAILCUBBY_BASE_URL`), port (`MAILCUBBY_SMTP_PUBLIC_PORT`, default `587` in server mode; in local mode the port the SMTP listener actually bound from `MAILCUBBY_SMTP_ADDR`, so `MAILCUBBY_SMTP_ADDR=:2525` announces `2525`), and TLS mode (`starttls`, `tls` or `none`) so the UI can render snippets.
 
 ### 6.8 API tokens (server mode)
 
@@ -331,7 +332,7 @@ Unknown operators are treated as plain text. The parser MUST produce parameteris
 
 | Command | Purpose |
 |---|---|
-| `mailcubby serve` (default) | Run SMTP + HTTP + workers. |
+| `mailcubby serve` (default) | Run SMTP + HTTP + workers. Once both listeners are bound it logs one INFO line `mailcubby ready` with `url` (`MAILCUBBY_BASE_URL`, else `http://localhost:<HTTP port>`), `smtp` (the announced host:port of FR-063) and `data_dir` (absolute path). `serve --help` prints its usage (flags and the common environment variables) to stdout and exits 0. |
 | `mailcubby version` | Print version, commit, build date. |
 | `mailcubby keygen` | Print a new base64 `MAILCUBBY_APP_KEY`. |
 | `mailcubby healthcheck [--url]` | Exit 0 if `/readyz` returns 200 within 2 s, else exit 1 (for Docker `HEALTHCHECK` in a distroless image, no shell). Default URL: `http://127.0.0.1:<port of MAILCUBBY_HTTP_ADDR>/readyz`. |
@@ -385,6 +386,7 @@ Rules:
 |---|---|
 | AUTH bad credentials or disabled credential | `535 5.7.8 Authentication credentials invalid` |
 | AUTH temporarily locked (brute force) | `454 4.7.0 Temporary authentication failure` |
+| AUTH server-side failure: credential lookup error, or the stored password cannot be decrypted with `MAILCUBBY_APP_KEY` (not counted towards lockout, no failure delay) | `454 4.7.0 Temporary authentication failure` |
 | AUTH without TLS in server mode | `523 5.7.10 TLS is required` (go-smtp built-in) |
 | AUTH with an unsupported mechanism | `504 5.7.4` (return `smtp.ErrAuthUnknownMechanism`) |
 | No AUTH required but missing (server, no inbox domain) | `530 5.7.0 Authentication required` |
@@ -570,7 +572,7 @@ Environment variables only (no config file in v1). Variables marked (secret) als
 | `MAILCUBBY_SMTPS_ADDR` | empty | Implicit TLS listen address, e.g. `:1465`. |
 | `MAILCUBBY_SMTP_HOSTNAME` | `mailcubby` | Name in the greeting and `Received`-style logs. |
 | `MAILCUBBY_SMTP_PUBLIC_HOST` | host of `BASE_URL`, else `localhost` | Shown in connection info and snippets. |
-| `MAILCUBBY_SMTP_PUBLIC_PORT` | `587` (server), `1025` (local) | Shown in connection info and snippets. |
+| `MAILCUBBY_SMTP_PUBLIC_PORT` | `587` (server), the bound port of `MAILCUBBY_SMTP_ADDR` (local) | Shown in connection info and snippets. Set it in local mode only when clients reach SMTP on a different port (for example a Docker port mapping). |
 | `MAILCUBBY_SMTP_TLS_CERT` / `MAILCUBBY_SMTP_TLS_KEY` | empty | PEM files. Re-read when their mtime changes (checked every 30 s). |
 | `MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH` | `false` (server), `true` (local) | Allow AUTH without TLS. |
 | `MAILCUBBY_SMTP_MAX_MESSAGE_BYTES` | `25MiB` | Max message size, at most `100MiB` (NFR-008). |
@@ -578,7 +580,7 @@ Environment variables only (no config file in v1). Variables marked (secret) als
 | `MAILCUBBY_SMTP_MAX_CONNECTIONS` | `200` | Total concurrent connections. |
 | `MAILCUBBY_SMTP_MAX_CONNECTIONS_PER_IP` | `20` | Concurrent connections per client IP. |
 | `MAILCUBBY_SMTP_TIMEOUT` | `60s` | Read and write timeout. |
-| `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` | `5` | Failures per IP or per username within the window before lockout. |
+| `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` | `5` | Failures per (IP, username) within the window before that pair is locked; an IP is locked for all usernames after 5x this many. |
 | `MAILCUBBY_SMTP_AUTH_LOCKOUT` | `15m` | Window and lockout duration. |
 | `MAILCUBBY_SMTP_RATE_LIMIT` | `600/m` | Messages per project. `0` disables. |
 
@@ -790,7 +792,7 @@ $MAILCUBBY_DATA_DIR/
 - Delete: DB transaction first, then remove the file. Missing files on delete are not errors.
 - Read: open, zstd-decompress stream. Raw download streams without buffering the whole message.
 - Backup: stop the container or use `sqlite3 app.db ".backup"` plus a copy of `blobs/`. Documented in README.
-- File modes: directories 0700, files 0600. The container runs as non-root UID 65532.
+- File modes: directories 0700, files 0600. `app.db` is created 0600 before SQLite opens it (SQLite gives `-wal`/`-shm` the same mode); an existing `app.db` (and leftover `-wal`/`-shm`) with wider permissions is tightened to 0600 at startup, best effort (a filesystem that rejects `chmod`, such as some bind mounts, does not stop startup). No process umask is changed. The container runs as non-root UID 65532.
 
 ---
 
@@ -836,7 +838,7 @@ Email HTML is attacker-controlled. It MUST never execute script, reach the app's
 
 In-memory (single process), sliding windows; state is lost on restart, which is acceptable.
 
-- SMTP AUTH: after `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` failures per IP or per username within `MAILCUBBY_SMTP_AUTH_LOCKOUT`, further AUTH attempts from that IP / for that username get `454 4.7.0` without checking the password until the window passes. An audit entry `smtp.auth_lockout` is written once per lockout. After a failure the server delays its reply by 1 s (the delay goes through the injected clock so tests do not sleep).
+- SMTP AUTH: after `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` failures per (IP, username) within `MAILCUBBY_SMTP_AUTH_LOCKOUT`, further AUTH attempts for that pair get `454 4.7.0` without checking the password until the window passes; an IP is locked for all usernames after 5x that many failures. There is no global per-username lockout (usernames are not secret, and one client with a stale password must not lock out the others behind the same IP). Attempts rejected by a lockout are not counted. Server-side errors (credential lookup, or decryption, for example under a wrong `MAILCUBBY_APP_KEY`) return `454 4.7.0` and are not counted; while the key is wrong this distinguishes existing usernames from unknown ones without delay, which is acceptable because usernames are not secret. Clients such as Python `smtplib` try PLAIN and then LOGIN, so one wrong `login()` counts as two failures. Lockout state is in memory; restarting clears it. An audit entry `smtp.auth_lockout` (metadata `reason` `ip_and_username` or `ip`) is written once per lockout. After a failure the server delays its reply by 1 s (the delay goes through the injected clock so tests do not sleep).
 - HTTP login: `MAILCUBBY_LOGIN_RATE_LIMIT` per (IP, email) and 5x that per IP; `429` with `Retry-After`. Only failed attempts count, but each attempt is reserved atomically before the password is verified and given back only on success, so concurrent requests cannot exceed the limit. An email longer than 254 bytes gets `400 bad_request` before rate limiting, hashing or auditing.
 - Invite preview/accept and password reset: 20 requests per 15 min per IP.
 - API: `MAILCUBBY_API_RATE_LIMIT` per token or session (token bucket).

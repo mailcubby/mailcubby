@@ -22,6 +22,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // changeOrigin must stay false: the backend's cross-origin protection in
+    // local mode (FR-045) relies on the proxied Host matching the page Origin.
     proxy: {
       "/api": {
         target: "http://localhost:8025",

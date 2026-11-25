@@ -452,14 +452,33 @@ func isPublicUnsafePath(p string) bool {
 		strings.HasPrefix(cleaned, "/api/v1/password-reset/")
 }
 
-// csrfMiddleware enforces SPEC FR-045 in server mode:
+// csrfMiddleware enforces SPEC FR-045.
+//
+// Local mode: unsafe requests that a browser marks as cross-origin
+// (Sec-Fetch-Site, else an Origin whose host differs from Host) get 403, via
+// the stdlib http.CrossOriginProtection. Requests without those headers (curl,
+// SDKs) and same-origin requests (the UI, the Vite dev proxy, which keeps Host)
+// pass. MAILCUBBY_BASE_URL, when set, is a trusted origin. Safe methods (GET,
+// HEAD, OPTIONS: render, SSE, downloads) are exempt inside the stdlib check.
+//
+// Server mode:
 //   - All unsafe requests require Origin (or Referer fallback) matching MAILCUBBY_BASE_URL.
 //   - Cookie-authenticated unsafe requests additionally require X-CSRF-Token.
 //   - Bearer-token requests are exempt; invalid/revoked Bearer headers on non-public
 //     routes pass through so route auth returns 401 rather than 403.
 func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.cfg.Mode != config.ModeServer || !auth.IsUnsafeMethod(r.Method) {
+		if s.cfg.Mode != config.ModeServer {
+			if s.crossOrigin != nil {
+				if err := s.crossOrigin.Check(r); err != nil {
+					writeError(w, http.StatusForbidden, ErrCodeForbidden, "cross-origin request rejected", nil)
+					return
+				}
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !auth.IsUnsafeMethod(r.Method) {
 			next.ServeHTTP(w, r)
 			return
 		}

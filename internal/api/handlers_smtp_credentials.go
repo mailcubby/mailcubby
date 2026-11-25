@@ -271,13 +271,14 @@ func (s *Server) handleRevealSMTPCredential(w http.ResponseWriter, r *http.Reque
 
 	plain, err := s.smtpCipher.Open(cred.PasswordEnc, []byte(cred.Username))
 	if err != nil {
-		s.log.Error("decrypt smtp credential failed",
+		s.log.Error("smtp credential cannot be decrypted; check MAILCUBBY_APP_KEY",
 			"request_id", RequestIDFromContext(ctx),
 			"project_id", pctx.Project.ID,
 			"credential_id", credID,
 			"error", err,
 		)
-		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		writeError(w, http.StatusConflict, ErrCodeConflict,
+			"this SMTP password cannot be decrypted with the current MAILCUBBY_APP_KEY; restore the original key, or rotate this credential", nil)
 		return
 	}
 

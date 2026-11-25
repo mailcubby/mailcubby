@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -71,6 +72,34 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  admin        Administrative commands (create-user, reset-password)")
 	_, _ = fmt.Fprintln(w, "  sendmail     Submit a message from stdin over SMTP")
 	_, _ = fmt.Fprintln(w, "  version      Print version, commit, and build date")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Run 'mailcubby serve --help' for the serve flags and environment variables.")
+}
+
+// printServeUsage documents `mailcubby serve`: it has no flags of its own and
+// is configured through MAILCUBBY_* environment variables (SPEC 9).
+func printServeUsage(w io.Writer) {
+	_, _ = fmt.Fprint(w, `Usage: mailcubby serve [-h | --help]
+
+Run the SMTP server, web UI and REST API. Configuration comes only from
+environment variables; with none set, Mailcubby starts in local mode.
+
+Flags:
+  -h, --help   Show this help and exit
+
+Common environment variables (defaults in brackets):
+  MAILCUBBY_MODE        local (no login) or server (multi-tenant) [local]
+  MAILCUBBY_DATA_DIR    database, message files and app.key [./data]
+  MAILCUBBY_HTTP_ADDR   web UI and REST API listen address [:8025]
+  MAILCUBBY_SMTP_ADDR   SMTP listen address [:1025]
+  MAILCUBBY_BASE_URL    public URL, required in server mode
+  MAILCUBBY_APP_KEY     base64 32-byte key, required in server mode
+                        (or MAILCUBBY_APP_KEY_FILE; create one with: mailcubby keygen)
+  MAILCUBBY_LOG_LEVEL   debug, info, warn or error [info]
+  MAILCUBBY_LOG_FORMAT  text or json [text]
+
+All variables are listed in the README (Configuration) and docs/SPEC.md section 9.
+`)
 }
 
 func formatVersion(ver, rev, buildDate string) string {
@@ -94,11 +123,18 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 func runServe(args []string, stdout, stderr io.Writer, lookupEnv func(string) (string, bool)) int {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	fs.Usage = func() {}
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			printServeUsage(stdout)
+			return 0
+		}
+		printServeUsage(stderr)
 		return 2
 	}
 	if fs.NArg() > 0 {
-		_, _ = fmt.Fprintf(stderr, "serve takes no positional arguments\n")
+		_, _ = fmt.Fprintf(stderr, "serve takes no positional arguments\n\n")
+		printServeUsage(stderr)
 		return 2
 	}
 

@@ -73,6 +73,9 @@ type Server struct {
 	version        string
 	webHandler     http.Handler
 	listenersReady func() bool
+	// crossOrigin rejects cross-origin unsafe browser requests in local mode
+	// (FR-045); nil in server mode, which uses Origin + CSRF token checks.
+	crossOrigin *http.CrossOriginProtection
 
 	loginKeyLimiter *ratelimit.SlidingWindow
 	loginIPLimiter  *ratelimit.SlidingWindow
@@ -174,6 +177,15 @@ func New(cfg config.Config, st *store.Store, blobs *blob.Store, bus *events.Bus,
 		adminAccessSeen: make(map[adminAccessKey]struct{}),
 		sparkCache:      make(map[int64]sparklineEntry),
 		shutdownCh:      make(chan struct{}),
+	}
+	if cfg.Mode == config.ModeLocal {
+		s.crossOrigin = http.NewCrossOriginProtection()
+		if cfg.BaseURL != "" {
+			// A reverse proxy that rewrites Host still works for MAILCUBBY_BASE_URL.
+			if err := s.crossOrigin.AddTrustedOrigin(cfg.BaseURL); err != nil {
+				log.Warn("MAILCUBBY_BASE_URL is not a valid trusted origin; cross-origin protection ignores it", "error", err)
+			}
+		}
 	}
 	s.routes = s.buildRoutes()
 	s.handler = s.withMiddleware(s.buildMux())

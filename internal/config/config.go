@@ -88,7 +88,10 @@ const (
 // Config holds all validated runtime configuration for Mailcubby.
 type Config struct {
 	// General (SPEC 9.1)
-	Mode           Mode
+	Mode Mode
+	// ModeExplicit reports whether MAILCUBBY_MODE was set, as opposed to
+	// defaulting to local (SPEC 5: a data dir with users refuses an implicit local start).
+	ModeExplicit   bool
 	DataDir        string
 	BaseURL        string
 	AppKey         []byte
@@ -115,11 +118,14 @@ type Config struct {
 	RenderRemoteImages       RenderRemoteImages
 
 	// SMTP (SPEC 9.3)
-	SMTPAddr                string
-	SMTPSAddr               string
-	SMTPHostname            string
-	SMTPPublicHost          string
-	SMTPPublicPort          int
+	SMTPAddr       string
+	SMTPSAddr      string
+	SMTPHostname   string
+	SMTPPublicHost string
+	SMTPPublicPort int
+	// SMTPPublicPortExplicit reports whether MAILCUBBY_SMTP_PUBLIC_PORT was set.
+	// When it was not, local mode announces the bound SMTP listener port (FR-063).
+	SMTPPublicPortExplicit  bool
 	SMTPTLSCert             string
 	SMTPTLSKey              string
 	SMTPAllowInsecureAuth   bool
@@ -233,6 +239,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 
 	// General (SPEC 9.1)
 	if v, ok := get("MAILCUBBY_MODE"); ok {
+		cfg.ModeExplicit = true
 		switch Mode(strings.ToLower(v)) {
 		case ModeLocal:
 			cfg.Mode = ModeLocal
@@ -429,6 +436,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 			addErr("MAILCUBBY_SMTP_PUBLIC_PORT", fmt.Errorf("invalid port %q: expected integer in 1..65535", v))
 		} else {
 			cfg.SMTPPublicPort = p
+			cfg.SMTPPublicPortExplicit = true
 		}
 	}
 

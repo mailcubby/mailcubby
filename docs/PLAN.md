@@ -22,7 +22,7 @@ In Google Antigravity, `AGENTS.md` is loaded automatically; type `/next-phase` (
 | M2 Local feature-complete | 5 | Search and tags |
 | M3 Multi-tenant server | 6 to 9 | Login, projects, roles, invites, per-project SMTP credentials, settings UI, API tokens |
 | M4 Production-ready | 10 to 12 | Retention, security hardening, TLS, packaging |
-| M5 v1.0 | 13 | Release |
+| M5 v1.0 | 13 to 14 | Release |
 
 ---
 
@@ -412,6 +412,77 @@ Acceptance:
 
 ---
 
+## Phase 14: pre-release polish
+
+**Goal**: close the findings of the final pre-v1.0 audit (2026-11-25) that block a good first release, without adding steps, env vars or security friction to local mode. Local mode must stay as simple as Mailpit. Each part is one pull request; audit IDs (S, L, V, I) refer to that audit.
+
+### Phase 14a: security and operability
+
+Tasks:
+- [x] S1a: local mode rejects cross-origin unsafe requests from browsers (stdlib `http.CrossOriginProtection`); curl, SDKs, the Vite dev proxy and reverse proxies keep working. FR-045 updated.
+- [x] S3: a data dir that has users refuses to start when `MAILCUBBY_MODE` was not set (defaulted to local), with a clear error naming the variable; an explicit `MAILCUBBY_MODE=local` still starts.
+- [x] S4/V2: SMTP AUTH lockout keyed by (remote IP, username) with a per-IP ceiling of 5x the per-pair limit; no global per-username bucket. SPEC 12.4 updated.
+- [x] V1: an SMTP credential that fails to decrypt (wrong or lost `MAILCUBBY_APP_KEY`) answers `454` and does not count towards lockout; startup logs an ERROR "N of M SMTP credentials cannot be decrypted"; reveal returns a clear error; README documents the recovery (rotate credentials).
+- [x] S10: `app.db` and its `-wal`/`-shm` files are created with mode 0600 (SPEC 11).
+- [x] L1: in local mode the announced SMTP port (`/api/v1/meta`, SMTP quick copy, snippets) is derived from `MAILCUBBY_SMTP_ADDR`.
+- [x] L2/L3: startup logs one line `mailcubby ready url=... smtp=... data_dir=<absolute path>`; `mailcubby serve --help` prints the flags and relevant env vars and exits 0.
+
+Acceptance:
+- A cross-site `POST` with a foreign `Origin` (or `Sec-Fetch-Site: cross-site`) to a local-mode API returns 403; the same request without `Origin` (curl) and a same-origin request succeed; `make dev` (Vite proxy) still mutates.
+- Starting with a data dir containing users and no `MAILCUBBY_MODE` exits non-zero with the error; with `MAILCUBBY_MODE=local` it starts.
+- Wrong passwords for one username from an IP do not lock out another username from the same IP; the per-IP ceiling still locks; Python `smtplib` (two failed attempts per `login()`) is covered.
+- A credential encrypted under another key gives `454` and no lockout increment; the startup ERROR is logged.
+- Created `app.db*` files are mode 0600.
+- `MAILCUBBY_SMTP_ADDR=:2525` in local mode makes `/api/v1/meta` announce port 2525.
+- The ready line contains the URL, SMTP address and absolute data dir; `serve --help` exits 0.
+
+### Phase 14b: release and docs
+
+Tasks:
+- [ ] `release.yml` passes `--release-notes docs/release-notes-v1.0.0.md`; `.goreleaser.yaml` sets `release.prerelease: auto`.
+- [ ] Release notes: image tag `:1.0.0` (not `:v1.0.0`), absolute links, `127.0.0.1:` port bindings for local mode, server quick start identical to the README (S2 docs).
+- [ ] Compose files set `name: mailcubby` (server) and `name: mailcubby-local` (local); README backup uses `mailcubby_mailcubby-data` (I3, I4).
+- [ ] README: `git clone --depth 1 --branch v1.0.0` step before compose; `go install` is not supported; pre-release banner; image size about 9 MB; `127.0.0.1:` port bindings in local examples; ARCHITECTURE examples likewise (S2 docs).
+- [ ] V3: README shows `| tail -1` for the setup token (regenerated on each start); V5: README shows `docker compose exec mailcubby mailcubby admin reset-password`; startup logs when `MAILCUBBY_ADMIN_*` is ignored because users exist.
+- [ ] CI runs Playwright e2e (Chromium); specs use unique slugs (`uniqueSlug(prefix)` helper) so retries do not hit 409.
+- [ ] Comment explaining `getItemKey` in `web/src/features/inbox/MessageListPane.tsx`.
+- [ ] Setup wizard step 1 shows the `docker compose logs`, `docker logs <container>` and binary variants for finding the setup token.
+- [ ] Setup wizard shows "Paste the setup token" only after a submit attempt.
+- [ ] `make docker` passes the git version, so `/api/v1/meta` of a locally built image reports it.
+- [ ] Commit the "Backlog (after v1.0.0)" section of this file.
+
+Acceptance:
+- CI workflow has an `e2e` job running `make e2e` on Chromium; `make e2e` passes twice in a row against the same binary build.
+- Vitest/Playwright cover the wizard token hint and the deferred validation error.
+- `make docker` then `docker run` shows the `git describe` version in `/api/v1/meta` (owner if Docker is unavailable to the agent).
+- Release notes and README server quick starts match; `docker compose -f deploy/compose.server.yml config` shows project name `mailcubby`.
+
+### Phase 14c: attachments in the message view
+
+Tasks:
+- [ ] Attachment strip below the Preview and Text tabs: one compact card per attachment (lucide type icon, thumbnail for raster images via `?inline=1`, filename, size); clicking downloads; hidden when there are no attachments. Inline parts referenced by `cid:` from the HTML are left out, using the same resolution as `/render`.
+- [ ] The Attachments tab keeps full details (content type, inline/attachment badge, inline `cid:` parts); viewers with `viewer_hide_technical` see both strip and tab.
+- [ ] SPEC FR-072, `docs/UI.md` and `openapi.yaml` updated; no new dependencies; section 8 rules kept (downloads as `attachment`, inline only for allowlisted raster images, no inline PDF).
+
+Acceptance:
+- Playwright: a message with a PDF and a PNG attachment shows two cards (PNG with thumbnail, PDF with icon only); clicking a card downloads with the right filename; a message without attachments shows no strip; an HTML message with a `cid:` image shows it in the Attachments tab but not in the strip; a viewer with `viewer_hide_technical` sees the strip.
+- Go test: the "referenced by HTML" flag matches what the render endpoint rewrites.
+- axe: no serious/critical violations on the message view with the strip.
+
+### Phase 14d: Homebrew install (local mode)
+
+Tasks:
+- [ ] GoReleaser config publishes a Homebrew formula or cask to `mailcubby/homebrew-tap` with a service that runs local mode on :1025/:8025 with data in `$(brew --prefix)/var/mailcubby`; pre-releases do not update the tap; decision recorded in an ADR if not obvious.
+- [ ] README install section: macOS Homebrew first (`brew install mailcubby/tap/mailcubby`, `brew services start mailcubby`); manual LaunchAgent (macOS) and systemd user unit (Linux) for the Releases binary.
+- [ ] Create the `mailcubby/homebrew-tap` repository (owner).
+- [ ] Create a fine-grained token with contents write on `mailcubby/homebrew-tap` and store it as the `HOMEBREW_TAP_GITHUB_TOKEN` secret of `mailcubby/mailcubby` (owner).
+
+Acceptance:
+- `goreleaser check` passes; `goreleaser release --snapshot --clean` generates the formula/cask with the service block (blocked if goreleaser is unavailable).
+- After the first tagged release, `brew install mailcubby/tap/mailcubby && brew services start mailcubby` serves the UI on http://localhost:8025 (owner).
+
+---
+
 ## Open questions
 
 Agents: record spec ambiguities and the decision taken here, newest last, with phase and date. Items starting with **Owner** need a decision from the owner; agents continue with the stated default meanwhile.
@@ -461,3 +532,7 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
 - 2026-11-24, Phase 11: Audit log pagination (`GET /api/v1/projects/{project}/audit`, `GET /api/v1/admin/audit`) cursors by `audit_log.id DESC` (unpadded base64url integer cursor) so events sharing a millisecond timestamp are never skipped; admin audit `?project=` matches project slug (falling back to numeric project ID, returning empty results for unknown slugs) and `?user=` matches numeric `actor_user_id` or case-insensitive `actor_label` substring; `envelope.auth_user` is omitted for callers without `ActionReadSMTP` (viewers and read-only tokens) per FR-050 even when `viewer_hide_technical=false`; `DELETE /api/v1/admin/users/{id}` returns `409 conflict` if the user is the sole owner of any project (SPEC 6.5) and revokes pending instance invites on deletion; auto-tags at ingest (`X-Tags` + plus-address tags) are capped at 50 per message with a parse warning when truncated; `mailcubby sendmail` negotiates `STARTTLS` when advertised and refuses plaintext `AUTH` to non-loopback hosts unless `--allow-insecure-auth` is passed (warning on stderr); `govulncheck@v1.1.4` CI job is added to `.github/workflows/ci.yml` and verified by CI/owner because the local environment runs offline.
 - 2026-11-25, Phase 12: `MAILCUBBY_SMTPS_ADDR` requires `MAILCUBBY_SMTP_TLS_CERT` and `MAILCUBBY_SMTP_TLS_KEY` in `config.Load` (failing loudly rather than silently ignoring the implicit TLS listener); `internal/tlsutil.Reloader` polls every 30 s checking mtime, size, and inode (`os.SameFile`), retains the previously valid certificate on transient reload failures, and retries on the next poll; `smtpd.Server` shares total/per-IP connection limits across `Serve` and `ServeTLS` and closes excess implicit TLS connections without writing a plaintext `421`; `.goreleaser.yaml` uses `dockers_v2` (GoReleaser v2.20.3) and omits `:{{ .Major }}.{{ .Minor }}` and `:latest` on prereleases; `deploy/compose.server.yml` and `deploy/Caddyfile` run Caddy as UID `65532:65532` (`caddy-init` volume ownership, `http_port 8080`, `https_port 8443`, pinned Let's Encrypt `acme_ca`) so `0600` private keys are readable by Mailcubby's `nonroot` user; the `goreleaser release --snapshot --clean` and amd64/arm64 compressed image size acceptance criterion is blocked locally because Docker daemon and `goreleaser` are unavailable in this environment (all 6 `CGO_ENABLED=0` binaries cross-compiled cleanly with `linux/amd64` 8.1 MB gzipped and `linux/arm64` 7.4 MB gzipped, and the <25 MB check is enforced in `.github/workflows/release.yml`).
 - 2026-11-25, Phase 13: All PR #2 web polish and build-check follow-ups addressed (exponential-backoff SSE recovery on `EventSource.CLOSED` + auth re-check, scoped multi-page undo-delete restore, stable `seenMutation.mutate`/`tagsMutation.mutate` callbacks, `queryClient.clear()` on invite sign-out, confirmation dialogs for admin/self-demotion + safe redirect on self-removal, and `routeTree.gen.ts` staleness check in `make check`); `@axe-core/playwright@4.14.0` added across every local-mode and server-mode screen (WCAG 2.1 AA, zero serious/critical violations) with contrast, `<dl>`, focusable `<pre>`, label-in-name, and ARIA listbox fixes; `internal/blob.Store` pools `*zstd.Encoder` instances (cutting ingest allocations from 2.07 MB/op to 1.36 MB/op); NFR-001 through NFR-009 verified and recorded in `docs/benchmarks.md` (macOS APFS `fsync` barrier measured 190.0 msgs/s for NFR-001; Linux SSD target >= 200 msgs/s); `scripts/check-spec-frs.sh` verifies 68/68 FRs in `docs/SPEC.md` are referenced by automated tests; tag-to-tag upgrade test skipped because no prior git tag exists yet (`00001+00002 -> 00003` populated migration verified); **Owner**: review dependency patch candidates before tagging `v1.0.0` (`golang.org/x/net` is `v0.62.0` in `go.mod` vs `v0.63.0` in `AGENTS.md`, `pnpm` 12.21.0 -> 12.23.0 available, plus full upstream Go/npm patch check and CI `govulncheck` run).
+- 2026-11-25, Phase 14a: local mode uses `http.CrossOriginProtection` and also trusts `MAILCUBBY_BASE_URL` as an origin, so reverse proxies that rewrite `Host` keep working. Browser code on another origin (for example an in-page `fetch` from an app under test) can no longer write to the local API; curl, SDKs, the Playwright `request` fixture and the Vite dev proxy are unaffected. Same behaviour as Mailpit. Known trade-off: a plain-HTTP reverse proxy that rewrites `Host` (nginx default `proxy_pass`) gets 403 on UI writes unless `MAILCUBBY_BASE_URL` is set (an existing variable; HTTPS proxies and proxies that keep `Host` need nothing). `deploy/compose.local.yml` and `.env.example` leave `MAILCUBBY_MODE` unset so the implicit-local refusal (S3) protects Docker users too.
+- 2026-11-25, Phase 14a: SMTP AUTH credential lookup errors reply `454 4.7.0` (was `451 4.3.0`); decrypt failures (wrong `MAILCUBBY_APP_KEY`) reply 454 and do not count towards lockout. Credential reveal on a decrypt failure returns `409 conflict` with a message naming `MAILCUBBY_APP_KEY`, keeping the error enum unchanged.
+- 2026-11-25, Phase 14a: a new `app.db` is created 0600 before SQLite opens it; an existing `app.db*` with wider permissions is chmodded to 0600 best effort, and a failed chmod (some bind mounts) is ignored silently so startup is never blocked.
+- 2026-11-25, Phase 14a: the implicit-local refusal (S3) opens and migrates the database before refusing, but creates no `app.key`. An explicit `MAILCUBBY_SMTP_PUBLIC_PORT` still overrides the bound port in local mode (Docker port mappings).

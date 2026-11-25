@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -29,23 +30,19 @@ func TestSMTPAuthLimiter(t *testing.T) {
 
 		// 5th failure triggers lockout and reports newlyLocked once.
 		newly, reason := lim.RecordFailure("10.0.0.1", "shop-a1b2c3d4")
-		if !newly || reason != "ip_and_username" {
+		if !newly || reason != LockoutReasonIPAndUsername {
 			t.Fatalf("5th failure: got newly=%v reason=%q, want (true, ip_and_username)", newly, reason)
 		}
 		if !lim.IsLocked("10.0.0.1", "shop-a1b2c3d4") {
 			t.Fatalf("expected locked after 5 failures")
 		}
-		// Other IP with same username is locked.
-		if !lim.IsLocked("10.0.0.2", "shop-a1b2c3d4") {
-			t.Fatalf("expected username lockout across IPs")
+		// No global per-username bucket: the same username from another IP is not locked.
+		if lim.IsLocked("10.0.0.2", "shop-a1b2c3d4") {
+			t.Fatalf("same username from another IP should not be locked")
 		}
-		// Same IP with other username is locked.
-		if !lim.IsLocked("10.0.0.1", "other-user") {
-			t.Fatalf("expected IP lockout across usernames")
-		}
-		// Unrelated IP + username is not locked.
-		if lim.IsLocked("10.0.0.2", "other-user") {
-			t.Fatalf("unrelated IP and username should not be locked")
+		// Same IP with another username is not locked (IP ceiling is 5x).
+		if lim.IsLocked("10.0.0.1", "other-user") {
+			t.Fatalf("other username from the same IP should not be locked")
 		}
 
 		// Recording another failure while already locked does NOT re-trigger audit.
@@ -77,26 +74,101 @@ func TestSMTPAuthLimiter(t *testing.T) {
 		}
 	})
 
-	t.Run("ip-only and username-only lockouts", func(t *testing.T) {
+	t.Run("per-IP ceiling is 5x the pair limit across usernames", func(t *testing.T) {
 		t.Parallel()
 		clk := clock.NewFake(time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC))
 		lim := NewSMTPAuthLimiter(3, 5*time.Minute, clk)
 
-		// 3 failures from same IP across different usernames -> ip lockout.
-		lim.RecordFailure("10.0.0.5", "u1")
-		lim.RecordFailure("10.0.0.5", "u2")
-		newly, reason := lim.RecordFailure("10.0.0.5", "u3")
-		if !newly || reason != "ip" {
-			t.Fatalf("ip-only lockout = (%v, %q), want (true, ip)", newly, reason)
+		// 14 failures spread over 5 usernames (3+3+3+3+2): every pair but the last is locked, IP is not.
+		for u := range 5 {
+			n := 3
+			if u == 4 {
+				n = 2
+			}
+			for range n {
+				if newly, reason := lim.RecordFailure("10.0.0.5", "u"+strconv.Itoa(u)); newly && reason != LockoutReasonIPAndUsername {
+					t.Fatalf("unexpected reason %q before the IP ceiling", reason)
+				}
+			}
 		}
+		if lim.IsLocked("10.0.0.5", "fresh-user") {
+			t.Fatalf("IP locked after 14 failures, ceiling is 15")
+		}
+		// 15th failure crosses the IP ceiling: every username from that IP is locked.
+		newly, reason := lim.RecordFailure("10.0.0.5", "u4")
+		if !newly || reason != LockoutReasonIP {
+			t.Fatalf("15th failure = (%v, %q), want (true, ip)", newly, reason)
+		}
+		if !lim.IsLocked("10.0.0.5", "fresh-user") {
+			t.Fatalf("expected IP ceiling to lock a fresh username")
+		}
+		if lim.IsLocked("10.0.0.6", "fresh-user") {
+			t.Fatalf("IP ceiling must not affect other IPs")
+		}
+	})
 
-		// 3 failures for same username across different IPs -> username lockout.
-		lim.RecordFailure("10.0.1.1", "victim")
-		lim.RecordFailure("10.0.1.2", "victim")
-		newly, reason = lim.RecordFailure("10.0.1.3", "victim")
-		if !newly || reason != "username" {
-			t.Fatalf("user-only lockout = (%v, %q), want (true, username)", newly, reason)
+	t.Run("no global per-username lockout", func(t *testing.T) {
+		t.Parallel()
+		clk := clock.NewFake(time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC))
+		lim := NewSMTPAuthLimiter(3, 5*time.Minute, clk)
+
+		// Many IPs failing for one username (usernames are not secret) never lock
+		// the legitimate client on its own IP.
+		for i := range 20 {
+			lim.RecordFailure("10.0.1."+strconv.Itoa(i), "victim")
 		}
+		if lim.IsLocked("10.0.2.1", "victim") {
+			t.Fatalf("username locked globally; want per-(IP, username) only")
+		}
+	})
+
+	t.Run("locked pair does not add to the IP ceiling", func(t *testing.T) {
+		t.Parallel()
+		clk := clock.NewFake(time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC))
+		lim := NewSMTPAuthLimiter(2, 15*time.Minute, clk)
+
+		// A misconfigured client retrying forever with a stale password.
+		for range 50 {
+			if res, locked := lim.Reserve("10.0.0.7", "stale"); !locked {
+				lim.CommitFailure(res)
+			}
+		}
+		if !lim.IsLocked("10.0.0.7", "stale") {
+			t.Fatalf("expected stale pair locked")
+		}
+		if lim.IsLocked("10.0.0.7", "healthy") {
+			t.Fatalf("retries of a locked pair locked the whole IP")
+		}
+	})
+
+	// Python smtplib's login() tries AUTH PLAIN, then AUTH LOGIN after a 535,
+	// so one wrong login() costs 2 failures.
+	t.Run("smtplib two failures per login", func(t *testing.T) {
+		t.Parallel()
+		clk := clock.NewFake(time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC))
+		lim := NewSMTPAuthLimiter(5, 15*time.Minute, clk)
+
+		login := func(user string) (lockedAt int) {
+			for attempt := 1; attempt <= 2; attempt++ {
+				res, locked := lim.Reserve("172.17.0.1", user)
+				if locked {
+					return attempt
+				}
+				lim.CommitFailure(res)
+			}
+			return 0
+		}
+		for call, want := range []int{0, 0, 2} {
+			if got := login("client-a"); got != want {
+				t.Fatalf("login() call %d locked at attempt %d, want %d", call+1, got, want)
+			}
+		}
+		// Another client behind the same IP (Docker bridge gateway) is unaffected.
+		res, locked := lim.Reserve("172.17.0.1", "client-b")
+		if locked {
+			t.Fatalf("client-b locked by client-a's failures")
+		}
+		lim.Cancel(res)
 	})
 
 	t.Run("disabled when limit or window non-positive", func(t *testing.T) {

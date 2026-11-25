@@ -1139,6 +1139,15 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "404":
           $ref: "#/components/responses/ErrorResponse"
+        "409":
+          description: >-
+            `conflict`: the stored password cannot be decrypted with the current
+            MAILCUBBY_APP_KEY (wrong or lost key). Restore the original key, or
+            rotate the credential.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /api/v1/projects/{project}/smtp-credentials/{id}/rotate:
     parameters:

@@ -132,6 +132,42 @@ func (q *Queries) GetSMTPCredentialByID(ctx context.Context, arg GetSMTPCredenti
 	return i, err
 }
 
+const listSMTPCredentialSecrets = `-- name: ListSMTPCredentialSecrets :many
+SELECT id, username, password_enc
+FROM smtp_credentials
+ORDER BY id
+`
+
+type ListSMTPCredentialSecretsRow struct {
+	ID          int64
+	Username    string
+	PasswordEnc []byte
+}
+
+// isolation: global (startup MAILCUBBY_APP_KEY check over every credential; system only, no handler reaches it)
+func (q *Queries) ListSMTPCredentialSecrets(ctx context.Context) ([]ListSMTPCredentialSecretsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSMTPCredentialSecrets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSMTPCredentialSecretsRow{}
+	for rows.Next() {
+		var i ListSMTPCredentialSecretsRow
+		if err := rows.Scan(&i.ID, &i.Username, &i.PasswordEnc); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSMTPCredentialsByProject = `-- name: ListSMTPCredentialsByProject :many
 SELECT
     id,
