@@ -790,7 +790,7 @@ $MAILCUBBY_DATA_DIR/
 - Delete: DB transaction first, then remove the file. Missing files on delete are not errors.
 - Read: open, zstd-decompress stream. Raw download streams without buffering the whole message.
 - Backup: stop the container or use `sqlite3 app.db ".backup"` plus a copy of `blobs/`. Documented in README.
-- File modes: directories 0700, files 0600. The container runs as non-root UID 65532.
+- File modes: directories 0700, files 0600. `app.db` is created 0600 before SQLite opens it (SQLite gives `-wal`/`-shm` the same mode); an existing `app.db` (and leftover `-wal`/`-shm`) with wider permissions is tightened to 0600 at startup, best effort (a filesystem that rejects `chmod`, such as some bind mounts, does not stop startup). No process umask is changed. The container runs as non-root UID 65532.
 
 ---
 

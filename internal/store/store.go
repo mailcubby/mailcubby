@@ -26,6 +26,9 @@ const (
 	// DBFilename is the SQLite database filename inside MAILCUBBY_DATA_DIR.
 	DBFilename = "app.db"
 
+	// dbFileMode is the permission of app.db and its -wal/-shm files (SPEC 11).
+	dbFileMode os.FileMode = 0o600
+
 	writerDSNQuery = "_auto_vacuum=INCREMENTAL&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)&_pragma=temp_store(MEMORY)&_txlock=immediate"
 	readerDSNQuery = "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=temp_store(MEMORY)&_pragma=query_only(1)"
 )
@@ -86,6 +89,9 @@ func Open(ctx context.Context, dbPath string) (*Store, error) {
 	if statErr != nil && !created {
 		return nil, fmt.Errorf("store: stat %q: %w", absPath, statErr)
 	}
+	if err := ensureDBFileMode(absPath, created); err != nil {
+		return nil, err
+	}
 
 	writer, err := sql.Open("sqlite", buildDSN(absPath, writerDSNQuery))
 	if err != nil {
@@ -131,6 +137,33 @@ func Open(ctx context.Context, dbPath string) (*Store, error) {
 		readQ:  sqlc.New(reader),
 		path:   absPath,
 	}, nil
+}
+
+// ensureDBFileMode makes the database file owner-only (SPEC 11). A new file is
+// created with mode 0600 before SQLite opens it, so SQLite gives the -wal and
+// -shm files the same mode. An existing database (and any leftover -wal/-shm)
+// is tightened to 0600 on a best-effort basis: some bind mounts (Docker
+// Desktop, CIFS) reject chmod, and that must not stop startup.
+func ensureDBFileMode(absPath string, created bool) error {
+	if created {
+		//nolint:gosec // G304: path is the configured data directory database file
+		f, err := os.OpenFile(absPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, dbFileMode)
+		if err != nil {
+			return fmt.Errorf("store: create %q: %w", absPath, err)
+		}
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("store: create %q: %w", absPath, err)
+		}
+		return nil
+	}
+	for _, p := range []string{absPath, absPath + "-wal", absPath + "-shm"} {
+		fi, err := os.Stat(p)
+		if err != nil || fi.Mode().Perm()&^dbFileMode == 0 {
+			continue
+		}
+		_ = os.Chmod(p, dbFileMode)
+	}
+	return nil
 }
 
 // Close closes the reader handle, checkpoints the WAL, and closes the writer handle.
