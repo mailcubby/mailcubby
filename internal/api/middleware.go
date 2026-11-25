@@ -458,7 +458,8 @@ func isPublicUnsafePath(p string) bool {
 // (Sec-Fetch-Site, else an Origin whose host differs from Host) get 403, via
 // the stdlib http.CrossOriginProtection. Requests without those headers (curl,
 // SDKs) and same-origin requests (the UI, the Vite dev proxy, which keeps Host)
-// pass. MAILCUBBY_BASE_URL, when set, is a trusted origin.
+// pass. MAILCUBBY_BASE_URL, when set, is a trusted origin. Safe methods (GET,
+// HEAD, OPTIONS: render, SSE, downloads) are exempt inside the stdlib check.
 //
 // Server mode:
 //   - All unsafe requests require Origin (or Referer fallback) matching MAILCUBBY_BASE_URL.
