@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent that runs the Mailcubby Releases binary in local mode at login.
+  launchd needs absolute paths: replace __HOME__ with your home directory, for example
+    sed "s|__HOME__|$HOME|g" deploy/launchd/dev.mailcubby.plist > ~/Library/LaunchAgents/dev.mailcubby.plist
+  See README "Run the Releases binary as a service". Homebrew users do not need this
+  file: `brew services start mailcubby` generates an equivalent agent.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.mailcubby</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__HOME__/.local/bin/mailcubby</string>
+    <string>serve</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>MAILCUBBY_MODE</key>
+    <string>local</string>
+    <key>MAILCUBBY_DATA_DIR</key>
+    <string>__HOME__/.local/share/mailcubby</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>__HOME__</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/mailcubby.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/mailcubby.log</string>
+</dict>
+</plist>
