@@ -23,7 +23,7 @@ test.describe("Phase 14c: attachment strip in the message view (FR-072)", () => 
       "aria-selected",
       "true",
     );
-    const strip = page.getByRole("region", { name: "Attachments" });
+    const strip = page.getByRole("region", { name: "Attachment downloads" });
     await expect(strip).toBeVisible();
     await expect(strip.getByRole("link")).toHaveCount(2);
 
@@ -81,10 +81,10 @@ test.describe("Phase 14c: attachment strip in the message view (FR-072)", () => 
     await openMessage(page, slug, /Order #1042 confirmed/);
 
     await expect(page.locator('iframe[title^="Email preview:"]')).toBeVisible();
-    await expect(page.getByRole("region", { name: "Attachments" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Attachment downloads" })).toHaveCount(0);
     await page.getByRole("tab", { name: "Text" }).click();
     await expect(page.getByRole("tab", { name: "Text" })).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByRole("region", { name: "Attachments" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Attachment downloads" })).toHaveCount(0);
   });
 
   test("an inline cid: image is listed in the Attachments tab but not in the strip", async ({
@@ -102,7 +102,7 @@ test.describe("Phase 14c: attachment strip in the message view (FR-072)", () => 
       /^data:image\/png;base64,/,
     );
 
-    const strip = page.getByRole("region", { name: "Attachments" });
+    const strip = page.getByRole("region", { name: "Attachment downloads" });
     await expect(strip).toBeVisible();
     await expect(strip.getByRole("link")).toHaveCount(2);
     await expect(strip.getByRole("link", { name: /^Download terms\.txt / })).toBeVisible();

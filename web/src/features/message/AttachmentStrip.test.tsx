@@ -62,7 +62,7 @@ describe("AttachmentStrip (FR-072)", () => {
       }),
     ]);
 
-    const strip = screen.getByRole("region", { name: "Attachments" });
+    const strip = screen.getByRole("region", { name: "Attachment downloads" });
     const links = within(strip).getAllByRole("link");
     expect(links).toHaveLength(3);
     expect(within(strip).getByText("3 attachments")).toBeTruthy();

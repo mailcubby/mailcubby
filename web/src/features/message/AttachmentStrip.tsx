@@ -28,7 +28,7 @@ export function AttachmentStrip({ projectSlug, messageId, attachments }: Attachm
 
   return (
     <section
-      aria-label="Attachments"
+      aria-label="Attachment downloads"
       data-testid="attachment-strip"
       className="shrink-0 border-t border-border bg-surface px-3 py-2"
     >
@@ -38,7 +38,7 @@ export function AttachmentStrip({ projectSlug, messageId, attachments }: Attachm
           {formatCount(items.length)} {items.length === 1 ? "attachment" : "attachments"}
         </span>
       </div>
-      <ul className="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+      <ul className="-m-1 flex max-h-34 flex-wrap gap-2 overflow-y-auto p-1">
         {items.map((att) => {
           const Icon = getAttachmentIcon(att.content_type);
           const url = attachmentUrl(projectSlug, messageId, att.id);

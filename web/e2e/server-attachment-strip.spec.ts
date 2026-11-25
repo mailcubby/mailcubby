@@ -182,7 +182,7 @@ test.describe("Phase 14c: attachment strip for viewers (FR-072)", () => {
         await expect(viewerPage.getByRole("tab", { name: "Tech" })).toHaveCount(0);
 
         // 3. The strip shows the PDF and leaves out the cid: logo shown in the preview.
-        const strip = viewerPage.getByRole("region", { name: "Attachments" });
+        const strip = viewerPage.getByRole("region", { name: "Attachment downloads" });
         await expect(strip).toBeVisible();
         await expect(strip.getByRole("link")).toHaveCount(1);
         const pdf = strip.getByRole("link", { name: /^Download sample\.pdf / });
