@@ -1,0 +1,19 @@
+# systemd user unit that runs the Mailcubby Releases binary in local mode.
+# Install: cp deploy/systemd/mailcubby.service ~/.config/systemd/user/
+#          systemctl --user daemon-reload && systemctl --user enable --now mailcubby
+# See README "Run the Releases binary as a service". Logs: journalctl --user -u mailcubby
+
+[Unit]
+Description=Mailcubby email testing server (local mode)
+Documentation=https://github.com/mailcubby/mailcubby
+
+[Service]
+ExecStart=%h/.local/bin/mailcubby serve
+Environment=MAILCUBBY_MODE=local
+Environment=MAILCUBBY_DATA_DIR=%h/.local/share/mailcubby
+WorkingDirectory=%h
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

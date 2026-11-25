@@ -472,13 +472,13 @@ Acceptance:
 ### Phase 14d: Homebrew install (local mode)
 
 Tasks:
-- [ ] GoReleaser config publishes a Homebrew formula or cask to `mailcubby/homebrew-tap` with a service that runs local mode on :1025/:8025 with data in `$(brew --prefix)/var/mailcubby`; pre-releases do not update the tap; decision recorded in an ADR if not obvious.
-- [ ] README install section: macOS Homebrew first (`brew install mailcubby/tap/mailcubby`, `brew services start mailcubby`); manual LaunchAgent (macOS) and systemd user unit (Linux) for the Releases binary.
-- [ ] Create the `mailcubby/homebrew-tap` repository (owner).
+- [x] GoReleaser config publishes a Homebrew formula or cask to `mailcubby/homebrew-tap` with a service that runs local mode on :1025/:8025 with data in `$(brew --prefix)/var/mailcubby`; pre-releases do not update the tap; decision recorded in an ADR if not obvious.
+- [x] README install section: macOS Homebrew first (`brew install mailcubby/tap/mailcubby`, `brew services start mailcubby`); manual LaunchAgent (macOS) and systemd user unit (Linux) for the Releases binary.
+- [x] Create the `mailcubby/homebrew-tap` repository (owner; created 2026-11-25 with owner approval, README on `main`).
 - [ ] Create a fine-grained token with contents write on `mailcubby/homebrew-tap` and store it as the `HOMEBREW_TAP_GITHUB_TOKEN` secret of `mailcubby/mailcubby` (owner).
 
 Acceptance:
-- `goreleaser check` passes; `goreleaser release --snapshot --clean` generates the formula/cask with the service block (blocked if goreleaser is unavailable).
+- `goreleaser check` exits 0, or 2 with only the `brews` deprecation (ADR 0008); `goreleaser release --snapshot --clean` generates the formula with the service block (criterion reworded for ADR 0008, approved by the owner on 2026-11-25).
 - After the first tagged release, `brew install mailcubby/tap/mailcubby && brew services start mailcubby` serves the UI on http://localhost:8025 (owner).
 
 ---
@@ -574,3 +574,5 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
 - 2026-11-25, Phase 14b: **Owner**: add the new `e2e` CI job to the required checks of the `main` ruleset (with `check`, `race`, `fuzz`, `vuln`, `docker`); remove the README pre-release banner when v1.0.0 ships.
 - 2026-11-25, Phase 14c: the attachment strip is a footer of the reading pane, shown only with the Preview and Text tabs and capped at about two rows with its own scroll, so it stays visible under the full-height preview (like Mailpit). Card accessible name: "Download <filename> <size>". Strip and Attachments tab are shown to viewers regardless of `viewer_hide_technical`; `referenced_by_html` is not a technical field.
 - 2026-11-25, Phase 14c: `referenced_by_html` comes from the renderer (`render.Result.ReferencedCIDs`), keyed by normalised Content-ID. If two parts share a Content-ID both are flagged although only the first renders; the other appears only in the Attachments tab (accepted for v1). A `cid:` part skipped for exceeding the 10 MiB inline budget is not flagged and appears in the strip, since the preview cannot show it. If rendering fails, every flag is false. Only image and CSS `url()` contexts the render CSP lets the preview show count (`<img>`/`<input type=image>` `src`, `srcset`, `background`, `poster`, SVG `<image>`/`<feImage>` `href`, CSS `url()` including `@font-face` fonts, which `font-src data:` allows); a `cid:` in an iframe, script, embed or media `src` is neither inlined nor flagged.
+- 2026-11-25, Phase 14d: the Homebrew install uses a formula (GoReleaser `brews`, deprecated in favour of `homebrew_casks`) because only formulae support `brew services` and casks quarantine unsigned binaries (ADR 0008). `goreleaser check` therefore exits 2 with only the `brews` deprecation; `goreleaser release` just warns. Any future CI `check` step must accept exit 2.
+- 2026-11-25, Phase 14d: the Homebrew service listens on all interfaces like the plain binary and Mailpit (audit decision S2); loopback-only is opt-in through `~/.homebrew/services/mailcubby.env` (Homebrew 6.0.15 or later), documented in the README and the formula caveats. The formula `post_install` creates `var/mailcubby` and `var/log` so the service working directory exists. Release archives (Windows zip included) now carry `deploy/launchd/dev.mailcubby.plist` and `deploy/systemd/mailcubby.service`.

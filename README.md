@@ -44,7 +44,33 @@ Planned after v1 (out of scope for v1): outbound release/relay, HTML compatibili
 
 ## Install
 
-### Docker (recommended)
+### Homebrew (macOS and Linux, local mode)
+
+```sh
+brew install mailcubby/tap/mailcubby
+brew services start mailcubby
+```
+
+The service runs local mode: web UI on http://localhost:8025, SMTP on `localhost:1025`, data in `$(brew --prefix)/var/mailcubby`, log in `$(brew --prefix)/var/log/mailcubby.log`. It starts again at login. Stop Mailpit (`brew services stop mailpit`) or anything else on ports 1025 and 8025 first.
+
+Like the plain binary, the service listens on all interfaces so Docker containers and VMs can reach it, and local mode has no authentication. To listen on loopback only (or change any other setting), create `~/.homebrew/services/mailcubby.env` (`$XDG_CONFIG_HOME/homebrew/services/mailcubby.env` if `XDG_CONFIG_HOME` is set) and restart. This needs Homebrew 6.0.15 or later; the file is kept across upgrades and must not be group or world writable:
+
+```sh
+dir="${XDG_CONFIG_HOME:+$XDG_CONFIG_HOME/homebrew}"; dir="${dir:-$HOME/.homebrew}/services"
+mkdir -p "$dir"
+(umask 077; cat > "$dir/mailcubby.env" <<'EOF'
+MAILCUBBY_HTTP_ADDR=127.0.0.1:8025
+MAILCUBBY_SMTP_ADDR=127.0.0.1:1025
+EOF
+)
+brew services restart mailcubby
+```
+
+On older Homebrew the service ignores that file: run `MAILCUBBY_HTTP_ADDR=127.0.0.1:8025 MAILCUBBY_SMTP_ADDR=127.0.0.1:1025 mailcubby serve` yourself, or use the LaunchAgent or systemd unit below with those variables added.
+
+Stop with `brew services stop mailcubby`; upgrade with `brew upgrade mailcubby && brew services restart mailcubby`. Homebrew only loads formulae from trusted taps: the fully qualified `brew install mailcubby/tap/mailcubby` trusts the formula for you; otherwise run `brew trust --tap mailcubby/tap` first. Mailcubby is not in homebrew-core (see `docs/decisions/0008-homebrew-formula.md`).
+
+### Docker
 
 Multi-arch images (`linux/amd64`, `linux/arm64`) are published to GHCR:
 
@@ -60,6 +86,33 @@ Download the archive for your OS and architecture (`linux`, `darwin`, `windows` 
 tar -xzf mailcubby_<version>_linux_amd64.tar.gz
 ./mailcubby version
 ```
+
+### Run the Releases binary as a service
+
+Without Homebrew, put the binary at `~/.local/bin/mailcubby` and run it in local mode at login with the service files that ship in the release archive under `deploy/` (data in `~/.local/share/mailcubby`). Run these commands in the directory where you extracted the archive.
+
+macOS LaunchAgent (launchd needs absolute paths, so `sed` fills in your home directory):
+
+```sh
+mkdir -p ~/.local/bin && install -m 0755 mailcubby ~/.local/bin/mailcubby
+xattr -d com.apple.quarantine ~/.local/bin/mailcubby 2>/dev/null || true  # downloaded with a browser
+mkdir -p ~/Library/LaunchAgents
+sed "s|__HOME__|$HOME|g" deploy/launchd/dev.mailcubby.plist > ~/Library/LaunchAgents/dev.mailcubby.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.mailcubby.plist
+```
+
+The binary is not signed or notarized, so Gatekeeper blocks it while it carries the quarantine attribute that browsers add (`curl` does not). Logs go to `~/Library/Logs/mailcubby.log`. After replacing the binary, restart with `launchctl kickstart -k gui/$(id -u)/dev.mailcubby`. Stop and remove with `launchctl bootout gui/$(id -u)/dev.mailcubby`, then delete `~/Library/LaunchAgents/dev.mailcubby.plist` so it does not start again at login.
+
+Linux systemd user unit:
+
+```sh
+mkdir -p ~/.local/bin ~/.config/systemd/user && install -m 0755 mailcubby ~/.local/bin/mailcubby
+cp deploy/systemd/mailcubby.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now mailcubby
+```
+
+Logs: `journalctl --user -u mailcubby`. To keep it running while you are logged out, run `loginctl enable-linger "$USER"`. Both files keep the default listen addresses; add `MAILCUBBY_HTTP_ADDR=127.0.0.1:8025` and `MAILCUBBY_SMTP_ADDR=127.0.0.1:1025` to the environment for loopback only.
 
 ### Build from source
 
