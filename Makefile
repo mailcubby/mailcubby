@@ -222,7 +222,9 @@ seed: ## Send testdata/mime/*.eml fixtures to a running instance (SMTP, USER, CO
 	fi
 
 docker: ## Build local Docker image mailcubby:dev
-	docker build -f deploy/Dockerfile -t mailcubby:dev .
+	docker build -f deploy/Dockerfile \
+		--build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) \
+		-t mailcubby:dev .
 
 migration: ## Create next sequential goose SQL migration (usage: make migration name=add_x)
 	@set -eu; \
