@@ -211,3 +211,23 @@ func TestServeRefusesImplicitLocalModeWithUsers(t *testing.T) {
 		t.Fatalf("output does not name MAILCUBBY_MODE:\nstdout: %s\nstderr: %s", stdout.String(), stderr.String())
 	}
 }
+
+func TestServeHelp(t *testing.T) {
+	t.Parallel()
+
+	for _, arg := range []string{"--help", "-h", "-help"} {
+		t.Run(arg, func(t *testing.T) {
+			t.Parallel()
+			var stdout, stderr bytes.Buffer
+			code := run([]string{"serve", arg}, strings.NewReader(""), &stdout, &stderr, func(string) (string, bool) { return "", false })
+			if code != 0 {
+				t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+			}
+			for _, want := range []string{"Usage: mailcubby serve", "--help", "MAILCUBBY_MODE", "MAILCUBBY_DATA_DIR", "MAILCUBBY_HTTP_ADDR", "MAILCUBBY_SMTP_ADDR"} {
+				if !strings.Contains(stdout.String(), want) {
+					t.Errorf("help output missing %q:\n%s", want, stdout.String())
+				}
+			}
+		})
+	}
+}

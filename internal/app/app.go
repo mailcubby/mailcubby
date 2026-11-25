@@ -358,6 +358,8 @@ func (a *App) Serve(ctx context.Context) error {
 		return nil
 	})
 
+	a.logReady()
+
 	g.Go(func() error {
 		<-gctx.Done()
 		a.listenersReady.Store(false)
@@ -401,6 +403,37 @@ func (a *App) Serve(ctx context.Context) error {
 	// 3. Close event bus and SQLite store.
 	closeErr := a.Close()
 	return errors.Join(serveErr, closeErr)
+}
+
+// logReady logs one startup line with the URL to open, the SMTP address
+// clients should use and the absolute data directory.
+func (a *App) logReady() {
+	dataDir, err := filepath.Abs(a.cfg.DataDir)
+	if err != nil {
+		dataDir = a.cfg.DataDir
+	}
+	a.log.Info("mailcubby ready",
+		"url", a.publicURL(),
+		"smtp", net.JoinHostPort(a.cfg.SMTPPublicHost, strconv.Itoa(a.cfg.SMTPPublicPort)),
+		"data_dir", dataDir,
+	)
+}
+
+// publicURL returns MAILCUBBY_BASE_URL, or else an http URL for the bound HTTP
+// listener (localhost when it listens on all interfaces or loopback).
+func (a *App) publicURL() string {
+	if a.cfg.BaseURL != "" {
+		return a.cfg.BaseURL
+	}
+	host := "localhost"
+	port := ""
+	if tcpAddr, ok := a.httpLn.Addr().(*net.TCPAddr); ok {
+		port = strconv.Itoa(tcpAddr.Port)
+		if ip := tcpAddr.IP; ip != nil && !ip.IsUnspecified() && !ip.IsLoopback() {
+			host = ip.String()
+		}
+	}
+	return "http://" + net.JoinHostPort(host, port)
 }
 
 // Close releases listeners, closes the event bus, and closes the SQLite store.

@@ -100,6 +100,8 @@ Or with the standalone binary:
 mailcubby serve
 ```
 
+It stores data in `./data` (relative to the current directory) and logs one line with everything you need, for example `msg="mailcubby ready" url=http://localhost:8025 smtp=localhost:1025 data_dir=/home/me/project/data`. `mailcubby serve --help` lists the common environment variables.
+
 Open http://localhost:8025 and point your application's SMTP settings at `localhost:1025`:
 
 - Any username and password are accepted.

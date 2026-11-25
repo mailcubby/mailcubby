@@ -331,7 +331,7 @@ Unknown operators are treated as plain text. The parser MUST produce parameteris
 
 | Command | Purpose |
 |---|---|
-| `mailcubby serve` (default) | Run SMTP + HTTP + workers. |
+| `mailcubby serve` (default) | Run SMTP + HTTP + workers. Once both listeners are bound it logs one INFO line `mailcubby ready` with `url` (`MAILCUBBY_BASE_URL`, else `http://localhost:<HTTP port>`), `smtp` (the announced host:port of FR-063) and `data_dir` (absolute path). `serve --help` prints its usage (flags and the common environment variables) to stdout and exits 0. |
 | `mailcubby version` | Print version, commit, build date. |
 | `mailcubby keygen` | Print a new base64 `MAILCUBBY_APP_KEY`. |
 | `mailcubby healthcheck [--url]` | Exit 0 if `/readyz` returns 200 within 2 s, else exit 1 (for Docker `HEALTHCHECK` in a distroless image, no shell). Default URL: `http://127.0.0.1:<port of MAILCUBBY_HTTP_ADDR>/readyz`. |
