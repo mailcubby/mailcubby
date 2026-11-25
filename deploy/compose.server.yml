@@ -58,7 +58,7 @@ services:
       - mailcubby
 
   mailcubby:
-    image: ghcr.io/mailcubby/mailcubby:latest
+    image: ghcr.io/mailcubby/mailcubby:${MAILCUBBY_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       - caddy

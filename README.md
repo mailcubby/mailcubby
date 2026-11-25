@@ -146,6 +146,8 @@ MAILCUBBY_DOMAIN=mail.example.com
 MAILCUBBY_APP_KEY=<output-from-keygen>
 # Optional: enables recipient routing (*@<project>.inbox.example.com)
 # MAILCUBBY_INBOX_DOMAIN=inbox.example.com
+# Optional: pin the image version (default: latest)
+# MAILCUBBY_VERSION=1.0.0
 ```
 
 #### 3. Start Caddy and Mailcubby
@@ -348,7 +350,7 @@ Keep the key in your secret store next to the backup of `app.db`.
 Database migrations are embedded in the binary and run automatically on startup.
 
 1. Back up `MAILCUBBY_DATA_DIR` before upgrading.
-2. Pull the new image (or replace the binary) and restart:
+2. Pull the new image (or replace the binary) and restart. If you pinned `MAILCUBBY_VERSION` in `deploy/.env`, change it first:
 
    ```sh
    docker compose -f deploy/compose.server.yml pull mailcubby

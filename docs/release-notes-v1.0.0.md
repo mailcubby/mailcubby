@@ -53,6 +53,8 @@ MAILCUBBY_DOMAIN=mail.example.com
 MAILCUBBY_APP_KEY=<output-from-keygen>
 # Optional: enables recipient routing (*@<project>.inbox.example.com)
 # MAILCUBBY_INBOX_DOMAIN=inbox.example.com
+# Optional: pin the image version (default: latest)
+# MAILCUBBY_VERSION=1.0.0
 ```
 
 Start Caddy and Mailcubby:

@@ -7,7 +7,7 @@ name: mailcubby-local
 
 services:
   mailcubby:
-    image: ghcr.io/mailcubby/mailcubby:latest
+    image: ghcr.io/mailcubby/mailcubby:${MAILCUBBY_VERSION:-latest}
     # build:
     #   context: ..
     #   dockerfile: deploy/Dockerfile
