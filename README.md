@@ -68,7 +68,7 @@ On older Homebrew the service ignores that file: run `MAILCUBBY_HTTP_ADDR=127.0.
 
 Stop with `brew services stop mailcubby`; upgrade with `brew upgrade mailcubby && brew services restart mailcubby`. Homebrew only loads formulae from trusted taps: the fully qualified `brew install mailcubby/tap/mailcubby` trusts the tap for you; otherwise run `brew trust --tap mailcubby/tap` first. Mailcubby is not in homebrew-core (see `docs/decisions/0008-homebrew-formula.md`).
 
-### Docker (recommended)
+### Docker
 
 Multi-arch images (`linux/amd64`, `linux/arm64`) are published to GHCR:
 
