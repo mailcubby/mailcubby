@@ -146,7 +146,7 @@ Memory: the raw message is never fully buffered by Mailcubby itself; enmime hold
 
 ### 3.11 `internal/render`
 
-- `Render(ctx, projectID, msgID, opts) (Result, error)`: loads the blob, finds the HTML part and inline parts via enmime, rewrites with the `golang.org/x/net/html` tokenizer (SPEC 12.1: inject referrer meta and `<base target>`, drop `<base>`, `<meta http-equiv=refresh>` and prefetch-style `<link>`, inline `cid:` parts), counts remote resources (`http:`/`https:` in `src`, `srcset`, `background`, CSS `url()`), returns `Result{HTML []byte, RemoteResourceCount int}`. The message detail handler uses the same function (cached) to fill `remote_resource_count`.
+- `Render(ctx, projectID, msgID, opts) (Result, error)`: loads the blob, finds the HTML part and inline parts via enmime, rewrites with the `golang.org/x/net/html` tokenizer (SPEC 12.1: inject referrer meta and `<base target>`, drop `<base>`, `<meta http-equiv=refresh>` and prefetch-style `<link>`, inline `cid:` parts), counts remote resources (`http:`/`https:` in `src`, `srcset`, `background`, CSS `url()`), returns `Result{HTML []byte, RemoteResourceCount int, ReferencedCIDs}` where `ReferencedCIDs` holds the normalised Content-IDs actually inlined (within the inline byte budget). The message detail handler uses the same function (cached) to fill `remote_resource_count` and each attachment's `referenced_by_html` (via `Result.ReferencesCID`, FR-072).
 - The HTTP handler (`GET /render/{project}/{id}`) is registered in `internal/api` but uses its own header set (SPEC 12.1) instead of the app CSP.
 - Small LRU cache (32 entries, keyed by project, message ID and options) because the UI re-requests when switching device sizes.
 
