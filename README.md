@@ -110,6 +110,8 @@ Open http://localhost:8025 and point your application's SMTP settings at `localh
 
 > **Warning:** Local mode has no authentication. Never expose it to the internet.
 
+Local mode rejects cross-origin `POST`/`PUT`/`PATCH`/`DELETE` requests from browsers (`403`), so a web page you visit cannot change your inbox. curl, SDKs, test clients, the Vite dev proxy and reverse proxies are not affected; behind a proxy that rewrites `Host`, set `MAILCUBBY_BASE_URL` to the URL you open.
+
 ### Server mode (team / agency)
 
 Server mode requires HTTPS (terminated by a reverse proxy), a 32-byte `MAILCUBBY_APP_KEY`, and a TLS certificate for SMTP STARTTLS.
