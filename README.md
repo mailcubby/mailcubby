@@ -268,6 +268,8 @@ All configuration is via `MAILCUBBY_*` environment variables (see `.env.example`
 | `MAILCUBBY_INBOX_DOMAIN` | (empty) | Enables recipient routing, e.g. `inbox.example.com`. |
 | `MAILCUBBY_TRUSTED_PROXIES` | (empty) | Comma-separated proxy CIDRs trusted for `X-Forwarded-For`. |
 | `MAILCUBBY_SMTP_MAX_MESSAGE_BYTES` | `25MiB` | Max accepted message size (up to `100MiB`). |
+| `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` | `5` | Server mode: failed AUTH attempts per (client IP, username) within `MAILCUBBY_SMTP_AUTH_LOCKOUT` before that pair gets `454` until the window passes; an IP is locked for all usernames after 5x this many. Restarting clears lockouts. |
+| `MAILCUBBY_SMTP_AUTH_LOCKOUT` | `15m` | Lockout window and duration. |
 | `MAILCUBBY_RETENTION_MAX_AGE` | `30d` | Default per-project age retention (`0` disables). |
 | `MAILCUBBY_RETENTION_MAX_MESSAGES` | `5000` | Default per-project message cap (`0` disables). |
 | `MAILCUBBY_RETENTION_MAX_BYTES` | `1GiB` | Default per-project raw size cap (`0` disables). |

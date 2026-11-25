@@ -578,7 +578,7 @@ Environment variables only (no config file in v1). Variables marked (secret) als
 | `MAILCUBBY_SMTP_MAX_CONNECTIONS` | `200` | Total concurrent connections. |
 | `MAILCUBBY_SMTP_MAX_CONNECTIONS_PER_IP` | `20` | Concurrent connections per client IP. |
 | `MAILCUBBY_SMTP_TIMEOUT` | `60s` | Read and write timeout. |
-| `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` | `5` | Failures per IP or per username within the window before lockout. |
+| `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` | `5` | Failures per (IP, username) within the window before that pair is locked; an IP is locked for all usernames after 5x this many. |
 | `MAILCUBBY_SMTP_AUTH_LOCKOUT` | `15m` | Window and lockout duration. |
 | `MAILCUBBY_SMTP_RATE_LIMIT` | `600/m` | Messages per project. `0` disables. |
 
@@ -836,7 +836,7 @@ Email HTML is attacker-controlled. It MUST never execute script, reach the app's
 
 In-memory (single process), sliding windows; state is lost on restart, which is acceptable.
 
-- SMTP AUTH: after `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` failures per IP or per username within `MAILCUBBY_SMTP_AUTH_LOCKOUT`, further AUTH attempts from that IP / for that username get `454 4.7.0` without checking the password until the window passes. An audit entry `smtp.auth_lockout` is written once per lockout. After a failure the server delays its reply by 1 s (the delay goes through the injected clock so tests do not sleep).
+- SMTP AUTH: after `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` failures per (IP, username) within `MAILCUBBY_SMTP_AUTH_LOCKOUT`, further AUTH attempts for that pair get `454 4.7.0` without checking the password until the window passes; an IP is locked for all usernames after 5x that many failures. There is no global per-username lockout (usernames are not secret, and one client with a stale password must not lock out the others behind the same IP). Attempts rejected by a lockout are not counted. Server-side errors (credential lookup) return `454 4.7.0` and are not counted. Clients such as Python `smtplib` try PLAIN and then LOGIN, so one wrong `login()` counts as two failures. Lockout state is in memory; restarting clears it. An audit entry `smtp.auth_lockout` (metadata `reason` `ip_and_username` or `ip`) is written once per lockout. After a failure the server delays its reply by 1 s (the delay goes through the injected clock so tests do not sleep).
 - HTTP login: `MAILCUBBY_LOGIN_RATE_LIMIT` per (IP, email) and 5x that per IP; `429` with `Retry-After`. Only failed attempts count, but each attempt is reserved atomically before the password is verified and given back only on success, so concurrent requests cannot exceed the limit. An email longer than 254 bytes gets `400 bad_request` before rate limiting, hashing or auditing.
 - Invite preview/accept and password reset: 20 requests per 15 min per IP.
 - API: `MAILCUBBY_API_RATE_LIMIT` per token or session (token bucket).

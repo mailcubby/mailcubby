@@ -7,6 +7,19 @@ import (
 	"github.com/mailcubby/mailcubby/internal/clock"
 )
 
+// SMTPAuthIPMultiplier is the per-IP failure ceiling as a multiple of the
+// per-(IP, username) limit, mirroring the HTTP login rule (SPEC 12.4).
+const SMTPAuthIPMultiplier = 5
+
+// Lockout reasons reported by CommitFailure and RecordFailure and written to
+// the smtp.auth_lockout audit metadata.
+const (
+	// LockoutReasonIPAndUsername means one (IP, username) pair hit its limit.
+	LockoutReasonIPAndUsername = "ip_and_username"
+	// LockoutReasonIP means one IP hit the per-IP ceiling across usernames.
+	LockoutReasonIP = "ip"
+)
+
 type lockoutBucket struct {
 	failures []time.Time
 	audited  bool
@@ -14,124 +27,129 @@ type lockoutBucket struct {
 
 // SMTPAuthReservation holds an atomically reserved SMTP AUTH failure slot
 // returned by Reserve. Callers must call either Cancel (on authentication
-// success or transient error) or CommitFailure (on authentication failure).
+// success or a server-side error) or CommitFailure (on authentication failure).
 type SMTPAuthReservation struct {
-	ip       string
-	username string
-	at       time.Time
-	active   bool
+	ip     string
+	pair   string
+	at     time.Time
+	active bool
 }
 
-// SMTPAuthLimiter enforces SPEC 12.4 SMTP AUTH brute-force lockout per client IP
-// and per username over a sliding window driven by an injected clock.
+// SMTPAuthLimiter enforces SPEC 12.4 SMTP AUTH brute-force lockout per
+// (client IP, username) pair, with a per-IP ceiling of SMTPAuthIPMultiplier
+// times that limit across usernames, over a sliding window driven by an
+// injected clock. There is no global per-username bucket: one client with a
+// stale password must not lock out other clients, and usernames are not secret.
 type SMTPAuthLimiter struct {
-	maxFailures int
-	window      time.Duration
-	clk         clock.Clock
+	maxFailures   int
+	ipMaxFailures int
+	window        time.Duration
+	clk           clock.Clock
 
 	mu        sync.Mutex
+	byPair    map[string]*lockoutBucket
 	byIP      map[string]*lockoutBucket
-	byUser    map[string]*lockoutBucket
 	lastPrune time.Time
 }
 
-// NewSMTPAuthLimiter creates a brute-force lockout tracker.
-// When maxFailures <= 0 or window <= 0, lockout is disabled.
+// NewSMTPAuthLimiter creates a brute-force lockout tracker. maxFailures is the
+// per-(IP, username) limit; the per-IP ceiling is SMTPAuthIPMultiplier times
+// that. When maxFailures <= 0 or window <= 0, lockout is disabled.
 func NewSMTPAuthLimiter(maxFailures int, window time.Duration, clk clock.Clock) *SMTPAuthLimiter {
 	if clk == nil {
 		clk = clock.NewReal()
 	}
 	return &SMTPAuthLimiter{
-		maxFailures: maxFailures,
-		window:      window,
-		clk:         clk,
-		byIP:        make(map[string]*lockoutBucket),
-		byUser:      make(map[string]*lockoutBucket),
+		maxFailures:   maxFailures,
+		ipMaxFailures: maxFailures * SMTPAuthIPMultiplier,
+		window:        window,
+		clk:           clk,
+		byPair:        make(map[string]*lockoutBucket),
+		byIP:          make(map[string]*lockoutBucket),
 	}
 }
 
-// IsLocked reports whether either ip or username currently has at least
-// maxFailures recorded failures within the sliding lockout window.
+func (l *SMTPAuthLimiter) disabled() bool {
+	return l.maxFailures <= 0 || l.window <= 0
+}
+
+// pairKey joins ip and username with a separator that cannot appear in an IP.
+func pairKey(ip, username string) string {
+	return ip + "\x00" + username
+}
+
+// IsLocked reports whether the (ip, username) pair or ip itself is currently
+// locked within the sliding lockout window.
 func (l *SMTPAuthLimiter) IsLocked(ip, username string) bool {
-	if l.maxFailures <= 0 || l.window <= 0 {
+	if l.disabled() {
 		return false
 	}
 	now := l.clk.Now()
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-
-	if ip != "" && l.isBucketLockedLocked(l.byIP, ip, now) {
-		return true
-	}
-	if username != "" && l.isBucketLockedLocked(l.byUser, username, now) {
-		return true
-	}
-	return false
+	return l.isLockedLocked(ip, pairKey(ip, username), now)
 }
 
-// Reserve atomically checks whether ip or username is already locked and, if
-// not, reserves one failure slot in both buckets before credential verification
-// so concurrent AUTH attempts cannot bypass maxFailures. On success (or
-// transient lookup error) the caller must call Cancel; on bad credentials the
-// caller must call CommitFailure to keep the failure and check whether a new
-// lockout audit entry should be emitted.
+func (l *SMTPAuthLimiter) isLockedLocked(ip, pair string, now time.Time) bool {
+	if l.isBucketLockedLocked(l.byPair, pair, l.maxFailures, now) {
+		return true
+	}
+	return ip != "" && l.isBucketLockedLocked(l.byIP, ip, l.ipMaxFailures, now)
+}
+
+// Reserve atomically checks whether the (ip, username) pair or ip is already
+// locked and, if not, reserves one failure slot in both buckets before
+// credential verification so concurrent AUTH attempts cannot bypass the
+// limits. A locked attempt reserves nothing, so a locked pair stops adding to
+// the IP ceiling. On success (or a server-side error) the caller must call
+// Cancel; on bad credentials the caller must call CommitFailure to keep the
+// failure and check whether a new lockout audit entry should be emitted.
 func (l *SMTPAuthLimiter) Reserve(ip, username string) (res SMTPAuthReservation, locked bool) {
-	if l.maxFailures <= 0 || l.window <= 0 {
+	if l.disabled() {
 		return SMTPAuthReservation{}, false
 	}
 	now := l.clk.Now()
+	pair := pairKey(ip, username)
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if ip != "" && l.isBucketLockedLocked(l.byIP, ip, now) {
+	if l.isLockedLocked(ip, pair, now) {
 		return SMTPAuthReservation{}, true
 	}
-	if username != "" && l.isBucketLockedLocked(l.byUser, username, now) {
-		return SMTPAuthReservation{}, true
-	}
-
+	l.appendBucketLocked(l.byPair, pair, now)
 	if ip != "" {
 		l.appendBucketLocked(l.byIP, ip, now)
 	}
-	if username != "" {
-		l.appendBucketLocked(l.byUser, username, now)
-	}
 	l.maybePruneLocked(now)
 
-	return SMTPAuthReservation{
-		ip:       ip,
-		username: username,
-		at:       now,
-		active:   true,
-	}, false
+	return SMTPAuthReservation{ip: ip, pair: pair, at: now, active: true}, false
 }
 
 // Cancel releases a slot previously obtained via Reserve (called after a
-// successful AUTH or transient non-credential error).
+// successful AUTH or a server-side error that is not the client's fault).
 func (l *SMTPAuthLimiter) Cancel(res SMTPAuthReservation) {
-	if !res.active || l.maxFailures <= 0 || l.window <= 0 {
+	if !res.active || l.disabled() {
 		return
 	}
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	l.removeBucketTimestampLocked(l.byPair, res.pair, res.at, l.maxFailures)
 	if res.ip != "" {
-		l.removeBucketTimestampLocked(l.byIP, res.ip, res.at)
-	}
-	if res.username != "" {
-		l.removeBucketTimestampLocked(l.byUser, res.username, res.at)
+		l.removeBucketTimestampLocked(l.byIP, res.ip, res.at, l.ipMaxFailures)
 	}
 }
 
 // CommitFailure finalizes a reserved slot as a failed AUTH attempt and reports
-// newlyLocked=true at most once per lockout epoch (with reason "ip",
-// "username", or "ip_and_username") so callers emit one smtp.auth_lockout audit
+// newlyLocked=true at most once per lockout epoch of each bucket (reason
+// LockoutReasonIP when the per-IP ceiling is crossed, else
+// LockoutReasonIPAndUsername) so callers emit one smtp.auth_lockout audit
 // entry per lockout (SPEC 12.4).
 func (l *SMTPAuthLimiter) CommitFailure(res SMTPAuthReservation) (newlyLocked bool, reason string) {
-	if !res.active || l.maxFailures <= 0 || l.window <= 0 {
+	if !res.active || l.disabled() {
 		return false, ""
 	}
 	now := l.clk.Now()
@@ -139,100 +157,80 @@ func (l *SMTPAuthLimiter) CommitFailure(res SMTPAuthReservation) (newlyLocked bo
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	var ipNewly, userNewly bool
-	if res.ip != "" {
-		ipNewly = l.checkNewlyLockedLocked(l.byIP, res.ip, now)
-	}
-	if res.username != "" {
-		userNewly = l.checkNewlyLockedLocked(l.byUser, res.username, now)
-	}
-
-	switch {
-	case ipNewly && userNewly:
-		return true, "ip_and_username"
-	case ipNewly:
-		return true, "ip"
-	case userNewly:
-		return true, "username"
-	default:
-		return false, ""
-	}
+	pairNewly := l.checkNewlyLockedLocked(l.byPair, res.pair, l.maxFailures, now)
+	ipNewly := res.ip != "" && l.checkNewlyLockedLocked(l.byIP, res.ip, l.ipMaxFailures, now)
+	return lockoutReason(pairNewly, ipNewly)
 }
 
-// RecordFailure records one failed SMTP AUTH attempt for ip and username.
-// It returns newlyLocked=true at most once per lockout epoch (with reason
-// "ip", "username", or "ip_and_username") so callers write one smtp.auth_lockout
-// audit entry per lockout (SPEC 12.4).
+// RecordFailure records one failed SMTP AUTH attempt for the (ip, username)
+// pair and for ip, without the lock check of Reserve. It reports newlyLocked
+// like CommitFailure.
 func (l *SMTPAuthLimiter) RecordFailure(ip, username string) (newlyLocked bool, reason string) {
-	if l.maxFailures <= 0 || l.window <= 0 {
+	if l.disabled() {
 		return false, ""
 	}
 	now := l.clk.Now()
+	pair := pairKey(ip, username)
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	var ipNewly, userNewly bool
+	l.appendBucketLocked(l.byPair, pair, now)
+	pairNewly := l.checkNewlyLockedLocked(l.byPair, pair, l.maxFailures, now)
+	var ipNewly bool
 	if ip != "" {
-		ipNewly = l.recordBucketLocked(l.byIP, ip, now)
+		l.appendBucketLocked(l.byIP, ip, now)
+		ipNewly = l.checkNewlyLockedLocked(l.byIP, ip, l.ipMaxFailures, now)
 	}
-	if username != "" {
-		userNewly = l.recordBucketLocked(l.byUser, username, now)
-	}
-
 	l.maybePruneLocked(now)
+	return lockoutReason(pairNewly, ipNewly)
+}
 
+func lockoutReason(pairNewly, ipNewly bool) (newlyLocked bool, reason string) {
 	switch {
-	case ipNewly && userNewly:
-		return true, "ip_and_username"
 	case ipNewly:
-		return true, "ip"
-	case userNewly:
-		return true, "username"
+		return true, LockoutReasonIP
+	case pairNewly:
+		return true, LockoutReasonIPAndUsername
 	default:
 		return false, ""
 	}
 }
 
-func (l *SMTPAuthLimiter) isBucketLockedLocked(m map[string]*lockoutBucket, key string, now time.Time) bool {
+func (l *SMTPAuthLimiter) isBucketLockedLocked(m map[string]*lockoutBucket, key string, limit int, now time.Time) bool {
 	b, ok := m[key]
 	if !ok {
 		return false
 	}
-	l.pruneBucketLocked(m, key, b, now)
-	return len(b.failures) >= l.maxFailures
+	l.pruneBucketLocked(m, key, b, limit, now)
+	return len(b.failures) >= limit
 }
 
-func (l *SMTPAuthLimiter) appendBucketLocked(m map[string]*lockoutBucket, key string, now time.Time) *lockoutBucket {
+// appendBucketLocked records a failure at now. Callers prune the bucket first
+// (through isBucketLockedLocked) or prune it right after (checkNewlyLockedLocked).
+func (l *SMTPAuthLimiter) appendBucketLocked(m map[string]*lockoutBucket, key string, now time.Time) {
 	b, ok := m[key]
 	if !ok {
 		b = &lockoutBucket{}
 		m[key] = b
-	} else {
-		l.pruneBucketLocked(m, key, b, now)
-		if _, exists := m[key]; !exists {
-			b = &lockoutBucket{}
-			m[key] = b
-		}
 	}
 	b.failures = append(b.failures, now)
-	return b
 }
 
-func (l *SMTPAuthLimiter) checkNewlyLockedLocked(m map[string]*lockoutBucket, key string, now time.Time) bool {
+func (l *SMTPAuthLimiter) checkNewlyLockedLocked(m map[string]*lockoutBucket, key string, limit int, now time.Time) bool {
 	b, ok := m[key]
 	if !ok {
 		return false
 	}
-	l.pruneBucketLocked(m, key, b, now)
-	if len(b.failures) >= l.maxFailures && !b.audited {
+	l.pruneBucketLocked(m, key, b, limit, now)
+	if len(b.failures) >= limit && !b.audited {
 		b.audited = true
 		return true
 	}
 	return false
 }
 
-func (l *SMTPAuthLimiter) removeBucketTimestampLocked(m map[string]*lockoutBucket, key string, at time.Time) {
+func (l *SMTPAuthLimiter) removeBucketTimestampLocked(m map[string]*lockoutBucket, key string, at time.Time, limit int) {
 	b, ok := m[key]
 	if !ok {
 		return
@@ -248,24 +246,15 @@ func (l *SMTPAuthLimiter) removeBucketTimestampLocked(m map[string]*lockoutBucke
 		out := make([]time.Time, 0, len(b.failures)-1)
 		out = append(out, b.failures[:i]...)
 		b.failures = append(out, b.failures[i+1:]...)
-		if len(b.failures) < l.maxFailures {
+		if len(b.failures) < limit {
 			b.audited = false
 		}
 		return
 	}
 }
 
-func (l *SMTPAuthLimiter) recordBucketLocked(m map[string]*lockoutBucket, key string, now time.Time) bool {
-	b := l.appendBucketLocked(m, key, now)
-	if len(b.failures) >= l.maxFailures && !b.audited {
-		b.audited = true
-		return true
-	}
-	return false
-}
-
 func (l *SMTPAuthLimiter) maybePruneLocked(now time.Time) {
-	if len(l.byIP) <= pruneThreshold && len(l.byUser) <= pruneThreshold {
+	if len(l.byPair) <= pruneThreshold && len(l.byIP) <= pruneThreshold {
 		return
 	}
 	minInterval := max(time.Second, l.window/4)
@@ -273,15 +262,15 @@ func (l *SMTPAuthLimiter) maybePruneLocked(now time.Time) {
 		return
 	}
 	l.lastPrune = now
-	if len(l.byIP) > pruneThreshold {
-		l.pruneMapLocked(l.byIP, now)
+	if len(l.byPair) > pruneThreshold {
+		l.pruneMapLocked(l.byPair, l.maxFailures, now)
 	}
-	if len(l.byUser) > pruneThreshold {
-		l.pruneMapLocked(l.byUser, now)
+	if len(l.byIP) > pruneThreshold {
+		l.pruneMapLocked(l.byIP, l.ipMaxFailures, now)
 	}
 }
 
-func (l *SMTPAuthLimiter) pruneBucketLocked(m map[string]*lockoutBucket, key string, b *lockoutBucket, now time.Time) {
+func (l *SMTPAuthLimiter) pruneBucketLocked(m map[string]*lockoutBucket, key string, b *lockoutBucket, limit int, now time.Time) {
 	cutoff := now.Add(-l.window)
 	idx := 0
 	for idx < len(b.failures) && !b.failures[idx].After(cutoff) {
@@ -296,13 +285,13 @@ func (l *SMTPAuthLimiter) pruneBucketLocked(m map[string]*lockoutBucket, key str
 	if idx > 0 {
 		b.failures = append([]time.Time(nil), b.failures[idx:]...)
 	}
-	if len(b.failures) < l.maxFailures {
+	if len(b.failures) < limit {
 		b.audited = false
 	}
 }
 
-func (l *SMTPAuthLimiter) pruneMapLocked(m map[string]*lockoutBucket, now time.Time) {
+func (l *SMTPAuthLimiter) pruneMapLocked(m map[string]*lockoutBucket, limit int, now time.Time) {
 	for k, b := range m {
-		l.pruneBucketLocked(m, k, b, now)
+		l.pruneBucketLocked(m, k, b, limit, now)
 	}
 }
