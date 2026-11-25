@@ -69,7 +69,7 @@ describe("AttachmentStrip (FR-072)", () => {
     expect(within(strip).queryByText("logo.png")).toBeNull();
 
     const pdf = within(strip).getByRole("link", {
-      name: `Download invoice.pdf, ${formatBytes(2048)}`,
+      name: `Download invoice.pdf ${formatBytes(2048)}`,
     });
     expect(pdf.getAttribute("href")).toBe("/api/v1/projects/shop/messages/01MSG/attachments/1");
     expect(pdf.getAttribute("download")).toBe("invoice.pdf");
@@ -78,7 +78,7 @@ describe("AttachmentStrip (FR-072)", () => {
     expect(pdf.querySelector("svg")).not.toBeNull();
 
     const png = within(strip).getByRole("link", {
-      name: `Download photo.png, ${formatBytes(5 * 1024 * 1024)}`,
+      name: `Download photo.png ${formatBytes(5 * 1024 * 1024)}`,
     });
     expect(png.querySelector("img")?.getAttribute("src")).toBe(
       "/api/v1/projects/shop/messages/01MSG/attachments/2?inline=1",

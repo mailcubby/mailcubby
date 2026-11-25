@@ -49,7 +49,6 @@ export function AttachmentStrip({ projectSlug, messageId, attachments }: Attachm
               <a
                 href={url}
                 download={filename}
-                aria-label={`Download ${filename}, ${size}`}
                 title={filename}
                 data-kind={getAttachmentKind(att.content_type)}
                 className="flex w-56 items-center gap-2 rounded-md border border-border bg-background p-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
@@ -66,10 +65,11 @@ export function AttachmentStrip({ projectSlug, messageId, attachments }: Attachm
                     <Icon className="size-4" aria-hidden="true" />
                   </span>
                 )}
+                {/* Accessible name "Download <filename> <size>" contains the visible text (WCAG 2.5.3). */}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-medium text-foreground">
-                    {filename}
-                  </span>
+                    <span className="sr-only">Download</span> {filename}
+                  </span>{" "}
                   <span className="block text-[11px] tabular-nums text-muted-foreground">
                     {size}
                   </span>
