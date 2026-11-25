@@ -1158,6 +1158,8 @@ export interface components {
             content_id: string | null;
             /** @enum {string} */
             disposition: "attachment" | "inline";
+            /** @description True when the HTML preview (`/render`) inlines this part through a `cid:` reference, using the renderer's own Content-ID resolution (FR-072). The UI leaves such parts out of the attachment strip. */
+            referenced_by_html: boolean;
         };
         MessageEnvelope: {
             mail_from: string;

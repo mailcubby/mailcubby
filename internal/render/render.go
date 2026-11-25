@@ -44,11 +44,27 @@ type InlinePart struct {
 	Content     []byte
 }
 
-// Result holds rewritten HTML ready for the render endpoint and the count of
-// external http/https resources referenced by the message (SPEC 12.1).
+// Result holds rewritten HTML ready for the render endpoint, the count of
+// external http/https resources referenced by the message (SPEC 12.1), and the
+// normalised Content-IDs whose cid: references were inlined (FR-072).
 type Result struct {
 	HTML                []byte
 	RemoteResourceCount int
+	// ReferencedCIDs holds the normalised Content-IDs that the rewrite
+	// replaced with data: URIs. It must be treated as read-only.
+	ReferencedCIDs map[string]struct{}
+}
+
+// ReferencesCID reports whether the rewrite inlined at least one cid: reference
+// to contentID, applying the same normalisation (angle brackets, surrounding
+// whitespace, case) the renderer uses to match Content-ID headers.
+func (r Result) ReferencesCID(contentID string) bool {
+	cid := normalizeCID(contentID)
+	if cid == "" {
+		return false
+	}
+	_, ok := r.ReferencedCIDs[cid]
+	return ok
 }
 
 type cacheKey struct {
@@ -188,7 +204,8 @@ func collectCIDParts(env *enmime.Envelope) map[string]InlinePart {
 //   - injects <meta name="referrer" content="no-referrer"> and <base target="_blank">
 //     at the start of <head> (creating <head> if missing);
 //   - drops existing <base>, <meta http-equiv="refresh">, and prefetch-style <link> elements;
-//   - replaces cid: URLs in src, background, srcset, and CSS url() with data: URIs up to maxInlineBytes;
+//   - replaces cid: URLs in src, background, srcset, and CSS url() with data: URIs up to maxInlineBytes,
+//     recording each inlined Content-ID in Result.ReferencedCIDs;
 //   - counts remote http:/https:/protocol-relative resources in src, srcset, background, and CSS url();
 //   - preserves scripts and remaining markup verbatim (sandboxing is enforced by CSP + iframe).
 func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int) Result {
@@ -201,6 +218,7 @@ func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int)
 
 	inlineUsed := 0
 	dataURICache := make(map[string]string)
+	referenced := make(map[string]struct{})
 	resolveCID := func(rawURL string) (string, bool) {
 		cidRef, ok := extractCIDRef(rawURL)
 		if !ok {
@@ -215,6 +233,7 @@ func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int)
 				return "", false
 			}
 			inlineUsed += len(uri)
+			referenced[cidRef] = struct{}{}
 			return uri, true
 		}
 
@@ -234,6 +253,7 @@ func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int)
 		uri := ub.String()
 		dataURICache[cidRef] = uri
 		inlineUsed += len(uri)
+		referenced[cidRef] = struct{}{}
 		return uri, true
 	}
 
@@ -241,6 +261,7 @@ func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int)
 	return Result{
 		HTML:                out,
 		RemoteResourceCount: remoteCount,
+		ReferencedCIDs:      referenced,
 	}
 }
 

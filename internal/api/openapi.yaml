@@ -2120,6 +2120,7 @@ components:
         - size_bytes
         - content_id
         - disposition
+        - referenced_by_html
       properties:
         id:
           type: integer
@@ -2136,6 +2137,12 @@ components:
         disposition:
           type: string
           enum: [attachment, inline]
+        referenced_by_html:
+          type: boolean
+          description: >-
+            True when the HTML preview (`/render`) inlines this part through a
+            `cid:` reference, using the renderer's own Content-ID resolution
+            (FR-072). The UI leaves such parts out of the attachment strip.
 
     MessageEnvelope:
       type: object
