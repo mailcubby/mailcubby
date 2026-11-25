@@ -541,8 +541,9 @@ func (a *App) Config() config.Config {
 }
 
 // initServerSetup implements SPEC FR-040: headless bootstrap when
-// MAILCUBBY_ADMIN_EMAIL/PASSWORD are set and no users exist, or fresh random
-// setup token generation on every startup while setup is pending.
+// MAILCUBBY_ADMIN_EMAIL/PASSWORD are set and no users exist (logged and
+// ignored once users exist), or fresh random setup token generation on every
+// startup while setup is pending.
 func initServerSetup(
 	ctx context.Context,
 	cfg config.Config,
@@ -556,6 +557,10 @@ func initServerSetup(
 		return fmt.Errorf("app: check user count: %w", err)
 	}
 	if userCount > 0 {
+		if cfg.AdminEmail != "" {
+			log.Info("MAILCUBBY_ADMIN_EMAIL and MAILCUBBY_ADMIN_PASSWORD are ignored because users already exist; " +
+				"use \"mailcubby admin reset-password --email <email>\" to reset a password")
+		}
 		return nil
 	}
 
