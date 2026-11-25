@@ -478,7 +478,7 @@ Tasks:
 - [ ] Create a fine-grained token with contents write on `mailcubby/homebrew-tap` and store it as the `HOMEBREW_TAP_GITHUB_TOKEN` secret of `mailcubby/mailcubby` (owner).
 
 Acceptance:
-- `goreleaser check` exits 0, or 2 with only the `brews` deprecation (ADR 0008); `goreleaser release --snapshot --clean` generates the formula with the service block.
+- `goreleaser check` exits 0, or 2 with only the `brews` deprecation (ADR 0008); `goreleaser release --snapshot --clean` generates the formula with the service block (criterion reworded for ADR 0008, approved by the owner on 2026-11-25).
 - After the first tagged release, `brew install mailcubby/tap/mailcubby && brew services start mailcubby` serves the UI on http://localhost:8025 (owner).
 
 ---
