@@ -68,6 +68,49 @@ dockers_v2:
       org.opencontainers.image.created: "{{ .Date }}"
       org.opencontainers.image.licenses: "LicenseRef-PolyForm-Shield-1.0.0"
 
+# Homebrew formula in mailcubby/homebrew-tap (ADR 0008). GoReleaser deprecates
+# `brews` in favour of `homebrew_casks`, but only formulae support
+# `brew services`, so this is deliberate: `goreleaser check` exits 2 because of
+# it, while `goreleaser release` only warns.
+brews:
+  - name: mailcubby
+    ids:
+      - mailcubby
+    homepage: "https://github.com/mailcubby/mailcubby"
+    description: "Self-hosted multi-tenant email testing server"
+    repository:
+      owner: mailcubby
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    commit_msg_template: "chore(formula): mailcubby {{ .Tag }}"
+    # Pre-releases (v1.1.0-rc.1) do not update the tap.
+    skip_upload: auto
+    install: |
+      bin.install "mailcubby"
+    # launchd and systemd fail to start a service whose working directory is
+    # missing, so create it (and the log directory) at install time.
+    post_install: |
+      (var/"mailcubby").mkpath
+      (var/"log").mkpath
+    service: |
+      run [opt_bin/"mailcubby", "serve"]
+      environment_variables MAILCUBBY_MODE: "local", MAILCUBBY_DATA_DIR: var/"mailcubby"
+      working_dir var/"mailcubby"
+      keep_alive true
+      log_path var/"log/mailcubby.log"
+      error_log_path var/"log/mailcubby.log"
+    caveats: |
+      Mailcubby runs in local mode: no authentication, listening on all interfaces.
+      Do not expose it to untrusted networks. To listen on loopback only, put
+        MAILCUBBY_HTTP_ADDR=127.0.0.1:8025
+        MAILCUBBY_SMTP_ADDR=127.0.0.1:1025
+      in ~/.homebrew/services/mailcubby.env and run `brew services restart mailcubby`.
+      Web UI: http://localhost:8025   SMTP: localhost:1025
+      Data: #{var}/mailcubby   Log: #{var}/log/mailcubby.log
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/mailcubby version")
+
 changelog:
   sort: asc
   filters:
