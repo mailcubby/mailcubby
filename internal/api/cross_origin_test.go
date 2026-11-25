@@ -19,7 +19,12 @@ func TestLocalModeCrossOriginProtection(t *testing.T) {
 
 	srv := testutil.StartServer(t, nil)
 	srvWithBase := testutil.StartServer(t, func(cfg *config.Config) { cfg.BaseURL = "https://mail.dev.test" })
-	client := &http.Client{Timeout: 5 * time.Second}
+	// Parallel subtests can make the transport dial connections it never uses;
+	// http.Server.Shutdown waits up to 5 s for such new connections, so close
+	// them before the servers shut down (cleanups run in reverse order).
+	transport := &http.Transport{DisableKeepAlives: true}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: transport}
+	t.Cleanup(transport.CloseIdleConnections)
 
 	tests := []struct {
 		name    string
