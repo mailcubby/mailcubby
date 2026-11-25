@@ -1,10 +1,10 @@
-import { createProjectViaAPI, expect, sendFixture, sendRawMail, test } from "./helpers";
+import { createProjectViaAPI, expect, sendFixture, sendRawMail, test, uniqueSlug } from "./helpers";
 
 test.describe("Phase 4b realtime, keyboard shortcuts, command palette, and focus", () => {
   test("incoming sendmail message appears live without reload and updates document title count", async ({
     page,
   }) => {
-    const project = await createProjectViaAPI("Realtime Shop", "e2e-realtime");
+    const project = await createProjectViaAPI("Realtime Shop", uniqueSlug("e2e-realtime"));
     await page.goto(`/p/${project.slug}`);
 
     await expect(page.getByText("Live connected")).toBeVisible();
@@ -24,7 +24,7 @@ test.describe("Phase 4b realtime, keyboard shortcuts, command palette, and focus
   test("burst of live SSE arrivals preserves virtualized row heights without overlap", async ({
     page,
   }) => {
-    const project = await createProjectViaAPI("Burst Layout", "e2e-burst-layout");
+    const project = await createProjectViaAPI("Burst Layout", uniqueSlug("e2e-burst-layout"));
     await page.goto(`/p/${project.slug}`);
 
     await expect(page.getByText("Live connected")).toBeVisible();
@@ -95,8 +95,8 @@ test.describe("Phase 4b realtime, keyboard shortcuts, command palette, and focus
   test("j/k navigation, 1-7 tab switching, e delete with undo, Cmd/Ctrl+K palette, and ? help", async ({
     page,
   }) => {
-    const mainProject = await createProjectViaAPI("Keyboard Main", "e2e-kb-main");
-    const otherProject = await createProjectViaAPI("Palette Target", "e2e-kb-target");
+    const mainProject = await createProjectViaAPI("Keyboard Main", uniqueSlug("e2e-kb-main"));
+    const otherProject = await createProjectViaAPI("Palette Target", uniqueSlug("e2e-kb-target"));
 
     // Send 3 messages; 04_multipart_related_cid is sent last so it sits at index 0 (newest).
     await sendFixture("01_plain_text.eml", { user: mainProject.slug });
@@ -171,7 +171,7 @@ test.describe("Phase 4b realtime, keyboard shortcuts, command palette, and focus
   test("keyboard-only walkthrough reaches inbox controls with visible focus indicators", async ({
     page,
   }) => {
-    const project = await createProjectViaAPI("Focus Walkthrough", "e2e-focus");
+    const project = await createProjectViaAPI("Focus Walkthrough", uniqueSlug("e2e-focus"));
     await sendFixture("04_multipart_related_cid.eml", { user: project.slug });
 
     await page.goto(`/p/${project.slug}`);

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createProjectViaAPI, expect, getE2EConfig, test } from "./helpers";
+import { createProjectViaAPI, expect, getE2EConfig, test, uniqueSlug } from "./helpers";
 
 const DEV_APP_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 const ADMIN_EMAIL = "admin@retention.test";
@@ -121,7 +121,7 @@ test.describe("Phase 10: Project retention settings and admin settings/stats", (
   test("owner sets max messages on a project and retention section shows usage against limit", async ({
     page,
   }) => {
-    const slug = `ret-${Date.now()}`;
+    const slug = uniqueSlug("ret");
     await createProjectViaAPI("Retention Demo", slug);
 
     // Send 3 test messages into the project so usage is non-zero.

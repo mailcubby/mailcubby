@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { createServer as createHTTPServer } from "node:http";
 import path from "node:path";
-import { createProjectViaAPI, expect, getE2EConfig, test } from "./helpers";
+import { createProjectViaAPI, expect, getE2EConfig, test, uniqueSlug } from "./helpers";
 
 function sendRawEmail(raw: Buffer | string, projectSlug: string, label: string): Promise<void> {
   const { binaryPath, smtpAddr, repoRoot } = getE2EConfig();
@@ -83,7 +83,7 @@ test.describe("Phase 11 hostile HTML render isolation", () => {
 
     const trap = await startTrapServer();
     try {
-      const slug = `hostile-${Date.now()}`;
+      const slug = uniqueSlug("hostile");
       await createProjectViaAPI("Hostile Corpus", slug);
 
       const expectedOrigin = new URL(httpURL).origin;

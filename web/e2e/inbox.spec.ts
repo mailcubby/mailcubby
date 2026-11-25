@@ -1,10 +1,10 @@
-import { createProjectViaAPI, expect, sendFixture, test } from "./helpers";
+import { createProjectViaAPI, expect, sendFixture, test, uniqueSlug } from "./helpers";
 
 test.describe("Phase 4a local-mode inbox and message view (FR-072)", () => {
   test("send fixture, inspect tabs 1 to 7, and verify sandboxed preview iframe", async ({
     page,
   }) => {
-    const projectSlug = "e2e-tabs";
+    const projectSlug = uniqueSlug("e2e-tabs");
     await sendFixture("04_multipart_related_cid.eml", { user: projectSlug });
 
     await page.goto("/");
@@ -66,7 +66,7 @@ test.describe("Phase 4a local-mode inbox and message view (FR-072)", () => {
   });
 
   test("send test email on an empty project persists across reload", async ({ page }) => {
-    const project = await createProjectViaAPI("Empty Guide Project", "e2e-empty-guide");
+    const project = await createProjectViaAPI("Empty Guide Project", uniqueSlug("e2e-empty-guide"));
 
     await page.goto(`/p/${project.slug}`);
     await expect(page.getByRole("heading", { name: "No messages yet" })).toBeVisible();
@@ -86,7 +86,7 @@ test.describe("Phase 4a local-mode inbox and message view (FR-072)", () => {
   });
 
   test("reloading a deep link /p/<slug>/m/<id> renders the message", async ({ page }) => {
-    const projectSlug = "e2e-deeplink";
+    const projectSlug = uniqueSlug("e2e-deeplink");
     await sendFixture("05_attachments_utf8_rfc2231.eml", { user: projectSlug });
 
     await page.goto(`/p/${projectSlug}`);
@@ -106,7 +106,7 @@ test.describe("Phase 4a local-mode inbox and message view (FR-072)", () => {
   });
 
   test("bulk delete removes selected rows", async ({ page }) => {
-    const projectSlug = "e2e-bulk-delete";
+    const projectSlug = uniqueSlug("e2e-bulk-delete");
     await sendFixture("01_plain_text.eml", { user: projectSlug });
     await sendFixture("02_multipart_alternative.eml", { user: projectSlug });
     await sendFixture("03_html_only.eml", { user: projectSlug });

@@ -105,3 +105,8 @@ export async function createProjectViaAPI(
   }
   return (await res.json()) as { slug: string; name: string };
 }
+
+/** uniqueSlug returns a project slug unique per test attempt, so Playwright retries never hit 409 conflicts. */
+export function uniqueSlug(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
