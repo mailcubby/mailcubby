@@ -396,3 +396,5 @@ make e2e        # Playwright end-to-end tests against the built binary
 ## License
 
 PolyForm Shield 1.0.0. Copyright (c) 2026 NOOP. See `LICENSE`.
+
+Mailcubby is source-available, not OSI open source. You may use it for free, including commercially (for example to test your clients' or your company's email), run it for your team or clients, read and modify the code, and fork it. You may not use the code to offer a product or service that competes with Mailcubby, such as reselling it or a modified version as an email testing product or hosted service. For other uses, contact NOOP.

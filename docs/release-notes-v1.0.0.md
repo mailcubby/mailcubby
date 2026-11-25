@@ -4,6 +4,8 @@ We are excited to release **Mailcubby v1.0.0** — a self-hosted, multi-tenant e
 
 Mailcubby ships as a single static Go binary (~10–11 MB compressed container image) with an embedded React UI, SQLite (WAL + FTS5) metadata/search, and zstd-compressed `.eml` blob storage.
 
+Mailcubby is source-available under the [PolyForm Shield License 1.0.0](https://polyformproject.org/licenses/shield/1.0.0): free to use, including commercially, but not to build a competing product.
+
 ## Highlights
 
 - **Zero-config local mode (Mailpit drop-in)**: listens on `:1025` (SMTP) and `:8025` (HTTP), accepts any SMTP credentials, auto-creates a project per SMTP username, honours `X-Tags` and plus-addressing, and includes `mailcubby sendmail` for PHP `sendmail_path`.
