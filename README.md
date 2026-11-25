@@ -309,6 +309,21 @@ To restore, stop Mailcubby, replace `app.db` (remove any old `app.db-wal`/`app.d
 
 > **Important:** Back up `MAILCUBBY_APP_KEY` separately from `app.db` (for example in your password manager or secret store). Without the original `MAILCUBBY_APP_KEY`, existing encrypted SMTP credentials cannot be decrypted after a restore.
 
+### Wrong or lost `MAILCUBBY_APP_KEY`
+
+`MAILCUBBY_APP_KEY` encrypts only the SMTP credential passwords. If Mailcubby starts with a different key (a typo in `.env`, a regenerated key, a volume moved to another host), it still starts, but:
+
+- the startup log shows `ERROR "N of M SMTP credentials cannot be decrypted with MAILCUBBY_APP_KEY"`;
+- SMTP AUTH with those credentials gets `454 4.7.0` (temporary), so well-behaved senders queue and retry instead of dropping mail, and these attempts do not count towards the brute-force lockout;
+- revealing or copying such a password in the UI shows a clear error (`409 conflict`) instead of the password.
+
+To recover:
+
+1. **Restore the original key** if you still have it, and restart. Everything works again, including mail queued by senders.
+2. **Only if the original key is lost**, rotate each affected credential (project settings, SMTP credentials, Rotate) and update the new password in the applications that use it. Rotation encrypts with the current key. Do not rotate while the original key may still turn up: credentials rotated under the new key stop working if you later restore the old one.
+
+Keep the key in your secret store next to the backup of `app.db`.
+
 > **Durability note:** SQLite uses `WAL` with `synchronous=NORMAL`. Every SMTP `250 OK` message survives an application crash, though a sudden host power loss may lose the most recently committed transactions.
 
 ---

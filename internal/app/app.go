@@ -174,6 +174,10 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 			_ = st.Close()
 			return nil, err
 		}
+		if err := checkSMTPCredentialKey(ctx, cfg.AppKey, st, log); err != nil {
+			_ = st.Close()
+			return nil, err
+		}
 	}
 
 	bus := events.NewBus()
@@ -634,6 +638,40 @@ func initServerSetup(
 	}
 
 	log.Warn("setup token: "+token, "setup_url", cfg.BaseURL+"/setup")
+	return nil
+}
+
+// checkSMTPCredentialKey trial-decrypts every SMTP credential with appKey and
+// logs one ERROR when some cannot be decrypted (a wrong or lost
+// MAILCUBBY_APP_KEY). It does not refuse to start: rotating the affected
+// credentials in the UI is the recovery, and that needs a running server.
+// Every credential is checked, not a sample, because rotating under a wrong
+// key can leave credentials encrypted under different keys.
+func checkSMTPCredentialKey(ctx context.Context, appKey []byte, st *store.Store, log *slog.Logger) error {
+	creds, err := st.ListSMTPCredentialSecrets(ctx)
+	if err != nil {
+		return fmt.Errorf("app: check smtp credentials: %w", err)
+	}
+	if len(creds) == 0 {
+		return nil
+	}
+	cipher, err := secrets.NewSMTPCredentialCipher(appKey)
+	if err != nil {
+		return fmt.Errorf("app: init smtp credential cipher: %w", err)
+	}
+	failed := 0
+	for _, c := range creds {
+		if _, err := cipher.Open(c.PasswordEnc, []byte(c.Username)); err != nil {
+			failed++
+		}
+	}
+	if failed > 0 {
+		log.Error(fmt.Sprintf("%d of %d SMTP credentials cannot be decrypted with MAILCUBBY_APP_KEY", failed, len(creds)),
+			"failed", failed,
+			"total", len(creds),
+			"hint", "restore the original MAILCUBBY_APP_KEY; only if it is lost, rotate the affected credentials in each project's SMTP settings",
+		)
+	}
 	return nil
 }
 

@@ -2802,6 +2802,15 @@ export interface operations {
             401: components["responses"]["ErrorResponse"];
             403: components["responses"]["ErrorResponse"];
             404: components["responses"]["ErrorResponse"];
+            /** @description `conflict`: the stored password cannot be decrypted with the current MAILCUBBY_APP_KEY (wrong or lost key). Restore the original key, or rotate the credential. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
     rotateSMTPCredential: {

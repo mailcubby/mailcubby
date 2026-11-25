@@ -6,10 +6,12 @@ import (
 	"net"
 	"net/textproto"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/mailcubby/mailcubby/internal/config"
+	"github.com/mailcubby/mailcubby/internal/secrets"
 )
 
 // smtplibLogin mimics Python smtplib's SMTP.login() against a server that
@@ -174,5 +176,56 @@ func TestServerMode_AuthLockoutIPCeiling(t *testing.T) {
 	code, _, err := sendAuthPlainRaw(ts.addr, cred.Username, "PasswordC123456789012345")
 	if err != nil || code != 454 {
 		t.Fatalf("valid credential from a ceiling-locked IP = (%d, %v), want 454", code, err)
+	}
+}
+
+// SPEC 12.4, FR-061: a credential that cannot be decrypted (encrypted under
+// another MAILCUBBY_APP_KEY) answers 454 4.7.0 without the failure delay and
+// does not count towards lockout, so mail flows as soon as the key is fixed.
+func TestServerMode_AuthDecryptFailureIs454AndNotCounted(t *testing.T) {
+	t.Parallel()
+
+	ts := startServerModeSMTP(t, nil) // SMTP_AUTH_MAX_FAILURES=5
+	const username = "shop-key00001"
+	const password = "RightPassword12345678901"
+	proj, cred := seedProjectAndCred(t, ts, "shop", "staging", username, password, false)
+
+	otherKey := make([]byte, secrets.KeySize)
+	for i := range otherKey {
+		otherKey[i] = 0xCD
+	}
+	otherCipher, err := secrets.NewSMTPCredentialCipher(otherKey)
+	if err != nil {
+		t.Fatalf("NewSMTPCredentialCipher: %v", err)
+	}
+	wrongSealed, err := otherCipher.Seal([]byte(password), []byte(username))
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if _, err := ts.store.UpdateSMTPCredentialPassword(t.Context(), proj.ID, cred.ID, wrongSealed); err != nil {
+		t.Fatalf("UpdateSMTPCredentialPassword: %v", err)
+	}
+
+	// More attempts than the lockout limit; each is answered at once (no fake-clock delay).
+	for i := 1; i <= 7; i++ {
+		code, msg, err := sendAuthPlainRaw(ts.addr, username, password)
+		if err != nil || code != 454 || !strings.Contains(msg, "4.7.0") {
+			t.Fatalf("attempt %d = (%d, %q, %v), want 454 4.7.0", i, code, msg, err)
+		}
+	}
+	if ts.srv.be.authLimiter.IsLocked("127.0.0.1", username) {
+		t.Fatal("decrypt failures counted towards lockout")
+	}
+
+	// The key is fixed (credential re-encrypted under the server key): AUTH succeeds at once.
+	rightSealed, err := ts.cipher.Seal([]byte(password), []byte(username))
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if _, err := ts.store.UpdateSMTPCredentialPassword(t.Context(), proj.ID, cred.ID, rightSealed); err != nil {
+		t.Fatalf("UpdateSMTPCredentialPassword: %v", err)
+	}
+	if code, msg, err := sendAuthPlainRaw(ts.addr, username, password); err != nil || code != 235 {
+		t.Fatalf("AUTH after key fix = (%d, %q, %v), want 235", code, msg, err)
 	}
 }

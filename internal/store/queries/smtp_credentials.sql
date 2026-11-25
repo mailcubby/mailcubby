@@ -109,3 +109,9 @@ SELECT
 FROM smtp_credentials c
 JOIN projects p ON p.id = c.project_id
 WHERE c.username = ?;
+
+-- name: ListSMTPCredentialSecrets :many
+-- isolation: global (startup MAILCUBBY_APP_KEY check over every credential; system only, no handler reaches it)
+SELECT id, username, password_enc
+FROM smtp_credentials
+ORDER BY id;

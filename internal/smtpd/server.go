@@ -429,7 +429,7 @@ func (s *session) authenticate(username, password string) error {
 				"error", err,
 			)
 		}
-		return errTempFailure
+		return errAuthServerError
 	}
 
 	projID := lookup.Credential.ProjectID
@@ -439,15 +439,20 @@ func (s *session) authenticate(username, password string) error {
 
 	plain, err := s.be.cipher.Open(lookup.Credential.PasswordEnc, []byte(lookup.Credential.Username))
 	if err != nil {
+		// A server-side problem (usually a wrong or lost MAILCUBBY_APP_KEY), not
+		// a bad password: reply 454 so senders retry, and do not count it.
+		if s.be.authLimiter != nil {
+			s.be.authLimiter.Cancel(res)
+		}
 		if s.be.log != nil {
-			s.be.log.Error("smtp credential decrypt failed",
+			s.be.log.Error("smtp credential cannot be decrypted; check MAILCUBBY_APP_KEY",
 				"remote_ip", s.remoteIP,
 				"project_id", lookup.Credential.ProjectID,
 				"credential_id", lookup.Credential.ID,
 				"error", err,
 			)
 		}
-		return s.failAuth(username, &projID, res)
+		return errAuthServerError
 	}
 
 	if subtle.ConstantTimeCompare(plain, []byte(password)) != 1 {
