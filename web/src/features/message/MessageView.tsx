@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useInboxContext } from "@/features/inbox/InboxContext";
+import { AttachmentStrip } from "@/features/message/AttachmentStrip";
 import { AttachmentsTab } from "@/features/message/AttachmentsTab";
 import { HeadersTab } from "@/features/message/HeadersTab";
 import { HtmlSourceTab } from "@/features/message/HtmlSourceTab";
@@ -360,6 +361,15 @@ export function MessageView() {
         ) : null}
         {activeTab === "tech" ? <TechTab message={message} /> : null}
       </div>
+
+      {/* FR-072: the attachment strip accompanies the reading views (Preview, Text) only. */}
+      {activeTab === "preview" || activeTab === "text" ? (
+        <AttachmentStrip
+          projectSlug={projectSlug}
+          messageId={message.id}
+          attachments={message.attachments}
+        />
+      ) : null}
     </article>
   );
 }

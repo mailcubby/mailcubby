@@ -120,10 +120,12 @@ For a project with zero messages, the list area shows: "No messages yet", connec
 | 3 | HTML source | Highlighted (Shiki, lazy) with line numbers, wrap toggle, copy, search within (`Cmd+F` handled by browser). |
 | 4 | Headers | Table of headers in original order, monospace values, copy per row, filter box. |
 | 5 | Raw | Full raw source (`/raw`), virtualised plain text for large messages, copy, download `.eml`. |
-| 6 | Attachments | List with icon by type, filename, size, content type, inline/attachment badge, download; thumbnails for raster images (`?inline=1`); every other type, including PDF, is downloaded. Count badge on tab. |
+| 6 | Attachments | List with icon by type, filename, size, content type, inline/attachment badge, `cid:` Content-ID, a "shown in preview" badge for parts the HTML preview inlines (`referenced_by_html`), download; thumbnails for raster images (`?inline=1`); every other type, including PDF, is downloaded. Count badge on tab (counts every part). |
 | 7 | Tech | Envelope (MAIL FROM, RCPT TO), remote IP, HELO, TLS yes/no, AUTH user, credential, Message-ID, Date header vs received time, raw size, parse warnings. |
 
 Viewers with `viewer_hide_technical` see only Preview, Text and Attachments. The last selected tab and device are remembered.
+
+**Attachment strip** (FR-072): while Preview or Text is active, a compact strip sits below the view (a non-scrolling footer of the reading pane, so it stays visible under the full-height preview iframe without scrolling the email). Header "N attachments" with a paperclip icon, then one card per attachment: thumbnail for the inline-allowlisted raster images (png, jpeg, gif, webp via `?inline=1`; never SVG), otherwise a lucide icon by type (image, PDF, calendar, archive, audio, video, text, generic file); filename (truncated, full name on hover) and size (`Intl`). Each card is a link that downloads the file (`Content-Disposition: attachment`) with the accessible name "Download <filename> <size>"; PDFs are never rendered inline. Cards wrap and the strip is capped at about two rows with its own scroll, so many attachments cannot squeeze the preview. Parts with `referenced_by_html` (inline images the preview already shows through `cid:`) are left out; the strip is hidden when no card remains. The strip is not shown on the technical tabs or on Attachments, which keeps the full details. Viewers with `viewer_hide_technical` see the strip and the Attachments tab.
 
 ### 3.6 Project settings
 

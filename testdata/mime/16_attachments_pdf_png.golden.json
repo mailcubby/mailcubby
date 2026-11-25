@@ -1,0 +1,44 @@
+{
+  "subject": "Monthly report with chart",
+  "from_name": "Reports",
+  "from_addr": "reports@example.test",
+  "to": [
+    {
+      "name": "Team",
+      "address": "team@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003catt-16@example.test\u003e",
+  "date_header": "2026-11-23T11:00:00Z",
+  "snippet": "The monthly report and chart are attached.",
+  "has_html": true,
+  "has_text": true,
+  "text_generated": false,
+  "attachment_count": 2,
+  "attachments": [
+    {
+      "part_path": "2",
+      "filename": "monthly-report.pdf",
+      "content_type": "application/pdf",
+      "size_bytes": 193,
+      "disposition": "attachment",
+      "sha256": "cef3b030a93763cb836367821d6d398a276b6844b783f9e1b8f8bfca4d22e637"
+    },
+    {
+      "part_path": "3",
+      "filename": "chart.png",
+      "content_type": "image/png",
+      "size_bytes": 4220,
+      "disposition": "attachment",
+      "sha256": "c5833f5d1049f8ffccc95f290a63e02d69abe92acc614ffde9d4d7fbc7823d93"
+    }
+  ]
+}

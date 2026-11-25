@@ -1,0 +1,45 @@
+From: Brand Team <brand@example.test>
+To: Designer <designer@example.test>
+Date: Mon, 23 Nov 2026 11:05:00 +0000
+Message-ID: <cid-17@example.test>
+Subject: Newsletter with inline logo and terms
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mix-17"
+
+--mix-17
+Content-Type: multipart/related; boundary="rel-17"
+
+--rel-17
+Content-Type: text/html; charset="utf-8"
+
+<html><body><p><img src="cid:Logo%40Brand.Example.test" alt="Brand logo" width="24" height="24"> Newsletter</p></body></html>
+
+--rel-17
+Content-Type: image/png; name="logo.png"
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="logo.png"
+Content-ID: <logo@brand.example.test>
+
+iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAIAAABvFaqvAAAAVklEQVR42u3MoQFAUBRA0T/OnUlR
+FEVRFEVRFEVRFEVRFEVRFGvcOYyhvDPASWaYY4ElVlhjgy122OOAI04444IrbrjjgSdeeOODLymi
+iCKKKKKI/o8+ib6rjjXjBhoAAAAASUVORK5CYII=
+
+--rel-17
+Content-Type: image/png; name="badge.png"
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="badge.png"
+Content-ID: <badge@brand.example.test>
+
+iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAIAAABvFaqvAAAAbUlEQVR42q3MIRZAUBRAwb+wvxJF
+URRFURRFURRFUZRXFEVRFMWe3EXccyZPylEoUo5SQVQpiGoFUaMgahVEnYKoVxANCqJRQTQpiGYF
+0aIgWhVEm4JoVxCFguhQEJ0KoktBdCuIHgXRqyD6FD+gKFGOeONGkwAAAABJRU5ErkJggg==
+
+--rel-17--
+
+--mix-17
+Content-Type: text/plain; charset="utf-8"; name="terms.txt"
+Content-Disposition: attachment; filename="terms.txt"
+
+Terms and conditions apply.
+
+--mix-17--

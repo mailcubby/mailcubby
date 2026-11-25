@@ -86,12 +86,13 @@ type messageEnvelopeResponse struct {
 }
 
 type attachmentResponse struct {
-	ID          int64   `json:"id"`
-	Filename    string  `json:"filename"`
-	ContentType string  `json:"content_type"`
-	SizeBytes   int64   `json:"size_bytes"`
-	ContentID   *string `json:"content_id"`
-	Disposition string  `json:"disposition"`
+	ID               int64   `json:"id"`
+	Filename         string  `json:"filename"`
+	ContentType      string  `json:"content_type"`
+	SizeBytes        int64   `json:"size_bytes"`
+	ContentID        *string `json:"content_id"`
+	Disposition      string  `json:"disposition"`
+	ReferencedByHTML bool    `json:"referenced_by_html"`
 }
 
 type messageDetailResponse struct {
@@ -270,21 +271,10 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	attResp := make([]attachmentResponse, 0, len(atts))
-	for _, a := range atts {
-		attResp = append(attResp, attachmentResponse{
-			ID:          a.ID,
-			Filename:    a.Filename,
-			ContentType: a.ContentType,
-			SizeBytes:   a.SizeBytes,
-			ContentID:   a.ContentID,
-			Disposition: a.Disposition,
-		})
-	}
-
 	var (
 		renderURL           *string
 		remoteResourceCount int
+		rendered            render.Result
 	)
 	if msg.HasHTML {
 		u := fmt.Sprintf("/render/%s/%s", pctx.Project.Slug, msg.ID)
@@ -300,8 +290,25 @@ func (s *Server) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 				)
 			} else if renderErr == nil {
 				remoteResourceCount = res.RemoteResourceCount
+				rendered = res
 			}
 		}
+	}
+
+	attResp := make([]attachmentResponse, 0, len(atts))
+	for _, a := range atts {
+		// FR-072: flag parts the /render rewrite inlines via cid:, using the
+		// renderer's own resolution so the UI never parses email HTML.
+		referenced := a.ContentID != nil && rendered.ReferencesCID(*a.ContentID)
+		attResp = append(attResp, attachmentResponse{
+			ID:               a.ID,
+			Filename:         a.Filename,
+			ContentType:      a.ContentType,
+			SizeBytes:        a.SizeBytes,
+			ContentID:        a.ContentID,
+			Disposition:      a.Disposition,
+			ReferencedByHTML: referenced,
+		})
 	}
 
 	tags, err := s.store.ListTagsByMessagePK(r.Context(), pctx.Project.ID, msg.PK)
