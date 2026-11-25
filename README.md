@@ -173,7 +173,7 @@ docker compose -f deploy/compose.server.yml logs mailcubby | grep "setup token" 
 
 Open `https://mail.example.com/setup`, paste the setup token, create the first admin account, and create your first project + SMTP credential in the wizard.
 
-To bootstrap an admin headlessly instead of using the setup wizard, set `MAILCUBBY_ADMIN_EMAIL` and `MAILCUBBY_ADMIN_PASSWORD` (or `MAILCUBBY_ADMIN_PASSWORD_FILE`) on first start. Once users exist these variables are ignored (the startup log says so). To regain access to an account, print a one-time password reset link:
+To bootstrap an admin headlessly instead of using the setup wizard, set `MAILCUBBY_ADMIN_EMAIL` and `MAILCUBBY_ADMIN_PASSWORD` on first start (with Compose, add them to `deploy/.env`; outside Compose, `MAILCUBBY_ADMIN_PASSWORD_FILE` also works). Once users exist these variables are ignored (the startup log says so). To regain access to an account, print a one-time password reset link:
 
 ```sh
 docker compose -f deploy/compose.server.yml exec mailcubby /mailcubby admin reset-password --email admin@example.com

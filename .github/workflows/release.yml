@@ -72,11 +72,19 @@ jobs:
             fi
           done
 
+      - name: Select release notes
+        # v1.2.3 and v1.2.3-rc.1 both use docs/release-notes-v1.2.3.md; fail early if it is missing.
+        run: |
+          set -eu
+          notes="docs/release-notes-${GITHUB_REF_NAME%%-*}.md"
+          test -f "$notes" || { echo "Missing $notes for tag $GITHUB_REF_NAME" >&2; exit 1; }
+          echo "RELEASE_NOTES=$notes" >> "$GITHUB_ENV"
+
       - name: Publish release and multi-arch images
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: v2.20.3
-          args: release --clean --release-notes docs/release-notes-v1.0.0.md
+          args: release --clean --release-notes ${{ env.RELEASE_NOTES }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

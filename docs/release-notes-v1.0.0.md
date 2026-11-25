@@ -43,7 +43,7 @@ cd mailcubby
 Generate an application encryption key:
 
 ```sh
-docker run --rm ghcr.io/mailcubby/mailcubby:latest keygen
+docker run --rm ghcr.io/mailcubby/mailcubby:1.0.0 keygen
 ```
 
 Create `deploy/.env`:

@@ -563,6 +563,9 @@ export function SetupWizardPage() {
                   }
                 }}
                 aria-invalid={tokenSubmitAttempted && formError ? "true" : undefined}
+                aria-describedby={
+                  tokenSubmitAttempted && formError ? "setup-token-error" : undefined
+                }
                 placeholder="Paste token from server logs"
                 className="font-mono"
               />
@@ -570,6 +573,7 @@ export function SetupWizardPage() {
 
             {tokenSubmitAttempted && formError ? (
               <div
+                id="setup-token-error"
                 role="alert"
                 className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
               >
