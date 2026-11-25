@@ -69,6 +69,20 @@ func TestReferencesCIDMatchesRewrite(t *testing.T) {
 			want:       map[string]bool{"unused@x": false, "link@x": false},
 		},
 		{
+			name:       "src in contexts the render CSP blocks is not referenced",
+			html:       `<iframe src="cid:frame@x"></iframe><video src="cid:video@x"></video><audio><source src="cid:audio@x"></audio><embed src="cid:embed@x"><script src="cid:script@x"></script>`,
+			cids:       map[string]render.InlinePart{"frame@x": part(11), "video@x": part(12), "audio@x": part(13), "embed@x": part(14), "script@x": part(15)},
+			contentIDs: map[string]string{"frame@x": "frame@x", "video@x": "video@x", "audio@x": "audio@x", "embed@x": "embed@x", "script@x": "script@x"},
+			want:       map[string]bool{"frame@x": false, "video@x": false, "audio@x": false, "embed@x": false, "script@x": false},
+		},
+		{
+			name:       "other image contexts are referenced",
+			html:       `<input type="image" src="cid:button@x"><input type="text" src="cid:text@x"><video poster="cid:poster@x"></video><table background="cid:bg@x"></table><svg><image href="cid:svg@x"/></svg><style>@font-face{font-family:F;src:url(cid:font@x)}</style>`,
+			cids:       map[string]render.InlinePart{"button@x": part(16), "text@x": part(17), "poster@x": part(18), "bg@x": part(19), "svg@x": part(20), "font@x": part(21)},
+			contentIDs: map[string]string{"button@x": "button@x", "text@x": "text@x", "poster@x": "poster@x", "bg@x": "bg@x", "svg@x": "svg@x", "font@x": "font@x"},
+			want:       map[string]bool{"button@x": true, "text@x": false, "poster@x": true, "bg@x": true, "svg@x": true, "font@x": true},
+		},
+		{
 			name:           "part over the inline budget is not referenced",
 			html:           `<img src="cid:first@x"><img src="cid:second@x">`,
 			cids:           map[string]render.InlinePart{"first@x": part(9), "second@x": part(10)},

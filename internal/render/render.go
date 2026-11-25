@@ -51,7 +51,9 @@ type Result struct {
 	HTML                []byte
 	RemoteResourceCount int
 	// ReferencedCIDs holds the normalised Content-IDs that the rewrite
-	// replaced with data: URIs. It must be treated as read-only.
+	// replaced with data: URIs, which happens only in contexts the render CSP
+	// lets the preview display (images and CSS url(), see RewriteHTML). It
+	// must be treated as read-only.
 	ReferencedCIDs map[string]struct{}
 }
 
@@ -204,8 +206,12 @@ func collectCIDParts(env *enmime.Envelope) map[string]InlinePart {
 //   - injects <meta name="referrer" content="no-referrer"> and <base target="_blank">
 //     at the start of <head> (creating <head> if missing);
 //   - drops existing <base>, <meta http-equiv="refresh">, and prefetch-style <link> elements;
-//   - replaces cid: URLs in src, background, srcset, and CSS url() with data: URIs up to maxInlineBytes,
-//     recording each inlined Content-ID in Result.ReferencedCIDs;
+//   - replaces cid: URLs in image contexts (src of <img>, <image> and <input type=image>,
+//     srcset, background, poster, SVG <image>/<feImage> href, and CSS url() in style
+//     attributes and blocks, including @font-face fonts) with data: URIs up to
+//     maxInlineBytes, recording each inlined Content-ID in Result.ReferencedCIDs; cid:
+//     in other src contexts (script, iframe, embed, media) is left untouched because
+//     the render CSP blocks those loads;
 //   - counts remote http:/https:/protocol-relative resources in src, srcset, background, and CSS url();
 //   - preserves scripts and remaining markup verbatim (sandboxing is enforced by CSP + iframe).
 func RewriteHTML(rawHTML string, cids map[string]InlinePart, maxInlineBytes int) Result {
@@ -443,6 +449,16 @@ func rewriteHTMLPass(
 				val := tok.Attr[i].Val
 				switch key {
 				case "src", "background", "poster":
+					if key == "src" && !isImageSrcTag(tag, tok.Attr) {
+						// The render CSP blocks scripts, frames, embeds and media
+						// (default-src 'none'), so a cid: there is left as is:
+						// inlining it would waste the budget and flag a part the
+						// preview cannot show (FR-072).
+						if isRemoteURL(val) {
+							remoteCount++
+						}
+						continue
+					}
 					if dataURI, ok := resolveCID(val); ok {
 						tok.Attr[i].Val = dataURI
 						modified = true
@@ -506,6 +522,23 @@ func rewriteHTMLPass(
 	}
 
 	return out.Bytes(), remoteCount
+}
+
+// isImageSrcTag reports whether the src attribute of tag loads an image, the
+// only src context the render CSP (img-src data:) lets the preview display.
+// The tokenizer keeps <image> as written; browsers parse it as <img>.
+func isImageSrcTag(tag string, attrs []html.Attribute) bool {
+	switch tag {
+	case "img", "image":
+		return true
+	case "input":
+		for _, a := range attrs {
+			if strings.EqualFold(a.Key, "type") {
+				return strings.EqualFold(strings.TrimSpace(a.Val), "image")
+			}
+		}
+	}
+	return false
 }
 
 func shouldDropTag(tag string, attrs []html.Attribute) bool {
