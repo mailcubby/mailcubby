@@ -1,0 +1,82 @@
+version: 2
+
+project_name: mailcubby
+
+before:
+  hooks:
+    - make web
+
+builds:
+  - id: mailcubby
+    main: ./cmd/mailcubby
+    binary: mailcubby
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .Date }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: mailcubby
+    ids:
+      - mailcubby
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+      - LICENSE
+      - .env.example
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+dockers_v2:
+  - id: mailcubby
+    ids:
+      - mailcubby
+    dockerfile: deploy/Dockerfile.goreleaser
+    images:
+      - ghcr.io/mailcubby/mailcubby
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: "Self-hosted multi-tenant email testing server"
+      org.opencontainers.image.source: "https://github.com/mailcubby/mailcubby"
+      org.opencontainers.image.url: "https://github.com/mailcubby/mailcubby"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.licenses: "LicenseRef-PolyForm-Shield-1.0.0"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore\\(deps\\):"
+
+release:
+  github:
+    owner: mailcubby
+    name: mailcubby
