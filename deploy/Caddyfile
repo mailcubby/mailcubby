@@ -1,0 +1,26 @@
+# Mailcubby reverse proxy configuration for Caddy 2.
+#
+# Designed to run as UID 65532 (matching Mailcubby's nonroot container user)
+# inside deploy/compose.server.yml:
+#   - http_port 8080 / https_port 8443 avoid needing root or CAP_NET_BIND_SERVICE
+#     inside the container while host ports 80 and 443 map down to them.
+#   - acme_ca pins Let's Encrypt so the certificate directory under /data is
+#     deterministic (acme-v02.api.letsencrypt.org-directory) for Mailcubby's
+#     MAILCUBBY_SMTP_TLS_CERT / MAILCUBBY_SMTP_TLS_KEY paths.
+#
+# If running Caddy directly on a host (binding ports 80 and 443), remove the
+# http_port and https_port directives and set reverse_proxy to 127.0.0.1:8025.
+{
+	http_port 8080
+	https_port 8443
+	acme_ca https://acme-v02.api.letsencrypt.org/directory
+	# Optional: uncomment to receive ACME certificate notices.
+	# email {$ACME_EMAIL}
+}
+
+{$MAILCUBBY_DOMAIN} {
+	reverse_proxy mailcubby:8025 {
+		# Flush immediately for Server-Sent Events (/api/v1/events).
+		flush_interval -1
+	}
+}

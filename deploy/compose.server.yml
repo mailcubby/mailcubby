@@ -1,0 +1,92 @@
+# Production multi-tenant server deployment with Caddy automatic HTTPS and
+# shared TLS certificates for SMTP STARTTLS.
+#
+# Required environment variables (set in .env next to this file or in shell):
+#   MAILCUBBY_DOMAIN   Public hostname (e.g. mail.example.com)
+#   MAILCUBBY_APP_KEY  32-byte base64 key (generate: docker run --rm ghcr.io/mailcubby/mailcubby:latest keygen)
+#
+# Optional environment variables:
+#   MAILCUBBY_INBOX_DOMAIN     Enables recipient routing (e.g. inbox.example.com)
+#   MAILCUBBY_TRUSTED_PROXIES  Reverse proxy CIDRs (defaults to private Docker ranges)
+#
+# Certificate sharing pitfall (ARCHITECTURE 9.3):
+#   Mailcubby runs as distroless nonroot (UID 65532) and Caddy writes ACME keys
+#   with mode 0600. The caddy-init one-shot service sets volume ownership to
+#   65532:65532 and Caddy runs as 65532:65532, so Mailcubby can read the key
+#   from the read-only mount without loosening key file permissions.
+#
+# First boot note:
+#   Mailcubby exits if the TLS cert files do not exist yet. Either start Caddy
+#   first so it obtains the certificate (docker compose -f deploy/compose.server.yml up -d caddy)
+#   and then start Mailcubby, or let restart: unless-stopped retry until Caddy
+#   writes the certificate.
+
+services:
+  caddy-init:
+    image: alpine:3.21
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - mkdir -p /data/caddy /config/caddy && chown -R 65532:65532 /data /config
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    user: "65532:65532"
+    depends_on:
+      caddy-init:
+        condition: service_completed_successfully
+    environment:
+      MAILCUBBY_DOMAIN: "${MAILCUBBY_DOMAIN:?Set MAILCUBBY_DOMAIN (e.g. mail.example.com)}"
+      XDG_DATA_HOME: /data
+      XDG_CONFIG_HOME: /config
+    ports:
+      - "80:8080"
+      - "443:8443"
+      - "443:8443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - mailcubby
+
+  mailcubby:
+    image: ghcr.io/mailcubby/mailcubby:latest
+    restart: unless-stopped
+    depends_on:
+      - caddy
+    environment:
+      MAILCUBBY_MODE: server
+      MAILCUBBY_DATA_DIR: /data
+      MAILCUBBY_BASE_URL: "https://${MAILCUBBY_DOMAIN:?Set MAILCUBBY_DOMAIN (e.g. mail.example.com)}"
+      MAILCUBBY_APP_KEY: "${MAILCUBBY_APP_KEY:?Generate with: docker run --rm ghcr.io/mailcubby/mailcubby:latest keygen}"
+      MAILCUBBY_INBOX_DOMAIN: "${MAILCUBBY_INBOX_DOMAIN:-}"
+      MAILCUBBY_SMTP_HOSTNAME: "${MAILCUBBY_DOMAIN}"
+      # Caddyfile pins Let's Encrypt so the issuer directory is deterministic.
+      # If you switch ACME issuers (e.g. ZeroSSL), update the directory segment below.
+      MAILCUBBY_SMTP_TLS_CERT: "/caddy/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${MAILCUBBY_DOMAIN}/${MAILCUBBY_DOMAIN}.crt"
+      MAILCUBBY_SMTP_TLS_KEY: "/caddy/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${MAILCUBBY_DOMAIN}/${MAILCUBBY_DOMAIN}.key"
+      # Optional implicit TLS (SMTPS) on port 465:
+      # MAILCUBBY_SMTPS_ADDR: :1465
+      MAILCUBBY_TRUSTED_PROXIES: "${MAILCUBBY_TRUSTED_PROXIES:-172.16.0.0/12,10.0.0.0/8,192.168.0.0/16}"
+    ports:
+      - "587:1025" # SMTP with STARTTLS, exposed directly (not through Caddy)
+      # - "465:1465" # Optional implicit TLS (requires MAILCUBBY_SMTPS_ADDR=:1465)
+    volumes:
+      - mailcubby-data:/data
+      - caddy-data:/caddy:ro
+    networks:
+      - mailcubby
+
+volumes:
+  mailcubby-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  mailcubby:
