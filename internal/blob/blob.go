@@ -45,6 +45,7 @@ type Store struct {
 	blobsDir string
 	tmpDir   string
 	encLevel zstd.EncoderLevel
+	encPool  sync.Pool
 	decPool  sync.Pool
 
 	mu        sync.Mutex
@@ -206,14 +207,20 @@ func (s *Store) Create(ctx context.Context) (*Spool, error) {
 		return nil, fmt.Errorf("blob: create spool file: %w", err)
 	}
 
-	enc, err := zstd.NewWriter(f,
-		zstd.WithEncoderLevel(s.encLevel),
-		zstd.WithEncoderConcurrency(1),
-	)
-	if err != nil {
-		_ = f.Close()
-		_ = os.Remove(path)
-		return nil, fmt.Errorf("blob: create zstd encoder: %w", err)
+	var enc *zstd.Encoder
+	if pooled := s.encPool.Get(); pooled != nil {
+		enc = pooled.(*zstd.Encoder)
+		enc.Reset(f)
+	} else {
+		enc, err = zstd.NewWriter(f,
+			zstd.WithEncoderLevel(s.encLevel),
+			zstd.WithEncoderConcurrency(1),
+		)
+		if err != nil {
+			_ = f.Close()
+			_ = os.Remove(path)
+			return nil, fmt.Errorf("blob: create zstd encoder: %w", err)
+		}
 	}
 
 	return &Spool{
@@ -277,10 +284,14 @@ func (sp *Spool) CloseWrite() error {
 
 	var errs []error
 	if sp.enc != nil {
-		if err := sp.enc.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("blob: close zstd encoder: %w", err))
-		}
+		enc := sp.enc
 		sp.enc = nil
+		if err := enc.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("blob: close zstd encoder: %w", err))
+		} else {
+			enc.Reset(nil)
+			sp.store.encPool.Put(enc)
+		}
 	}
 	if sp.file != nil {
 		if err := sp.file.Sync(); err != nil {
@@ -329,8 +340,12 @@ func (sp *Spool) Cleanup() error {
 	if !sp.closed {
 		sp.closed = true
 		if sp.enc != nil {
-			_ = sp.enc.Close()
+			enc := sp.enc
 			sp.enc = nil
+			if err := enc.Close(); err == nil {
+				enc.Reset(nil)
+				sp.store.encPool.Put(enc)
+			}
 		}
 		if sp.file != nil {
 			_ = sp.file.Close()
