@@ -72,6 +72,15 @@ jobs:
             fi
           done
 
+      - name: Require the Homebrew tap token for stable tags
+        # Fail before anything is published: the formula upload runs only for
+        # non-prerelease tags (skip_upload: auto) and needs this secret.
+        if: ${{ !contains(github.ref_name, '-') }}
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          test -n "$HOMEBREW_TAP_GITHUB_TOKEN" || { echo "Set the HOMEBREW_TAP_GITHUB_TOKEN secret before tagging a stable release" >&2; exit 1; }
+
       - name: Select release notes
         # v1.2.3 and v1.2.3-rc.1 both use docs/release-notes-v1.2.3.md; fail early if it is missing.
         run: |

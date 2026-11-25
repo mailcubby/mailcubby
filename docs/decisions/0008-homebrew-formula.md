@@ -13,7 +13,7 @@ Constraints found while researching GoReleaser v2.20.3 and Homebrew 7.0.15:
 - Only formulae support `brew services`. A cask's `service` stanza is a macOS Services-menu item, not a launchd agent or systemd unit.
 - Casks install unsigned binaries with the `com.apple.quarantine` attribute, so Gatekeeper blocks them until the user removes it. Formulae installed from bottles or archives by `brew` are not quarantined.
 - homebrew-core is not an option: it only accepts licenses it considers open source, and PolyForm Shield (ADR 0007) is not.
-- Since Homebrew 6, formulae from third-party taps load only from trusted taps. `brew install mailcubby/tap/mailcubby` (fully qualified) trusts the tap automatically; `brew trust --tap mailcubby/tap` does it explicitly.
+- Since Homebrew 6, formulae from third-party taps load only from trusted taps. `brew install mailcubby/tap/mailcubby` (fully qualified) trusts that formula automatically; `brew trust --tap mailcubby/tap` does it explicitly.
 
 ## Decision
 

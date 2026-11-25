@@ -79,6 +79,7 @@ See the [README](https://github.com/mailcubby/mailcubby/blob/v1.0.0/README.md#qu
 
 ## Downloads & Checksums
 
+- **Homebrew** (macOS and Linux, local mode): `brew install mailcubby/tap/mailcubby && brew services start mailcubby`
 - **Container images**: `ghcr.io/mailcubby/mailcubby:1.0.0`, `:1.0`, `:latest` (`linux/amd64`, `linux/arm64`)
 - **Binaries**: `linux`, `darwin`, and `windows` (`amd64` and `arm64`) archives plus `checksums.txt` attached to this release.
 

@@ -56,17 +56,19 @@ The service runs local mode: web UI on http://localhost:8025, SMTP on `localhost
 Like the plain binary, the service listens on all interfaces so Docker containers and VMs can reach it, and local mode has no authentication. To listen on loopback only (or change any other setting), create `~/.homebrew/services/mailcubby.env` (`$XDG_CONFIG_HOME/homebrew/services/mailcubby.env` if `XDG_CONFIG_HOME` is set) and restart. This needs Homebrew 6.0.15 or later; the file is kept across upgrades and must not be group or world writable:
 
 ```sh
-mkdir -p ~/.homebrew/services
-cat > ~/.homebrew/services/mailcubby.env <<'EOF'
+dir="${XDG_CONFIG_HOME:+$XDG_CONFIG_HOME/homebrew}"; dir="${dir:-$HOME/.homebrew}/services"
+mkdir -p "$dir"
+(umask 077; cat > "$dir/mailcubby.env" <<'EOF'
 MAILCUBBY_HTTP_ADDR=127.0.0.1:8025
 MAILCUBBY_SMTP_ADDR=127.0.0.1:1025
 EOF
+)
 brew services restart mailcubby
 ```
 
 On older Homebrew the service ignores that file: run `MAILCUBBY_HTTP_ADDR=127.0.0.1:8025 MAILCUBBY_SMTP_ADDR=127.0.0.1:1025 mailcubby serve` yourself, or use the LaunchAgent or systemd unit below with those variables added.
 
-Stop with `brew services stop mailcubby`; upgrade with `brew upgrade mailcubby && brew services restart mailcubby`. Homebrew only loads formulae from trusted taps: the fully qualified `brew install mailcubby/tap/mailcubby` trusts the tap for you; otherwise run `brew trust --tap mailcubby/tap` first. Mailcubby is not in homebrew-core (see `docs/decisions/0008-homebrew-formula.md`).
+Stop with `brew services stop mailcubby`; upgrade with `brew upgrade mailcubby && brew services restart mailcubby`. Homebrew only loads formulae from trusted taps: the fully qualified `brew install mailcubby/tap/mailcubby` trusts the formula for you; otherwise run `brew trust --tap mailcubby/tap` first. Mailcubby is not in homebrew-core (see `docs/decisions/0008-homebrew-formula.md`).
 
 ### Docker
 
@@ -99,7 +101,7 @@ sed "s|__HOME__|$HOME|g" deploy/launchd/dev.mailcubby.plist > ~/Library/LaunchAg
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.mailcubby.plist
 ```
 
-The binary is not signed or notarized, so Gatekeeper blocks it while it carries the quarantine attribute that browsers add (`curl` does not). Logs go to `~/Library/Logs/mailcubby.log`. Stop and remove with `launchctl bootout gui/$(id -u)/dev.mailcubby`.
+The binary is not signed or notarized, so Gatekeeper blocks it while it carries the quarantine attribute that browsers add (`curl` does not). Logs go to `~/Library/Logs/mailcubby.log`. After replacing the binary, restart with `launchctl kickstart -k gui/$(id -u)/dev.mailcubby`. Stop and remove with `launchctl bootout gui/$(id -u)/dev.mailcubby`, then delete `~/Library/LaunchAgents/dev.mailcubby.plist` so it does not start again at login.
 
 Linux systemd user unit:
 

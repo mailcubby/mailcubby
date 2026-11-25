@@ -12,8 +12,8 @@ ExecStart=%h/.local/bin/mailcubby serve
 Environment=MAILCUBBY_MODE=local
 Environment=MAILCUBBY_DATA_DIR=%h/.local/share/mailcubby
 WorkingDirectory=%h
-Restart=always
-RestartSec=2
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=default.target
