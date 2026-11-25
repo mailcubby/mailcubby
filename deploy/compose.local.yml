@@ -3,6 +3,8 @@
 #
 # To build from source instead of pulling the published image, uncomment the
 # build block below and run with --build.
+name: mailcubby-local
+
 services:
   mailcubby:
     image: ghcr.io/mailcubby/mailcubby:latest

@@ -21,6 +21,8 @@
 #   and then start Mailcubby, or let restart: unless-stopped retry until Caddy
 #   writes the certificate.
 
+name: mailcubby
+
 services:
   caddy-init:
     image: alpine:3.21

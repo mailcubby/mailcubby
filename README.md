@@ -1,10 +1,10 @@
 # Mailcubby
 
-> **Status: pre-release (v1.0-dev).** Core features are implemented; final release verification and packaging are in progress. See `docs/SPEC.md` for the complete specification.
+> **Pre-release.** Mailcubby is new and still a pre-release: expect rough edges, and back up your data before upgrading. See `docs/SPEC.md` for the complete specification.
 
 Mailcubby is a self-hosted email testing server ("mail catcher") for developers and agencies. Applications send email to Mailcubby over SMTP instead of real recipients; Mailcubby stores the messages and shows them in a fast web UI and REST API.
 
-It ships as a single static Go binary (with the React web UI embedded) and a multi-arch Docker image (~15 to 20 MB compressed). It runs in two modes:
+It ships as a single static Go binary (with the React web UI embedded) and a multi-arch Docker image (~9 MB compressed). It runs in two modes:
 
 - **Local mode** (`MAILCUBBY_MODE=local`, default): zero configuration, no login. A drop-in replacement for Mailpit on a developer machine.
 - **Server mode** (`MAILCUBBY_MODE=server`): multi-tenant. Projects, per-project SMTP credentials, users, roles (owner, member, viewer), invites and API tokens, so one instance can serve a whole team and its clients without anyone seeing another project's mail.
@@ -72,6 +72,8 @@ make build-all
 ./bin/mailcubby version
 ```
 
+`go install` is not supported: the web UI has to be built and embedded first, so use `make build-all`.
+
 ---
 
 ## Quick start
@@ -91,6 +93,8 @@ docker run --rm \
 Or with Docker Compose:
 
 ```sh
+git clone --depth 1 --branch v1.0.0 https://github.com/mailcubby/mailcubby
+cd mailcubby
 docker compose -f deploy/compose.local.yml up -d
 ```
 
@@ -122,7 +126,12 @@ Server mode requires HTTPS (terminated by a reverse proxy), a 32-byte `MAILCUBBY
 - Optional (for recipient routing): point `inbox.example.com` and `*.inbox.example.com` to the server.
 - Open TCP ports `80` and `443` (HTTPS reverse proxy) and `587` (SMTP STARTTLS; plus `465` if enabling implicit TLS).
 
-#### 2. Create `.env` next to `deploy/compose.server.yml`
+#### 2. Get the compose files and create `deploy/.env`
+
+```sh
+git clone --depth 1 --branch v1.0.0 https://github.com/mailcubby/mailcubby
+cd mailcubby
+```
 
 Generate an application encryption key:
 
@@ -156,15 +165,19 @@ Mailcubby runs inside a distroless container as non-root UID `65532`, and Caddy 
 
 #### 4. Complete first-run setup
 
-Read the one-time setup token from the logs:
+Read the one-time setup token from the logs (a new token is printed on every start and only the latest one works, hence `tail -1`):
 
 ```sh
-docker compose -f deploy/compose.server.yml logs mailcubby | grep "setup token"
+docker compose -f deploy/compose.server.yml logs mailcubby | grep "setup token" | tail -1
 ```
 
 Open `https://mail.example.com/setup`, paste the setup token, create the first admin account, and create your first project + SMTP credential in the wizard.
 
-To bootstrap an admin headlessly instead of using the setup wizard, set `MAILCUBBY_ADMIN_EMAIL` and `MAILCUBBY_ADMIN_PASSWORD` (or `MAILCUBBY_ADMIN_PASSWORD_FILE`) on first start.
+To bootstrap an admin headlessly instead of using the setup wizard, set `MAILCUBBY_ADMIN_EMAIL` and `MAILCUBBY_ADMIN_PASSWORD` (or `MAILCUBBY_ADMIN_PASSWORD_FILE`) on first start. Once users exist these variables are ignored (the startup log says so). To regain access to an account, print a one-time password reset link:
+
+```sh
+docker compose -f deploy/compose.server.yml exec mailcubby /mailcubby admin reset-password --email admin@example.com
+```
 
 #### 5. Verify STARTTLS on port 587
 
@@ -288,11 +301,11 @@ All persistent state lives inside `MAILCUBBY_DATA_DIR` (`/data` in Docker):
 
 ### Offline backup (simplest)
 
-Stop Mailcubby and archive the data directory:
+Stop Mailcubby and archive the data directory (Compose names the volume `mailcubby_mailcubby-data` after the project name `mailcubby` set in `deploy/compose.server.yml`):
 
 ```sh
 docker compose -f deploy/compose.server.yml stop mailcubby
-docker run --rm -v mailcubby-data:/data:ro -v "$PWD:/backup" alpine:3.21 \
+docker run --rm -v mailcubby_mailcubby-data:/data:ro -v "$PWD:/backup" alpine:3.21 \
   tar -czf "/backup/mailcubby-$(date -u +%Y%m%dT%H%M%SZ).tar.gz" -C /data .
 docker compose -f deploy/compose.server.yml start mailcubby
 ```
