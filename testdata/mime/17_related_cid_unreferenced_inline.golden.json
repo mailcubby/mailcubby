@@ -1,0 +1,57 @@
+{
+  "subject": "Newsletter with inline logo and terms",
+  "from_name": "Brand Team",
+  "from_addr": "brand@example.test",
+  "to": [
+    {
+      "name": "Designer",
+      "address": "designer@example.test"
+    }
+  ],
+  "cc": [],
+  "bcc": [
+    {
+      "name": "",
+      "address": "envelope-only@example.test"
+    }
+  ],
+  "reply_to": [],
+  "message_id_header": "\u003ccid-17@example.test\u003e",
+  "date_header": "2026-11-23T11:05:00Z",
+  "snippet": "Newsletter",
+  "has_html": true,
+  "has_text": false,
+  "text_generated": true,
+  "attachment_count": 3,
+  "attachments": [
+    {
+      "part_path": "2",
+      "filename": "terms.txt",
+      "content_type": "text/plain",
+      "size_bytes": 28,
+      "disposition": "attachment",
+      "sha256": "ae5dabe7f70c80c7f102e66022bfd1a7022e5b33172cfc6c21e3a22bfbd0bafb"
+    },
+    {
+      "part_path": "1.2",
+      "filename": "logo.png",
+      "content_type": "image/png",
+      "size_bytes": 143,
+      "content_id": "logo@brand.example.test",
+      "disposition": "inline",
+      "sha256": "b9efcc02b0f0e35a054235d4e8231348431b523808e56118f153b7a3225598f8"
+    },
+    {
+      "part_path": "1.3",
+      "filename": "badge.png",
+      "content_type": "image/png",
+      "size_bytes": 166,
+      "content_id": "badge@brand.example.test",
+      "disposition": "inline",
+      "sha256": "8ba248e4ddc641d539abe1e895a3b6c292b66a198d213be5f950d96f63d31a3e"
+    }
+  ],
+  "parse_warnings": [
+    "Character Set Declaration Mismatch: declared charset \"utf-8\", detected \"ISO-8859-1\", confidence 98"
+  ]
+}
