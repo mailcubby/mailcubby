@@ -475,7 +475,7 @@ Tasks:
 - [x] GoReleaser config publishes a Homebrew formula or cask to `mailcubby/homebrew-tap` with a service that runs local mode on :1025/:8025 with data in `$(brew --prefix)/var/mailcubby`; pre-releases do not update the tap; decision recorded in an ADR if not obvious.
 - [x] README install section: macOS Homebrew first (`brew install mailcubby/tap/mailcubby`, `brew services start mailcubby`); manual LaunchAgent (macOS) and systemd user unit (Linux) for the Releases binary.
 - [x] Create the `mailcubby/homebrew-tap` repository (owner; created 2026-11-25 with owner approval, README on `main`).
-- [ ] Create a fine-grained token with contents write on `mailcubby/homebrew-tap` and store it as the `HOMEBREW_TAP_GITHUB_TOKEN` secret of `mailcubby/mailcubby` (owner).
+- [x] Create a fine-grained token with contents write on `mailcubby/homebrew-tap` and store it as the `HOMEBREW_TAP_GITHUB_TOKEN` secret of `mailcubby/mailcubby` (owner; stored 2026-11-25).
 
 Acceptance:
 - `goreleaser check` exits 0, or 2 with only the `brews` deprecation (ADR 0008); `goreleaser release --snapshot --clean` generates the formula with the service block (criterion reworded for ADR 0008, approved by the owner on 2026-11-25).
@@ -486,6 +486,10 @@ Acceptance:
 ## Backlog (after v1.0.0)
 
 Not scheduled. When an item is picked up it becomes a phase above. Items marked "SPEC 14.n" are in the SPEC roadmap.
+
+### Next: visual pass
+
+The step after Phase 14. Review every screen with the owner, then polish layout, spacing, typography and empty states. Behaviour and security rules do not change.
 
 ### v1.0.x (small, no design change)
 
@@ -502,10 +506,8 @@ Not scheduled. When an item is picked up it becomes a phase above. Items marked 
 
 1. HTML compatibility check (caniemail data, offline). Most useful for agencies building templates. SPEC 14.2.
 2. Link checker, opt-in per instance, with SSRF protection (no private, loopback or link-local targets, timeouts, size caps) because the server fetches URLs found in untrusted email. SPEC 14.2.
-3. Inline PDF preview of attachments. SPEC 14.20.
-4. Visual polish pass over all screens (owner review first).
-5. Webhooks on `message.created` and the MCP endpoint for AI agents. SPEC 14.4, 14.5.
-6. Mailpit data import and API compatibility shim, to ease switching. SPEC 14.15.
+3. Inline PDF preview of attachments. SPEC 14.19.
+4. Webhooks on `message.created` and the MCP endpoint for AI agents. SPEC 14.4, 14.5.
 
 ### Later
 
