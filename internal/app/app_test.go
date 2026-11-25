@@ -309,6 +309,78 @@ func TestAppServerModeHeadlessAdminBootstrapAndSMTP530(t *testing.T) {
 	}
 }
 
+// FR-040: MAILCUBBY_ADMIN_* set while users already exist is ignored and logged.
+func TestAppServerModeAdminEnvIgnoredWhenUsersExist(t *testing.T) {
+	t.Parallel()
+
+	const ignoredMsg = "MAILCUBBY_ADMIN_EMAIL and MAILCUBBY_ADMIN_PASSWORD are ignored"
+	dir := t.TempDir()
+	load := func(t *testing.T, withAdmin bool) config.Config {
+		t.Helper()
+		cfg, err := config.Load(func(k string) (string, bool) {
+			switch k {
+			case "MAILCUBBY_MODE":
+				return "server", true
+			case "MAILCUBBY_DATA_DIR":
+				return dir, true
+			case "MAILCUBBY_BASE_URL":
+				return "http://127.0.0.1:8025", true
+			case "MAILCUBBY_APP_KEY":
+				return testServerAppKey, true
+			case "MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH":
+				return "true", true
+			case "MAILCUBBY_ADMIN_EMAIL":
+				return "admin@example.test", withAdmin
+			case "MAILCUBBY_ADMIN_PASSWORD":
+				return "super-secret-pass", withAdmin
+			case "MAILCUBBY_SMTP_ADDR":
+				return "127.0.0.1:0", true
+			case "MAILCUBBY_HTTP_ADDR":
+				return "127.0.0.1:0", true
+			default:
+				return "", false
+			}
+		})
+		if err != nil {
+			t.Fatalf("config.Load: %v", err)
+		}
+		return cfg
+	}
+	start := func(t *testing.T, cfg config.Config) string {
+		t.Helper()
+		var buf bytes.Buffer
+		a, err := app.Open(t.Context(), cfg, app.Options{
+			Logger: slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		})
+		if err != nil {
+			t.Fatalf("app.Open: %v", err)
+		}
+		if err := a.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+		return buf.String()
+	}
+
+	// Steps share one data dir, so they run in order.
+	steps := []struct {
+		name      string
+		withAdmin bool
+		wantLog   bool
+	}{
+		{name: "first start bootstraps the admin", withAdmin: true, wantLog: false},
+		{name: "restart with users and ADMIN_* set", withAdmin: true, wantLog: true},
+		{name: "restart with users and no ADMIN_*", withAdmin: false, wantLog: false},
+	}
+	for _, tc := range steps {
+		t.Run(tc.name, func(t *testing.T) {
+			logs := start(t, load(t, tc.withAdmin))
+			if got := strings.Contains(logs, ignoredMsg); got != tc.wantLog {
+				t.Fatalf("ignored-admin log present = %v, want %v; logs:\n%s", got, tc.wantLog, logs)
+			}
+		})
+	}
+}
+
 func TestAppServerModeTLSCertLoad(t *testing.T) {
 	t.Parallel()
 

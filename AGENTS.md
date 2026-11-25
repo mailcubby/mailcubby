@@ -6,7 +6,7 @@ Instructions for AI coding agents (Google Antigravity, Codex, Cursor, others) an
 
 Mailcubby is a self-hosted email testing server ("mail catcher"), an alternative to Mailpit and Mailtrap. Applications send mail to its SMTP port; Mailcubby stores it and shows it in a web UI and REST API. Unlike Mailpit, it is multi-tenant: projects, per-project SMTP credentials, users, roles (owner, member, viewer) and invites, so an agency can share one instance with its team and clients. It also has a zero-config local mode for a single developer.
 
-It ships as one static Go binary with the React UI embedded, in a Docker image of about 15 to 20 MB. Storage is SQLite (metadata, FTS5 search) plus zstd-compressed `.eml` files.
+It ships as one static Go binary with the React UI embedded, in a Docker image of about 9 MB compressed. Storage is SQLite (metadata, FTS5 search) plus zstd-compressed `.eml` files.
 
 Naming: `mailcubby` (binary, CLI, Docker image, lowercase identifiers), `Mailcubby` (display name), `MAILCUBBY_` (env var prefix), `github.com/mailcubby/mailcubby` (Go module). Use them exactly and consistently. Do not invent other names or abbreviations for the product.
 
@@ -111,7 +111,7 @@ All through the `Makefile`. Run from the repo root.
 | `make bench` | Go benchmarks (store, search, ingest). |
 | `make e2e` | `build-all`, then Playwright tests (Chromium) against the fresh binary on free ports with temp data dirs (from Phase 4a). |
 | `make seed` | Send every `testdata/mime/*.eml` to a running instance with `bin/mailcubby sendmail` (`SMTP=localhost:1025 USER=<project> COUNT=1`). From Phase 2. |
-| `make docker` | `docker build -f deploy/Dockerfile -t mailcubby:dev .` |
+| `make docker` | `docker build -f deploy/Dockerfile` with the git version, commit and date as build args, tagged `mailcubby:dev`. |
 | `make migration name=add_x` | Create the next sequential goose SQL file in `migrations/` (plain shell, no goose CLI). Add it to the `sqlc.yaml` schema list unless sqlc cannot parse it (ARCHITECTURE 3.5). |
 | `make clean` | Remove `bin/`, `web/dist/`, `internal/web/dist/*` except `.gitkeep`. |
 

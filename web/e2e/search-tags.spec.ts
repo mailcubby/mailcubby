@@ -1,10 +1,10 @@
-import { createProjectViaAPI, expect, sendRawMail, test } from "./helpers";
+import { createProjectViaAPI, expect, sendRawMail, test, uniqueSlug } from "./helpers";
 
 test.describe("Phase 5 search and tags", () => {
   test("typing from:alice filters the list and shows a chip; adding a tag updates the sidebar count", async ({
     page,
   }) => {
-    const project = await createProjectViaAPI("Search & Tags Shop", "e2e-search-tags");
+    const project = await createProjectViaAPI("Search & Tags Shop", uniqueSlug("e2e-search-tags"));
 
     await sendRawMail(
       [
@@ -85,7 +85,10 @@ test.describe("Phase 5 search and tags", () => {
   });
 
   test("command palette exposes search operators and tags", async ({ page }) => {
-    const project = await createProjectViaAPI("Palette Search Shop", "e2e-palette-search");
+    const project = await createProjectViaAPI(
+      "Palette Search Shop",
+      uniqueSlug("e2e-palette-search"),
+    );
 
     await sendRawMail(
       [

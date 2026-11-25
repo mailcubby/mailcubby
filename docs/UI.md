@@ -65,7 +65,7 @@ Centered card: instance name, email, password, "Sign in". Errors inline under th
 
 Steps with a progress indicator; each step is a short form. Steps 1 to 3 are collected client-side and submitted together as one `POST /api/v1/setup` at the end of step 3 (a wrong token sends the user back to step 1 with the error).
 
-1. **Setup token**: paste the token from the server log (explains: `docker compose logs mailcubby | grep "setup token"`; a restart prints a new token).
+1. **Setup token**: paste the token from the server log. The step lists where to find it, each command with a copy button: Docker Compose (`docker compose -f deploy/compose.server.yml logs mailcubby | grep "setup token" | tail -1`), Docker (`docker logs <container> 2>&1 | grep "setup token" | tail -1`) and the binary (the `setup token:` line in the terminal or log of `mailcubby serve`). A restart prints a new token, so the latest one wins. The "Paste the setup token" error shows only after a submit attempt and clears when the user types.
 2. **Admin account**: name, email, password (strength hint, minimum 10 characters).
 3. **Instance**: instance name (sent as `instance_name`); read-only checks with green/amber status, all from `GET /api/v1/meta`: configured `base_url` vs `window.location.origin`, SMTP public host, port and TLS mode (`none` is amber), inbox domain (if set).
 4. **First project**: name (slug auto-derived, editable). Creates the project and its first SMTP credential.

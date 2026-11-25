@@ -371,8 +371,10 @@ distroless `static` (not `scratch`) is used because it ships CA certificates, `/
 Local:
 
 ```sh
-docker run --rm -p 8025:8025 -p 1025:1025 -v mailcubby-data:/data ghcr.io/mailcubby/mailcubby:latest
+docker run --rm -p 127.0.0.1:8025:8025 -p 127.0.0.1:1025:1025 -v mailcubby-data:/data ghcr.io/mailcubby/mailcubby:latest
 ```
+
+Local mode has no authentication and listens on all interfaces inside the container, so examples publish its ports on `127.0.0.1` only.
 
 Server: `deploy/compose.server.yml` (see README). Topology:
 

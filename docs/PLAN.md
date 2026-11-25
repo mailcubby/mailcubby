@@ -439,17 +439,17 @@ Acceptance:
 ### Phase 14b: release and docs
 
 Tasks:
-- [ ] `release.yml` passes `--release-notes docs/release-notes-v1.0.0.md`; `.goreleaser.yaml` sets `release.prerelease: auto`.
-- [ ] Release notes: image tag `:1.0.0` (not `:v1.0.0`), absolute links, `127.0.0.1:` port bindings for local mode, server quick start identical to the README (S2 docs).
-- [ ] Compose files set `name: mailcubby` (server) and `name: mailcubby-local` (local); README backup uses `mailcubby_mailcubby-data` (I3, I4).
-- [ ] README: `git clone --depth 1 --branch v1.0.0` step before compose; `go install` is not supported; pre-release banner; image size about 9 MB; `127.0.0.1:` port bindings in local examples; ARCHITECTURE examples likewise (S2 docs).
-- [ ] V3: README shows `| tail -1` for the setup token (regenerated on each start); V5: README shows `docker compose exec mailcubby mailcubby admin reset-password`; startup logs when `MAILCUBBY_ADMIN_*` is ignored because users exist.
-- [ ] CI runs Playwright e2e (Chromium); specs use unique slugs (`uniqueSlug(prefix)` helper) so retries do not hit 409.
-- [ ] Comment explaining `getItemKey` in `web/src/features/inbox/MessageListPane.tsx`.
-- [ ] Setup wizard step 1 shows the `docker compose logs`, `docker logs <container>` and binary variants for finding the setup token.
-- [ ] Setup wizard shows "Paste the setup token" only after a submit attempt.
-- [ ] `make docker` passes the git version, so `/api/v1/meta` of a locally built image reports it.
-- [ ] Commit the "Backlog (after v1.0.0)" section of this file.
+- [x] `release.yml` passes `--release-notes docs/release-notes-v1.0.0.md`; `.goreleaser.yaml` sets `release.prerelease: auto`.
+- [x] Release notes: image tag `:1.0.0` (not `:v1.0.0`), absolute links, `127.0.0.1:` port bindings for local mode, server quick start identical to the README (S2 docs).
+- [x] Compose files set `name: mailcubby` (server) and `name: mailcubby-local` (local); README backup uses `mailcubby_mailcubby-data` (I3, I4).
+- [x] README: `git clone --depth 1 --branch v1.0.0` step before compose; `go install` is not supported; pre-release banner; image size about 9 MB; `127.0.0.1:` port bindings in local examples; ARCHITECTURE examples likewise (S2 docs).
+- [x] V3: README shows `| tail -1` for the setup token (regenerated on each start); V5: README shows `docker compose exec mailcubby mailcubby admin reset-password`; startup logs when `MAILCUBBY_ADMIN_*` is ignored because users exist.
+- [x] CI runs Playwright e2e (Chromium); specs use unique slugs (`uniqueSlug(prefix)` helper) so retries do not hit 409.
+- [x] Comment explaining `getItemKey` in `web/src/features/inbox/MessageListPane.tsx`.
+- [x] Setup wizard step 1 shows the `docker compose logs`, `docker logs <container>` and binary variants for finding the setup token.
+- [x] Setup wizard shows "Paste the setup token" only after a submit attempt.
+- [x] `make docker` passes the git version, so `/api/v1/meta` of a locally built image reports it.
+- [x] Commit the "Backlog (after v1.0.0)" section of this file.
 
 Acceptance:
 - CI workflow has an `e2e` job running `make e2e` on Chromium; `make e2e` passes twice in a row against the same binary build.
@@ -482,6 +482,37 @@ Acceptance:
 - After the first tagged release, `brew install mailcubby/tap/mailcubby && brew services start mailcubby` serves the UI on http://localhost:8025 (owner).
 
 ---
+
+## Backlog (after v1.0.0)
+
+Not scheduled. When an item is picked up it becomes a phase above. Items marked "SPEC 14.n" are in the SPEC roadmap.
+
+### v1.0.x (small, no design change)
+
+- `mailcubby backup` command for an online SQLite backup that works in the distroless image and compose volumes (audit V6).
+- Docs: password reset does not revoke API tokens; long-poll `/messages/wait` limits; `MAILCUBBY_TRUSTED_PROXIES` scope in compose (audit S5, S6, S7).
+- Invite accepted by a user whose email differs from the invite: warning in the accept UI (audit S8).
+- Attachment content types: map `*+xml`, `*/xml` and invalid values to `application/octet-stream` (audit S9).
+- Startup warnings for insecure SMTP AUTH and an `http://` base URL; hint at `keygen` when the app key has the wrong length; CLI `list-users` / `enable-user` (audit V8).
+- Server mode as a plain binary: systemd unit and docs (audit V4).
+- Framework snippets, a `curl` example for `/messages/wait` and a `host.docker.internal` note in the README; `sendmail` dial timeout; quieter access log (audit L4, L5).
+- OCI labels in `deploy/Dockerfile`, healthcheck `start_period`, pinned Caddy image (audit I7).
+
+### v1.1 (features)
+
+1. HTML compatibility check (caniemail data, offline). Most useful for agencies building templates. SPEC 14.2.
+2. Link checker, opt-in per instance, with SSRF protection (no private, loopback or link-local targets, timeouts, size caps) because the server fetches URLs found in untrusted email. SPEC 14.2.
+3. Inline PDF preview of attachments. SPEC 14.20.
+4. Visual polish pass over all screens (owner review first).
+5. Webhooks on `message.created` and the MCP endpoint for AI agents. SPEC 14.4, 14.5.
+6. Mailpit data import and API compatibility shim, to ease switching. SPEC 14.15.
+
+### Later
+
+- Spam check (SpamAssassin / rspamd). SPEC 14.3.
+- Invite and reset emails through an outbound SMTP setting. SPEC 14.14.
+- OIDC / SSO, PostgreSQL, S3 blobs, metrics/tracing. SPEC 14.6, 14.7, 14.8, 14.11.
+- Commercial offering (hosted service or paid license); see ADR 0007. Needs its own ADR.
 
 ## Open questions
 
@@ -536,3 +567,8 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
 - 2026-11-25, Phase 14a: SMTP AUTH credential lookup errors reply `454 4.7.0` (was `451 4.3.0`); decrypt failures (wrong `MAILCUBBY_APP_KEY`) reply 454 and do not count towards lockout. Credential reveal on a decrypt failure returns `409 conflict` with a message naming `MAILCUBBY_APP_KEY`, keeping the error enum unchanged.
 - 2026-11-25, Phase 14a: a new `app.db` is created 0600 before SQLite opens it; an existing `app.db*` with wider permissions is chmodded to 0600 best effort, and a failed chmod (some bind mounts) is ignored silently so startup is never blocked.
 - 2026-11-25, Phase 14a: the implicit-local refusal (S3) opens and migrates the database before refusing, but creates no `app.key`. An explicit `MAILCUBBY_SMTP_PUBLIC_PORT` still overrides the bound port in local mode (Docker port mappings).
+- 2026-11-25, Phase 14b: `release.yml` hardcodes `--release-notes docs/release-notes-v1.0.0.md`, so the `v1.0.0-rc.1` rehearsal publishes the v1.0.0 notes (intended) and every later tag needs that path updated.
+- 2026-11-25, Phase 14b: the admin reset recipe is `docker compose -f deploy/compose.server.yml exec mailcubby /mailcubby admin reset-password ...` (absolute path: the distroless image has no `mailcubby` on `PATH`). The startup line for ignored `MAILCUBBY_ADMIN_*` is INFO, not WARN, because it repeats on every restart while the variables stay set.
+- 2026-11-25, Phase 14b: the setup wizard's Compose command includes `-f deploy/compose.server.yml` so it works from the repo root where the README leaves the user. The "Paste the setup token" error could not be reproduced before typing on the previous code; it is now gated on a submit attempt, so the tests document the behaviour rather than guard a reproduced regression.
+- 2026-11-25, Phase 14b: the compose `name:` keys change volume names from `deploy_*` to `mailcubby_*` / `mailcubby-local_*`; harmless because no image has been published yet. Compose files use `ghcr.io/mailcubby/mailcubby:${MAILCUBBY_VERSION:-latest}` so a `v1.0.0` checkout can pin its image in `deploy/.env` (optional, Compose only). Image size measured at 8.47 MB compressed for linux/arm64 only. `docs/benchmarks.md` still says ~10–11 MB estimated and ADR 0001 says 15–20 MB (historical, left unchanged).
+- 2026-11-25, Phase 14b: **Owner**: add the new `e2e` CI job to the required checks of the `main` ruleset (with `check`, `race`, `fuzz`, `vuln`, `docker`); remove the README pre-release banner when v1.0.0 ships.

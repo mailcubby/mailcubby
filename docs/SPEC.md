@@ -23,7 +23,7 @@ An agency that runs a staging catcher for many client websites today must either
 1. One self-hosted instance serves many isolated **projects**; each project has its own SMTP credentials, members and settings.
 2. A **client** can be given a read-only login that shows only their project, optionally hiding technical views.
 3. **Zero-config local mode** that is a drop-in replacement for Mailpit (same default ports 1025/8025, any credentials accepted, `X-Tags` honoured).
-4. **Easy install**: one Docker image of about 15 to 20 MB, one volume, sane defaults, works behind a reverse proxy.
+4. **Easy install**: one Docker image of about 9 MB compressed, one volume, sane defaults, works behind a reverse proxy.
 5. **Premium UI**: fast, dense, keyboard-first, realtime, safe rendering of untrusted HTML.
 6. **Test-friendly API**: REST API with tokens, plus a "wait for message" endpoint for end-to-end tests.
 
@@ -141,7 +141,7 @@ Routing rules are defined precisely in section 7.
 
 ### 6.4 Users, authentication, sessions (server mode)
 
-**FR-040 Setup.** While no user exists, the instance is in setup pending state. At startup in this state Mailcubby generates a random setup token, stores its SHA-256 in `settings`, and logs `setup token: <token>` at WARN level. `POST /api/v1/setup` with `{setup_token, email, name, password, instance_name?}` creates the first user as instance admin, stores `instance_name` in `settings` if given, marks setup done and logs the user in. A new setup token is generated at every startup while setup is pending (the previous one stops working). If `MAILCUBBY_ADMIN_EMAIL` and `MAILCUBBY_ADMIN_PASSWORD` (or `_FILE`) are set and no users exist, the admin is created at startup and setup is skipped.
+**FR-040 Setup.** While no user exists, the instance is in setup pending state. At startup in this state Mailcubby generates a random setup token, stores its SHA-256 in `settings`, and logs `setup token: <token>` at WARN level. `POST /api/v1/setup` with `{setup_token, email, name, password, instance_name?}` creates the first user as instance admin, stores `instance_name` in `settings` if given, marks setup done and logs the user in. A new setup token is generated at every startup while setup is pending (the previous one stops working). If `MAILCUBBY_ADMIN_EMAIL` and `MAILCUBBY_ADMIN_PASSWORD` (or `_FILE`) are set and no users exist, the admin is created at startup and setup is skipped. If they are set but users already exist, they are ignored and Mailcubby logs that at INFO level at startup (use `mailcubby admin reset-password` to recover access).
 - AC: setup without a valid token returns `403`; after setup, `POST /api/v1/setup` returns `409`.
 
 **FR-041 Users.** Attributes: email (unique, case-insensitive), name, password hash, `is_admin`, `can_create_projects`, `disabled_at`, `last_login_at`. There is no public sign-up; users are created by admin or by accepting an invite.
@@ -866,7 +866,7 @@ See FR-105. Admin and owner screens show the log.
 | NFR-003 | Message list | first page p95 under 50 ms with 100k messages in the project | Go benchmark on seeded DB |
 | NFR-004 | Search | p95 under 150 ms for a two-word query with 100k messages | Go benchmark |
 | NFR-005 | Memory | idle RSS under 40 MB; under 150 MB while ingesting at NFR-001 rate with 1M stored messages | manual + CI smoke |
-| NFR-006 | Image size | compressed image 15 to 20 MB target, 25 MB hard limit per arch | CI check on `docker image inspect` |
+| NFR-006 | Image size | compressed image about 9 MB (measured for v1.0.0), 25 MB hard limit per arch | CI check on `docker image inspect` |
 | NFR-007 | Startup | under 1 s to ready with 1M messages (no full scans at startup) | integration test |
 | NFR-008 | Max message size | default 25 MiB, configurable up to 100 MiB | config validation |
 | NFR-009 | UI performance | initial JS under 250 KB gzip; inbox list scrolls 60 fps with 10k loaded rows (virtualised); interaction to next paint under 100 ms | Lighthouse / bundle size check in CI |

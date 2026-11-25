@@ -5,7 +5,7 @@ SHELL := /bin/sh
 SQLC_VERSION := 1.31.1
 GOLANGCI_LINT_VERSION := 2.15.0
 
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION ?= $(patsubst v%,%,$(shell git describe --tags --always --dirty 2>/dev/null || echo dev))
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -222,7 +222,9 @@ seed: ## Send testdata/mime/*.eml fixtures to a running instance (SMTP, USER, CO
 	fi
 
 docker: ## Build local Docker image mailcubby:dev
-	docker build -f deploy/Dockerfile -t mailcubby:dev .
+	docker build -f deploy/Dockerfile \
+		--build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) \
+		-t mailcubby:dev .
 
 migration: ## Create next sequential goose SQL migration (usage: make migration name=add_x)
 	@set -eu; \

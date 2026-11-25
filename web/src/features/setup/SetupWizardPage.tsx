@@ -45,6 +45,19 @@ const STEPS: ReadonlyArray<{ num: WizardStep; label: string }> = [
   { num: 5, label: "Connect" },
 ];
 
+// Ways to find the setup token, shown on step 1 (FR-040: the latest token in the log wins).
+const SETUP_TOKEN_COMMANDS: ReadonlyArray<{ label: string; command: string }> = [
+  {
+    label: "Docker Compose",
+    command:
+      'docker compose -f deploy/compose.server.yml logs mailcubby | grep "setup token" | tail -1',
+  },
+  {
+    label: "Docker",
+    command: 'docker logs <container> 2>&1 | grep "setup token" | tail -1',
+  },
+];
+
 interface ReceivedFirstMessage {
   id: string;
   subject: string;
@@ -93,6 +106,8 @@ export function SetupWizardPage() {
 
   const [step, setStep] = useState<WizardStep>(1);
   const [setupToken, setSetupToken] = useState("");
+  // The step 1 error stays hidden until the user tries to continue.
+  const [tokenSubmitAttempted, setTokenSubmitAttempted] = useState(false);
   const [adminName, setAdminName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
@@ -166,6 +181,7 @@ export function SetupWizardPage() {
           // UI 3.2: a wrong token sends the user back to step 1 with the error.
           setFieldErrors({});
           setFormError("Invalid setup token. Check the server logs and paste the latest token.");
+          setTokenSubmitAttempted(true);
           setStep(1);
           requestAnimationFrame(() => {
             tokenInputRef.current?.focus();
@@ -321,6 +337,7 @@ export function SetupWizardPage() {
 
   const handleStep1Submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setTokenSubmitAttempted(true);
     if (!setupToken.trim()) {
       setFormError("Paste the setup token from your Mailcubby server logs.");
       tokenInputRef.current?.focus();
@@ -484,15 +501,44 @@ export function SetupWizardPage() {
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 Mailcubby prints a one-time setup token to its logs on startup. Restarting the
-                server generates a new token.
+                server generates a new token, so use the latest one.
               </p>
-              <pre
-                // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable code region needs keyboard focus (WCAG 2.1.1).
-                tabIndex={0}
-                className="mt-2 overflow-x-auto rounded-md border border-border bg-background px-3 py-2 font-mono text-[11px] text-foreground"
-              >
-                docker compose logs mailcubby | grep &quot;setup token&quot;
-              </pre>
+              <ul aria-label="Where to find the token" className="mt-2 flex flex-col gap-1.5">
+                {SETUP_TOKEN_COMMANDS.map((item) => (
+                  <li key={item.label} className="flex flex-col gap-0.5">
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      {item.label}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <pre
+                        // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable code region needs keyboard focus (WCAG 2.1.1).
+                        tabIndex={0}
+                        className="min-w-0 flex-1 overflow-x-auto rounded-md border border-border bg-background px-3 py-1.5 font-mono text-[11px] text-foreground"
+                      >
+                        {item.command}
+                      </pre>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Copy ${item.label} command`}
+                        onClick={() => void copyToClipboard(item.command, `${item.label} command`)}
+                        className="size-7 shrink-0"
+                      >
+                        <Copy className="size-3" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+                <li className="flex flex-col gap-0.5">
+                  <span className="text-[11px] font-medium text-muted-foreground">Binary</span>
+                  <span className="text-xs text-foreground">
+                    Look for the <code className="font-mono text-[11px]">setup token:</code> line in
+                    the terminal or log where{" "}
+                    <code className="font-mono text-[11px]">mailcubby serve</code> runs.
+                  </span>
+                </li>
+              </ul>
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -516,14 +562,18 @@ export function SetupWizardPage() {
                     setFormError(null);
                   }
                 }}
-                aria-invalid={formError ? "true" : undefined}
+                aria-invalid={tokenSubmitAttempted && formError ? "true" : undefined}
+                aria-describedby={
+                  tokenSubmitAttempted && formError ? "setup-token-error" : undefined
+                }
                 placeholder="Paste token from server logs"
                 className="font-mono"
               />
             </div>
 
-            {formError ? (
+            {tokenSubmitAttempted && formError ? (
               <div
+                id="setup-token-error"
                 role="alert"
                 className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
               >

@@ -21,6 +21,8 @@
 #   and then start Mailcubby, or let restart: unless-stopped retry until Caddy
 #   writes the certificate.
 
+name: mailcubby
+
 services:
   caddy-init:
     image: alpine:3.21
@@ -56,7 +58,7 @@ services:
       - mailcubby
 
   mailcubby:
-    image: ghcr.io/mailcubby/mailcubby:latest
+    image: ghcr.io/mailcubby/mailcubby:${MAILCUBBY_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       - caddy
@@ -66,6 +68,9 @@ services:
       MAILCUBBY_BASE_URL: "https://${MAILCUBBY_DOMAIN:?Set MAILCUBBY_DOMAIN (e.g. mail.example.com)}"
       MAILCUBBY_APP_KEY: "${MAILCUBBY_APP_KEY:?Generate with: docker run --rm ghcr.io/mailcubby/mailcubby:latest keygen}"
       MAILCUBBY_INBOX_DOMAIN: "${MAILCUBBY_INBOX_DOMAIN:-}"
+      # Optional headless bootstrap of the first admin (ignored once users exist).
+      MAILCUBBY_ADMIN_EMAIL: "${MAILCUBBY_ADMIN_EMAIL:-}"
+      MAILCUBBY_ADMIN_PASSWORD: "${MAILCUBBY_ADMIN_PASSWORD:-}"
       MAILCUBBY_SMTP_HOSTNAME: "${MAILCUBBY_DOMAIN}"
       # Caddyfile pins Let's Encrypt so the issuer directory is deterministic.
       # If you switch ACME issuers (e.g. ZeroSSL), update the directory segment below.

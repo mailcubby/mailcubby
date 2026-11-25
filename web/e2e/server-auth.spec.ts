@@ -140,6 +140,21 @@ test.describe("Server mode setup wizard, login, account, and logout", () => {
       await expect(page).toHaveURL(`${srv.httpURL}/setup`);
       await expect(page.getByRole("heading", { name: "Step 1: Setup token" })).toBeVisible();
 
+      // Step 1 explains where to find the token: Docker Compose, docker logs and the binary.
+      const tokenHelp = page.getByRole("list", { name: "Where to find the token" });
+      await expect(tokenHelp).toContainText(
+        'docker compose -f deploy/compose.server.yml logs mailcubby | grep "setup token" | tail -1',
+      );
+      await expect(tokenHelp).toContainText(
+        'docker logs <container> 2>&1 | grep "setup token" | tail -1',
+      );
+      await expect(tokenHelp).toContainText("mailcubby serve");
+
+      // The empty-token error appears only after a submit attempt.
+      await expect(page.getByRole("alert")).toHaveCount(0);
+      await page.getByRole("button", { name: "Continue to admin account" }).click();
+      await expect(page.getByRole("alert")).toContainText("Paste the setup token");
+
       // Wrong token bounces back to step 1 at submission time (UI 3.2).
       await page.getByLabel("Setup token").fill("definitely-wrong-token");
       await page.getByRole("button", { name: "Continue to admin account" }).click();

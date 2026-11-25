@@ -5,7 +5,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
-import { createProjectViaAPI, expect, getE2EConfig, sendFixture, test } from "./helpers";
+import {
+  createProjectViaAPI,
+  expect,
+  getE2EConfig,
+  sendFixture,
+  test,
+  uniqueSlug,
+} from "./helpers";
 
 const DEV_APP_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
@@ -161,12 +168,12 @@ test.describe("Phase 13: WCAG 2.1 AA accessibility audit (NFR-010)", () => {
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    const slug = `a11y-local-${Date.now()}`;
+    const slug = uniqueSlug("a11y-local");
     await createProjectViaAPI("A11y Local", slug);
 
     // Projects home (light theme).
     await page.goto("/");
-    await expect(page.getByRole("link", { name: /A11y Local/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: new RegExp(slug) })).toBeVisible();
     await page.getByRole("button", { name: "Light" }).click();
     await assertAccessible(page, "local / (light)");
 
