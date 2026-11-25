@@ -104,10 +104,13 @@ brews:
       error_log_path var/"log/mailcubby.log"
     caveats: |
       Mailcubby runs in local mode: no authentication, listening on all interfaces.
-      Do not expose it to untrusted networks. To listen on loopback only, put
+      Do not expose it to untrusted networks. To listen on loopback only
+      (Homebrew 6.0.15 or later), put
         MAILCUBBY_HTTP_ADDR=127.0.0.1:8025
         MAILCUBBY_SMTP_ADDR=127.0.0.1:1025
-      in ~/.homebrew/services/mailcubby.env and run `brew services restart mailcubby`.
+      in ~/.homebrew/services/mailcubby.env ($XDG_CONFIG_HOME/homebrew/services/mailcubby.env
+      if XDG_CONFIG_HOME is set) and run `brew services restart mailcubby`.
+      On older Homebrew, run `mailcubby serve` yourself with those variables instead.
       Web UI: http://localhost:8025   SMTP: localhost:1025
       Data: #{var}/mailcubby   Log: #{var}/log/mailcubby.log
     test: |
