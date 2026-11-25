@@ -6,7 +6,6 @@
 [Unit]
 Description=Mailcubby email testing server (local mode)
 Documentation=https://github.com/mailcubby/mailcubby
-After=network.target
 
 [Service]
 ExecStart=%h/.local/bin/mailcubby serve

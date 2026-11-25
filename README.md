@@ -94,6 +94,7 @@ macOS LaunchAgent (launchd needs absolute paths, so `sed` fills in your home dir
 ```sh
 mkdir -p ~/.local/bin && install -m 0755 mailcubby ~/.local/bin/mailcubby
 xattr -d com.apple.quarantine ~/.local/bin/mailcubby 2>/dev/null || true  # downloaded with a browser
+mkdir -p ~/Library/LaunchAgents
 sed "s|__HOME__|$HOME|g" deploy/launchd/dev.mailcubby.plist > ~/Library/LaunchAgents/dev.mailcubby.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.mailcubby.plist
 ```
