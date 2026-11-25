@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/textproto"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -53,7 +54,7 @@ func smtplibLogin(addr, username, password string) ([]int, error) {
 	if err := tp.PrintfLine("AUTH LOGIN %s", base64.StdEncoding.EncodeToString([]byte(username))); err != nil {
 		return nil, err
 	}
-	if code, _, err = tp.ReadResponse(334); err != nil {
+	if _, _, err = tp.ReadResponse(334); err != nil {
 		return nil, err
 	}
 	if err := tp.PrintfLine("%s", base64.StdEncoding.EncodeToString([]byte(password))); err != nil {
@@ -108,18 +109,6 @@ func login(t *testing.T, ts *testSMTPServer, username, password string) []int {
 	return r.codes
 }
 
-func equalCodes(a, b []int) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 // SPEC 12.4: lockout is per (IP, username). A client retrying with a stale
 // password through Python smtplib (2 failed AUTH commands per login()) locks
 // only itself; another client behind the same IP keeps working.
@@ -143,14 +132,14 @@ func TestServerMode_AuthLockoutPerIPAndUsername_Smtplib(t *testing.T) {
 		{name: "B from the same IP still authenticates", user: credB.Username, pass: "PasswordB123456789012345", want: []int{235}},
 	}
 	for _, st := range steps {
-		if got := login(t, ts, st.user, st.pass); !equalCodes(got, st.want) {
+		if got := login(t, ts, st.user, st.pass); !slices.Equal(got, st.want) {
 			t.Fatalf("%s: codes = %v, want %v", st.name, got, st.want)
 		}
 	}
 
 	// Lockout ends after the window.
 	ts.clk.Advance(15*time.Minute + time.Second)
-	if got := login(t, ts, credA.Username, "PasswordA123456789012345"); !equalCodes(got, []int{235}) {
+	if got := login(t, ts, credA.Username, "PasswordA123456789012345"); !slices.Equal(got, []int{235}) {
 		t.Fatalf("A after window: codes = %v, want [235]", got)
 	}
 }
@@ -169,7 +158,7 @@ func TestServerMode_AuthLockoutIPCeiling(t *testing.T) {
 			code, _, err := sendAuthPlainRaw(ts.addr, user, "x")
 			return loginResult{[]int{code}, err}
 		})
-		if r.err != nil || !equalCodes(r.codes, []int{535}) {
+		if r.err != nil || !slices.Equal(r.codes, []int{535}) {
 			t.Fatalf("guess %d: codes = %v err = %v, want [535]", i+1, r.codes, r.err)
 		}
 	}
