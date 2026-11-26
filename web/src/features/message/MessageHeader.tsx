@@ -287,7 +287,7 @@ export function MessageHeader({
           {message.tags.map((tag) => {
             const dot = tagColorByLower.get(tag.toLowerCase()) ?? PROJECT_COLOR_DOT_CLASS.slate;
             return (
-              <Badge key={tag} variant="secondary" className="gap-1.5 pr-1">
+              <Badge key={tag} variant="neutral" className="gap-1.5 pr-1">
                 <span className={cn("size-1.5 shrink-0 rounded-full", dot)} aria-hidden="true" />
                 <span>{tag}</span>
                 {canEditTags ? (

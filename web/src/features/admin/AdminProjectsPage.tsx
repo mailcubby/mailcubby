@@ -57,7 +57,7 @@ export function AdminProjectsPage() {
       title="Projects"
       description="All projects across the instance with owners, message counts, and storage usage."
       actions={
-        <Button variant="default" size="sm" onClick={openCreateProject}>
+        <Button variant="primary" size="sm" onClick={openCreateProject}>
           <Plus className="size-3.5" aria-hidden="true" />
           <span>New project</span>
         </Button>
@@ -176,7 +176,7 @@ export function AdminProjectsPage() {
                             {formatCount(project.message_count)}
                           </span>
                           {project.unread_count > 0 ? (
-                            <Badge variant="accent" className="ml-1.5">
+                            <Badge variant="primary" className="ml-1.5">
                               {formatCount(project.unread_count)} unread
                             </Badge>
                           ) : null}

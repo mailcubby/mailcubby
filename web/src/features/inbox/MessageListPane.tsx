@@ -936,11 +936,7 @@ export function MessageListPane({
                           const dot =
                             tagColorByLower.get(tag.toLowerCase()) ?? PROJECT_COLOR_DOT_CLASS.slate;
                           return (
-                            <Badge
-                              key={tag}
-                              variant="secondary"
-                              className="max-w-24 gap-1 truncate"
-                            >
+                            <Badge key={tag} variant="neutral" className="max-w-24 gap-1 truncate">
                               <span
                                 className={cn("size-1.5 shrink-0 rounded-full", dot)}
                                 aria-hidden="true"
@@ -949,7 +945,7 @@ export function MessageListPane({
                             </Badge>
                           );
                         })}
-                        {extraTags > 0 ? <Badge variant="outline">+{extraTags}</Badge> : null}
+                        {extraTags > 0 ? <Badge variant="neutral">+{extraTags}</Badge> : null}
                       </div>
                     </div>
 

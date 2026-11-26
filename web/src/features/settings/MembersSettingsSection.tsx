@@ -4,7 +4,8 @@ import { CheckCircle2, Copy, Eye, LogOut, MailPlus, Trash2, UserMinus } from "lu
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { useAppCommands } from "@/components/AppCommandContext";
-import { Badge } from "@/components/ui/badge";
+import { RoleBadge } from "@/components/RoleBadge";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -53,18 +54,15 @@ const ROLE_OPTIONS: ReadonlyArray<{ value: ProjectRole; label: string; descripti
   },
 ];
 
-function inviteStatusBadgeVariant(
-  status: InviteStatus,
-): "accent" | "secondary" | "outline" | "destructive" {
+function inviteStatusBadgeVariant(status: InviteStatus): BadgeVariant {
   switch (status) {
     case "pending":
-      return "accent";
+      return "warning";
     case "accepted":
-      return "secondary";
+      return "success";
     case "revoked":
-      return "destructive";
     case "expired":
-      return "outline";
+      return "neutral";
   }
 }
 
@@ -285,7 +283,7 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
             ) : null}
             {isOwner ? (
               <Button
-                variant="default"
+                variant="primary"
                 size="sm"
                 onClick={() => {
                   setInviteEmail("");
@@ -346,7 +344,7 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-foreground">{member.user.name}</span>
-                          {isSelf ? <Badge variant="secondary">You</Badge> : null}
+                          {isSelf ? <Badge variant="neutral">You</Badge> : null}
                         </div>
                         <div className="font-mono text-xs text-muted-foreground">
                           {member.user.email}
@@ -371,14 +369,14 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
                                 role: nextRole,
                               });
                             }}
-                            className="h-7 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+                            className="h-7 rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
                           >
                             <option value="owner">owner</option>
                             <option value="member">member</option>
                             <option value="viewer">viewer</option>
                           </select>
                         ) : (
-                          <Badge variant="outline">{member.role}</Badge>
+                          <RoleBadge role={member.role} />
                         )}
                       </td>
                       <td
@@ -468,10 +466,12 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
                           ) : null}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant="outline">{inv.role}</Badge>
+                          <RoleBadge role={inv.role} />
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={inviteStatusBadgeVariant(inv.status)}>{inv.status}</Badge>
+                          <Badge variant={inviteStatusBadgeVariant(inv.status)} dot>
+                            {inv.status}
+                          </Badge>
                         </td>
                         <td
                           className="px-4 py-3 text-xs text-muted-foreground tabular-nums"
@@ -551,7 +551,7 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
       >
         {createdInvite ? (
           <div className="flex flex-col gap-4">
-            <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-xs text-emerald-800 dark:text-emerald-300">
+            <div className="flex items-start gap-2 rounded-md border border-success/30 bg-success-subtle px-3 py-2.5 text-xs text-success-foreground">
               <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               <div>
                 Invite created for{" "}
@@ -575,7 +575,7 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
                 />
                 <Button
                   type="button"
-                  variant="default"
+                  variant="primary"
                   size="sm"
                   onClick={() => void copyToClipboard(createdInvite.url, "invite link")}
                 >
@@ -621,7 +621,7 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
                 id={roleId}
                 value={inviteRole}
                 onChange={(e) => setInviteRole(e.target.value as ProjectRole)}
-                className="h-8 w-full rounded-md border border-border bg-background px-2.5 text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
                 {ROLE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>

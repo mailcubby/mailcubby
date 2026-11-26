@@ -60,7 +60,7 @@ export function AttachmentsTab({ projectSlug, messageId, attachments }: Attachme
                     <span className="truncate font-mono text-[11px]">{att.content_type}</span>
                     <Badge variant="outline">{att.disposition}</Badge>
                     {att.referenced_by_html ? (
-                      <Badge variant="secondary">shown in preview</Badge>
+                      <Badge variant="neutral">shown in preview</Badge>
                     ) : null}
                     {att.content_id ? (
                       <span className="truncate font-mono text-[11px]">cid:{att.content_id}</span>

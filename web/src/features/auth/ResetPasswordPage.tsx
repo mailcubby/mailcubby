@@ -88,7 +88,7 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
 
         {completed ? (
           <div className="flex flex-col items-center gap-4 text-center">
-            <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300">
+            <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success-subtle px-3 py-2 text-xs text-success-foreground">
               <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
               <span>Your password has been updated and all previous sessions were signed out.</span>
             </div>

@@ -2,33 +2,85 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Design tokens, direction "Estúdio" (docs/UI.md section 1, Phase 15).
+ * Light values live in :root. Dark values are written twice, in the
+ * prefers-color-scheme block (system theme) and in .dark (explicit choice);
+ * the two blocks must stay identical. `node web/scripts/contrast.mjs`
+ * regenerates docs/ui-contrast.md from this file and fails if a required pair
+ * misses WCAG AA or the dark blocks drift (a Vitest test runs it with --check).
+ *
+ * Semantics that differ from shadcn defaults:
+ * - --success/--warning/--info-foreground: text on the matching -subtle fill.
+ * - --destructive-foreground: label on the solid --destructive fill (dark
+ *   label in the dark theme). Destructive text on -subtle uses --destructive.
+ * - --accent is the brand teal (actions, selection, unread, focus), not a
+ *   neutral hover fill.
+ */
 :root {
   color-scheme: light dark;
 
-  --background: #fafafa;
+  /* content layer: cool-tinted neutrals */
+  --background: #f3f6f7;
   --surface: #ffffff;
-  --border: #e4e4e7;
-  --muted-foreground: #71717a;
-  --foreground: #18181b;
-  --accent: #2563eb;
+  --border: #dbe2e5;
+  --foreground: #132026;
+  --muted: #edf1f3;
+  --muted-foreground: #53636b;
+  --secondary: #e8eef0;
+  --secondary-foreground: #132026;
+  --input: #7c8c94;
+
+  /* accent: teal leaning cyan */
+  --accent: #087683;
   --accent-foreground: #ffffff;
-  --destructive: #dc2626;
-  --destructive-solid: #dc2626;
+  --accent-subtle: #e1f3f4;
+  --accent-subtle-foreground: #065c66;
+  --primary: #087683;
+  --primary-hover: #066570;
+  --primary-foreground: #ffffff;
+  --ring: #087683;
+
+  /* semantic states */
+  --success: #3c7414;
+  --success-foreground: #2c5a0a;
+  --success-subtle: #eaf5dc;
+  --warning: #9a5300;
+  --warning-foreground: #794100;
+  --warning-subtle: #fcf0d8;
+  --info: #3a55c2;
+  --info-foreground: #2c42a0;
+  --info-subtle: #e9eefc;
+  --destructive: #b82b26;
+  --destructive-hover: #a92622;
   --destructive-foreground: #ffffff;
-  --radius: 6px;
+  --destructive-subtle: #fcebea;
+
+  /* chrome layer: ink-green top bar and sidebar (applied in Phase 15b) */
+  --sidebar: #15292b;
+  --sidebar-foreground: #e3eeed;
+  --sidebar-muted: #a3b9b7;
+  --sidebar-active: #24423f;
+  --sidebar-active-foreground: #ffffff;
+  --sidebar-border: #2b4644;
+  --sidebar-input: #1d3537;
+  --sidebar-accent: #5fd4cb;
+  --sidebar-accent-foreground: #06302d;
+  --sidebar-ring: #7fe3db;
+  --sidebar-success: #8fdc62;
+
+  /* scrim behind dialogs and the mobile sidebar drawer */
+  --overlay: rgb(8 18 20 / 0.45);
+
+  /* email preview canvas behind the sandboxed iframe: never themed */
+  --email-canvas: #ffffff;
+  --email-canvas-dark: #09090b;
 
   /* shadcn/ui semantic aliases */
   --card: var(--surface);
   --card-foreground: var(--foreground);
   --popover: var(--surface);
   --popover-foreground: var(--foreground);
-  --primary: #2563eb;
-  --primary-foreground: #ffffff;
-  --secondary: #f4f4f5;
-  --secondary-foreground: var(--foreground);
-  --muted: #f4f4f5;
-  --input: var(--border);
-  --ring: var(--accent);
 
   /* Project colour tokens (SPEC FR-030) */
   --project-slate: #64748b;
@@ -44,6 +96,9 @@
   --project-fuchsia: #d946ef;
   --project-pink: #ec4899;
 
+  --radius: 8px;
+  --radius-card: 12px;
+
   &:has(> head > meta[name="color-scheme"][content="dark"]) {
     color-scheme: dark;
   }
@@ -55,61 +110,163 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
-    --background: #09090b;
-    --surface: #18181b;
-    --border: #27272a;
-    --muted-foreground: #a1a1aa;
-    --foreground: #f4f4f5;
-    --accent: #3b82f6;
-    --accent-foreground: #ffffff;
-    --destructive: #ef4444;
-    --destructive-foreground: #ffffff;
-    --secondary: #27272a;
-    --muted: #27272a;
+    --background: #0c1214;
+    --surface: #131b1e;
+    --border: #253136;
+    --foreground: #e6eef0;
+    --muted: #192226;
+    --muted-foreground: #96a7ae;
+    --secondary: #1e292d;
+    --secondary-foreground: #e6eef0;
+    --input: #627480;
+
+    --accent: #3cc4c8;
+    --accent-foreground: #03272a;
+    --accent-subtle: #11353a;
+    --accent-subtle-foreground: #8fe3e4;
+    --primary: #3cc4c8;
+    --primary-hover: #5fd2d5;
+    --primary-foreground: #03272a;
+    --ring: #3cc4c8;
+
+    --success: #9ad466;
+    --success-foreground: #b5e68b;
+    --success-subtle: #1c2d15;
+    --warning: #f0b44c;
+    --warning-foreground: #f6c978;
+    --warning-subtle: #33260f;
+    --info: #8ea6ff;
+    --info-foreground: #adbfff;
+    --info-subtle: #1a2443;
+    --destructive: #f2736d;
+    --destructive-hover: #f58f8a;
+    --destructive-foreground: #2b0605;
+    --destructive-subtle: #3a1a19;
+
+    --sidebar: #1c3538;
+    --sidebar-foreground: #e3eeed;
+    --sidebar-muted: #abc2c0;
+    --sidebar-active: #2a4d4f;
+    --sidebar-active-foreground: #ffffff;
+    --sidebar-border: #31504f;
+    --sidebar-input: #23403f;
+    --sidebar-accent: #5fd4cb;
+    --sidebar-accent-foreground: #06302d;
+    --sidebar-ring: #7fe3db;
+    --sidebar-success: #8fdc62;
+
+    --overlay: rgb(0 0 0 / 0.6);
   }
 }
 
 .dark {
   color-scheme: dark;
-  --background: #09090b;
-  --surface: #18181b;
-  --border: #27272a;
-  --muted-foreground: #a1a1aa;
-  --foreground: #f4f4f5;
-  --accent: #3b82f6;
-  --accent-foreground: #ffffff;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --secondary: #27272a;
-  --muted: #27272a;
+  --background: #0c1214;
+  --surface: #131b1e;
+  --border: #253136;
+  --foreground: #e6eef0;
+  --muted: #192226;
+  --muted-foreground: #96a7ae;
+  --secondary: #1e292d;
+  --secondary-foreground: #e6eef0;
+  --input: #627480;
+
+  --accent: #3cc4c8;
+  --accent-foreground: #03272a;
+  --accent-subtle: #11353a;
+  --accent-subtle-foreground: #8fe3e4;
+  --primary: #3cc4c8;
+  --primary-hover: #5fd2d5;
+  --primary-foreground: #03272a;
+  --ring: #3cc4c8;
+
+  --success: #9ad466;
+  --success-foreground: #b5e68b;
+  --success-subtle: #1c2d15;
+  --warning: #f0b44c;
+  --warning-foreground: #f6c978;
+  --warning-subtle: #33260f;
+  --info: #8ea6ff;
+  --info-foreground: #adbfff;
+  --info-subtle: #1a2443;
+  --destructive: #f2736d;
+  --destructive-hover: #f58f8a;
+  --destructive-foreground: #2b0605;
+  --destructive-subtle: #3a1a19;
+
+  --sidebar: #1c3538;
+  --sidebar-foreground: #e3eeed;
+  --sidebar-muted: #abc2c0;
+  --sidebar-active: #2a4d4f;
+  --sidebar-active-foreground: #ffffff;
+  --sidebar-border: #31504f;
+  --sidebar-input: #23403f;
+  --sidebar-accent: #5fd4cb;
+  --sidebar-accent-foreground: #06302d;
+  --sidebar-ring: #7fe3db;
+  --sidebar-success: #8fdc62;
+
+  --overlay: rgb(0 0 0 / 0.6);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-border: var(--border);
-  --color-muted-foreground: var(--muted-foreground);
   --color-foreground: var(--foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-solid: var(--destructive-solid);
-  --color-destructive-foreground: var(--destructive-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-input: var(--input);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-accent-subtle-foreground: var(--accent-subtle-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-input: var(--input);
   --color-ring: var(--ring);
 
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-subtle: var(--info-subtle);
+  --color-destructive: var(--destructive);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-subtle: var(--destructive-subtle);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-foreground: var(--sidebar-active-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-input: var(--sidebar-input);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-success: var(--sidebar-success);
+
+  --color-overlay: var(--overlay);
+  --color-email-canvas: var(--email-canvas);
+  --color-email-canvas-dark: var(--email-canvas-dark);
+
+  /* 6 px inner segments, 8 px controls, 12 px cards and dialogs */
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 2px);
+  --radius-lg: var(--radius-card);
 
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -127,6 +284,8 @@
     font-feature-settings: "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    accent-color: var(--accent);
+    caret-color: var(--accent);
   }
 
   body {
@@ -136,8 +295,13 @@
     color: var(--foreground);
   }
 
+  ::selection {
+    background-color: var(--accent-subtle);
+    color: var(--accent-subtle-foreground);
+  }
+
   :focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
 
@@ -148,8 +312,16 @@
   dialog::backdrop {
     overflow: hidden;
     overscroll-behavior: contain;
-    background: rgb(0 0 0 / 0.45);
+    background: var(--overlay);
   }
+}
+
+/* Sonner's own (unlayered) theme variables win over utility classes, so map
+   them to the tokens here; otherwise dark toasts render on pure black. */
+:root [data-sonner-toaster][data-sonner-theme] {
+  --normal-bg: var(--surface);
+  --normal-border: var(--border);
+  --normal-text: var(--foreground);
 }
 
 @keyframes mailcubby-arrival {

@@ -270,7 +270,7 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
                           mailcubby_{tok.prefix}…
                         </td>
                         <td className="px-4 py-2.5 align-middle">
-                          <Badge variant={tok.scope === "write" ? "default" : "outline"}>
+                          <Badge variant={tok.scope === "write" ? "accent" : "outline"}>
                             {tok.scope}
                           </Badge>
                         </td>
@@ -298,7 +298,9 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
                         <td className="px-4 py-2.5 align-middle tabular-nums">
                           {tok.expires_at ? (
                             isExpired ? (
-                              <Badge variant="destructive">Expired</Badge>
+                              <Badge variant="neutral" dot>
+                                Expired
+                              </Badge>
                             ) : (
                               <span
                                 className="text-muted-foreground"
@@ -369,7 +371,7 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
               id={scopeId}
               value={scope}
               onChange={(e) => setScope(e.target.value as APITokenScope)}
-              className="h-8 rounded-md border border-border bg-background px-2.5 text-xs text-foreground"
+              className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground"
             >
               <option value="read">read — list, search, read, wait, SSE</option>
               <option value="write">write — read plus mark seen, tags, delete, send test</option>
@@ -384,7 +386,7 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
               id={projectId}
               value={projectSlug}
               onChange={(e) => setProjectSlug(e.target.value)}
-              className="h-8 rounded-md border border-border bg-background px-2.5 text-xs text-foreground"
+              className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground"
             >
               <option value="">All accessible projects</option>
               {projects?.map((proj) => (
@@ -403,7 +405,7 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
               id={expiryId}
               value={expiryPreset}
               onChange={(e) => setExpiryPreset(e.target.value)}
-              className="h-8 rounded-md border border-border bg-background px-2.5 text-xs text-foreground"
+              className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground"
             >
               {EXPIRY_PRESETS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -453,7 +455,7 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
       >
         {createdToken ? (
           <div className="flex flex-col gap-4 text-xs">
-            <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-300">
+            <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-warning-foreground">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
               <span>This token is shown once. Store it in your CI secrets manager now.</span>
             </div>

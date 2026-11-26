@@ -3,7 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { AlertCircle, Inbox, LogIn, LogOut, MailCheck, UserPlus } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
+import { RoleBadge } from "@/components/RoleBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -303,7 +303,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
             <div className="flex items-center justify-between gap-2">
               <dt className="text-muted-foreground">Role</dt>
               <dd>
-                <Badge variant="outline">{preview.role}</Badge>
+                <RoleBadge role={preview.role} />
               </dd>
             </div>
           ) : null}
@@ -320,12 +320,9 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
             <div className="flex flex-col gap-3">
               <div
                 role="alert"
-                className="flex items-start gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-xs text-foreground"
+                className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning-subtle px-3 py-2.5 text-xs text-foreground"
               >
-                <AlertCircle
-                  className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
-                  aria-hidden="true"
-                />
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
                 <span>
                   You are currently signed in as{" "}
                   <strong className="font-medium">{currentUser.email}</strong>. Sign out first to
@@ -334,7 +331,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
               </div>
               <Button
                 type="button"
-                variant="default"
+                variant="primary"
                 className="w-full"
                 disabled={logoutMutation.isPending}
                 onClick={() => logoutMutation.mutate()}

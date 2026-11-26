@@ -711,7 +711,7 @@ export function SetupWizardPage() {
                   fieldErrors.password
                     ? "text-destructive"
                     : strength.ok
-                      ? "text-emerald-800 dark:text-emerald-300"
+                      ? "text-success"
                       : "text-muted-foreground",
                 )}
               >
@@ -787,7 +787,7 @@ export function SetupWizardPage() {
                     {configuredBaseURL || "Not configured"}
                   </div>
                   {!originMatches && currentOrigin ? (
-                    <div className="mt-0.5 text-[11px] text-amber-800 dark:text-amber-300">
+                    <div className="mt-0.5 text-[11px] text-warning">
                       Browser origin is {currentOrigin} — Origin checks require these to match.
                     </div>
                   ) : null}
@@ -802,7 +802,7 @@ export function SetupWizardPage() {
                     {meta ? `${meta.smtp.host}:${meta.smtp.port}` : "Loading..."} · TLS: {tlsMode}
                   </div>
                   {!tlsEnabled ? (
-                    <div className="mt-0.5 text-[11px] text-amber-800 dark:text-amber-300">
+                    <div className="mt-0.5 text-[11px] text-warning">
                       TLS is off (insecure AUTH allowed). Configure a certificate for production.
                     </div>
                   ) : null}
@@ -969,16 +969,13 @@ export function SetupWizardPage() {
               className={cn(
                 "flex flex-wrap items-center justify-between gap-3 rounded-md border px-3.5 py-2.5 text-xs",
                 firstMessage
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+                  ? "border-success/30 bg-success-subtle text-success-foreground"
                   : "border-accent/30 bg-accent/10 text-foreground",
               )}
             >
               <div className="flex min-w-0 items-center gap-2">
                 {firstMessage ? (
-                  <CheckCircle2
-                    className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
-                    aria-hidden="true"
-                  />
+                  <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
                 ) : (
                   <Loader2
                     className="size-4 shrink-0 animate-spin text-accent"
@@ -1007,7 +1004,7 @@ export function SetupWizardPage() {
 
               <Button
                 type="button"
-                variant={firstMessage ? "outline" : "default"}
+                variant={firstMessage ? "outline" : "primary"}
                 size="xs"
                 disabled={sendTestMutation.isPending}
                 onClick={() => sendTestMutation.mutate(createdOnboarding.project.slug)}
@@ -1123,8 +1120,8 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
       className={cn(
         "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
         ok
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
-          : "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+          ? "border-transparent bg-success-subtle text-success-foreground"
+          : "border-transparent bg-warning-subtle text-warning-foreground",
       )}
     >
       {ok ? (

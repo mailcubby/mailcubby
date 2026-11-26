@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { RoleBadge } from "@/components/RoleBadge";
 import { Badge } from "@/components/ui/badge";
 import { Sparkline } from "@/features/projects/Sparkline";
 import type { ProjectSummary } from "@/lib/api";
@@ -53,14 +54,12 @@ export function ProjectCard({
           <span className="hidden truncate font-mono text-xs text-muted-foreground sm:inline">
             {project.slug}
           </span>
-          <Badge variant="outline" className="hidden md:inline-flex">
-            {project.role}
-          </Badge>
+          <RoleBadge role={project.role} className="hidden md:inline-flex" />
         </div>
 
         <div className="flex shrink-0 items-center gap-4 text-xs text-muted-foreground tabular-nums">
           {project.unread_count > 0 ? (
-            <Badge variant="accent" aria-label={`${project.unread_count} unread`}>
+            <Badge variant="primary" aria-label={`${project.unread_count} unread`}>
               {formatCount(project.unread_count)} unread
             </Badge>
           ) : null}
@@ -95,11 +94,11 @@ export function ProjectCard({
           </div>
           <div className="mt-1 flex items-center gap-2">
             <span className="truncate font-mono text-xs text-muted-foreground">{project.slug}</span>
-            <Badge variant="outline">{project.role}</Badge>
+            <RoleBadge role={project.role} />
           </div>
         </div>
         {project.unread_count > 0 ? (
-          <Badge variant="accent" aria-label={`${project.unread_count} unread`}>
+          <Badge variant="primary" aria-label={`${project.unread_count} unread`}>
             {formatCount(project.unread_count)}
           </Badge>
         ) : null}

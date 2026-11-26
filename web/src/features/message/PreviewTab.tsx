@@ -170,7 +170,7 @@ export function PreviewTab({ message }: PreviewTabProps) {
                 const raw = e.target.value;
                 setZoom(raw === "fit" ? "fit" : (Number(raw) as ZoomOption));
               }}
-              className="h-7 cursor-pointer rounded-md border border-border bg-surface px-2 text-xs text-foreground"
+              className="h-7 cursor-pointer rounded-md border border-input bg-surface px-2 text-xs text-foreground"
             >
               {ZOOM_OPTIONS.map((opt) => (
                 <option key={String(opt.value)} value={String(opt.value)}>
@@ -224,7 +224,7 @@ export function PreviewTab({ message }: PreviewTabProps) {
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {device === "desktop" ? (
           <div
-            className="h-full w-full overflow-hidden rounded-md border border-border bg-white"
+            className="h-full w-full overflow-hidden rounded-md border border-border bg-email-canvas"
             style={
               scale !== 1
                 ? {
@@ -242,7 +242,10 @@ export function PreviewTab({ message }: PreviewTabProps) {
               sandbox="allow-popups allow-popups-to-escape-sandbox"
               referrerPolicy="no-referrer"
               style={{ colorScheme: emailDarkMode ? "dark" : "light" }}
-              className={cn("h-full w-full border-0", emailDarkMode ? "bg-zinc-950" : "bg-white")}
+              className={cn(
+                "h-full w-full border-0",
+                emailDarkMode ? "bg-email-canvas-dark" : "bg-email-canvas",
+              )}
             />
           </div>
         ) : (
@@ -252,7 +255,7 @@ export function PreviewTab({ message }: PreviewTabProps) {
               {zoom !== "fit" ? ` (${zoom}%)` : ""}
             </div>
             <div
-              className="overflow-hidden rounded-lg border border-border bg-white shadow-sm"
+              className="overflow-hidden rounded-lg border border-border bg-email-canvas shadow-sm"
               style={{
                 width: `${frameWidth ?? 375}px`,
                 height: `${frameHeight ?? 667}px`,
@@ -266,7 +269,10 @@ export function PreviewTab({ message }: PreviewTabProps) {
                 sandbox="allow-popups allow-popups-to-escape-sandbox"
                 referrerPolicy="no-referrer"
                 style={{ colorScheme: emailDarkMode ? "dark" : "light" }}
-                className={cn("h-full w-full border-0", emailDarkMode ? "bg-zinc-950" : "bg-white")}
+                className={cn(
+                  "h-full w-full border-0",
+                  emailDarkMode ? "bg-email-canvas-dark" : "bg-email-canvas",
+                )}
               />
             </div>
           </div>

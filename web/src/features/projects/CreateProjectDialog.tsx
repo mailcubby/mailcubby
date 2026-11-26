@@ -160,7 +160,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="submit" variant="default" disabled={createMutation.isPending}>
+          <Button type="submit" variant="primary" disabled={createMutation.isPending}>
             {createMutation.isPending ? "Creating..." : "Create project"}
           </Button>
         </div>

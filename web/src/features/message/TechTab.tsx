@@ -162,10 +162,10 @@ export function TechTab({ message }: TechTabProps) {
             <div className="grid grid-cols-1 gap-1 px-4 py-2.5 sm:grid-cols-3">
               <dt className="text-muted-foreground">Parts</dt>
               <dd className="flex flex-wrap gap-1.5 sm:col-span-2">
-                <Badge variant={message.has_html ? "secondary" : "outline"}>
+                <Badge variant={message.has_html ? "neutral" : "outline"}>
                   HTML: {message.has_html ? "Yes" : "No"}
                 </Badge>
-                <Badge variant={message.has_text ? "secondary" : "outline"}>
+                <Badge variant={message.has_text ? "neutral" : "outline"}>
                   Text: {message.has_text ? (message.text_generated ? "Generated" : "Yes") : "No"}
                 </Badge>
                 <Badge variant="outline">
@@ -191,7 +191,7 @@ export function TechTab({ message }: TechTabProps) {
               {warnings.map((warning) => (
                 <li key={warning} className="flex items-start gap-2 px-4 py-2.5 text-foreground">
                   <AlertTriangle
-                    className="mt-0.5 size-3.5 shrink-0 text-amber-500"
+                    className="mt-0.5 size-3.5 shrink-0 text-warning"
                     aria-hidden="true"
                   />
                   <span className="font-mono break-all">{warning}</span>

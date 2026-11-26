@@ -139,7 +139,7 @@ export function EmptyInboxGuide({ project, effectiveRole, onSentTest }: EmptyInb
             </p>
           </div>
           <Button
-            variant="default"
+            variant="primary"
             size="sm"
             disabled={sendTestMutation.isPending}
             onClick={() => sendTestMutation.mutate()}

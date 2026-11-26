@@ -232,7 +232,7 @@ export function AdminUsersPage() {
       description="Create accounts, manage instance permissions, and issue password reset links."
       actions={
         <Button
-          variant="default"
+          variant="primary"
           size="sm"
           onClick={() => {
             setNewName("");
@@ -330,11 +330,17 @@ export function AdminUsersPage() {
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span className="font-medium text-foreground">{user.name}</span>
-                            {isSelf ? <Badge variant="secondary">You</Badge> : null}
+                            {isSelf ? <Badge variant="neutral">You</Badge> : null}
                             {!user.has_password ? (
-                              <Badge variant="outline">Pending invite</Badge>
+                              <Badge variant="warning" dot>
+                                Pending invite
+                              </Badge>
                             ) : null}
-                            {isDisabled ? <Badge variant="destructive">Disabled</Badge> : null}
+                            {isDisabled ? (
+                              <Badge variant="neutral" dot>
+                                Disabled
+                              </Badge>
+                            ) : null}
                           </div>
                           <div className="font-mono text-xs text-muted-foreground">
                             {user.email}
@@ -488,7 +494,7 @@ export function AdminUsersPage() {
       >
         {createdUserResult ? (
           <div className="flex flex-col gap-4">
-            <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-xs text-emerald-800 dark:text-emerald-300">
+            <div className="flex items-start gap-2 rounded-md border border-success/30 bg-success-subtle px-3 py-2.5 text-xs text-success-foreground">
               <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               <div>
                 Created <strong className="font-medium">{createdUserResult.user.name}</strong> (
@@ -514,7 +520,7 @@ export function AdminUsersPage() {
                 />
                 <Button
                   type="button"
-                  variant="default"
+                  variant="primary"
                   size="sm"
                   onClick={() =>
                     void copyToClipboard(createdUserResult.invite_url, "user invite link")
@@ -666,7 +672,7 @@ export function AdminUsersPage() {
                 />
                 <Button
                   type="button"
-                  variant="default"
+                  variant="primary"
                   size="sm"
                   onClick={() => void copyToClipboard(resetResult.data.url, "password reset link")}
                 >

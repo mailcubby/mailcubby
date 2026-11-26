@@ -536,7 +536,7 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
                       </td>
 
                       <td className="px-4 py-2.5 align-middle">
-                        <Badge variant={cred.disabled ? "outline" : "default"}>
+                        <Badge variant={cred.disabled ? "neutral" : "success"} dot>
                           {cred.disabled ? "Disabled" : "Active"}
                         </Badge>
                       </td>
@@ -628,7 +628,7 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
                   id={snippetCredSelectId}
                   value={selectedCred ? String(selectedCred.id) : ""}
                   onChange={(e) => setSelectedCredId(Number(e.target.value))}
-                  className="h-8 rounded-md border border-border bg-surface px-2.5 text-xs text-foreground"
+                  className="h-8 rounded-md border border-input bg-surface px-2.5 text-xs text-foreground"
                 >
                   {items.map((cred) => (
                     <option key={cred.id} value={String(cred.id)}>

@@ -135,7 +135,7 @@ export function ProjectsHome() {
             </p>
           </div>
           {canCreateProjects ? (
-            <Button variant="default" size="sm" onClick={openCreateProject}>
+            <Button variant="primary" size="sm" onClick={openCreateProject}>
               <Plus className="size-3.5" aria-hidden="true" />
               <span>New project</span>
             </Button>
@@ -281,7 +281,7 @@ export function ProjectsHome() {
                 Clear filter
               </Button>
             ) : canCreateProjects ? (
-              <Button variant="default" size="sm" onClick={openCreateProject}>
+              <Button variant="primary" size="sm" onClick={openCreateProject}>
                 <Plus className="size-3.5" aria-hidden="true" />
                 <span>New project</span>
               </Button>
