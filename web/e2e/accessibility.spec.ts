@@ -211,6 +211,17 @@ async function markAllSeen(client: ApiClient, projectSlug: string): Promise<void
  * serious or critical violations (SPEC NFR-010, docs/UI.md section 5).
  */
 async function assertAccessible(page: Page, screenName: string): Promise<void> {
+  // Let colour transitions settle (0.01 ms under reduced motion, but still one
+  // frame away), so axe never reads a half-applied state such as a toggle
+  // button whose background changed before its text colour.
+  await page.evaluate(() =>
+    Promise.allSettled(
+      document
+        .getAnimations()
+        .filter((a) => a instanceof CSSTransition)
+        .map((a) => a.finished),
+    ),
+  );
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     // Sandboxed preview iframe contains untrusted third-party email HTML, not app chrome.
