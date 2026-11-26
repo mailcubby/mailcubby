@@ -196,6 +196,9 @@ test.describe("Phase 13: WCAG 2.1 AA accessibility audit (NFR-010)", () => {
     await page.goto(`/p/${slug}`);
     await expect(page.getByRole("heading", { name: "No messages yet" })).toBeVisible();
     await assertAccessible(page, "local empty inbox");
+    await chooseTheme(page, "Dark");
+    await assertAccessible(page, "local empty inbox (dark)");
+    await chooseTheme(page, "Light");
 
     // Send a rich fixture and inspect inbox + message view tabs + dialogs.
     await sendFixture("04_multipart_related_cid.eml", { user: slug });
@@ -208,7 +211,20 @@ test.describe("Phase 13: WCAG 2.1 AA accessibility audit (NFR-010)", () => {
     // Dark theme on inbox with message open.
     await chooseTheme(page, "Dark");
     await assertAccessible(page, "local inbox with message preview (dark)");
-    await chooseTheme(page, "Light");
+
+    // Phase 15c: reading pane with nothing selected and a search without
+    // results, in dark (still selected) and then light.
+    for (const theme of ["Dark", "Light"] as const) {
+      await page.goto(`/p/${slug}`);
+      await expect(
+        page.getByRole("heading", { name: "Select a message to inspect" }),
+      ).toBeVisible();
+      await chooseTheme(page, theme);
+      await assertAccessible(page, `local inbox, nothing selected (${theme})`);
+      await page.goto(`/p/${slug}?q=zzz-no-such-message`);
+      await expect(page.getByRole("heading", { name: "No matching messages" })).toBeVisible();
+      await assertAccessible(page, `local search without results (${theme})`);
+    }
 
     // Command palette and shortcuts help dialogs.
     await page.keyboard.press("?");
@@ -277,6 +293,19 @@ test.describe("Phase 13: WCAG 2.1 AA accessibility audit (NFR-010)", () => {
       await page.getByRole("button", { name: "Go to inbox" }).click();
       await expect(page).toHaveURL(`${srv.httpURL}/p/client-portal`);
       await assertAccessible(page, "server inbox");
+
+      // Phase 15c: inbox and message view in both themes.
+      await page.getByRole("option").first().click();
+      await expect(page.locator('iframe[title^="Email preview:"]')).toBeVisible();
+      await assertAccessible(page, "server message view");
+      await chooseTheme(page, "Dark");
+      await assertAccessible(page, "server message view (dark)");
+      await page.goto(`${srv.httpURL}/p/client-portal`);
+      await expect(
+        page.getByRole("heading", { name: "Select a message to inspect" }),
+      ).toBeVisible();
+      await assertAccessible(page, "server inbox (dark)");
+      await chooseTheme(page, "Light");
 
       // Server projects home.
       await page.goto(`${srv.httpURL}/`);
