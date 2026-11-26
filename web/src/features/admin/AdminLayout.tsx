@@ -10,9 +10,16 @@ import {
   Users,
 } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
+import {
+  SettingsShell,
+  settingsBackLinkClassName,
+  settingsNavClassName,
+  settingsNavIconClassName,
+  settingsNavItemClassName,
+} from "@/components/SettingsShell";
+import { buttonClassName } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { authMeQueryOptions, metaQueryOptions } from "@/lib/queries";
-import { cn } from "@/lib/utils";
 
 export type AdminSection = "users" | "projects" | "settings" | "audit" | "stats";
 
@@ -73,10 +80,7 @@ export function AdminLayout({ section, title, description, actions, children }: 
               : "Administration pages are only available in server mode."}
           </p>
         </div>
-        <Link
-          to="/"
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-[13px] font-medium text-foreground hover:bg-muted"
-        >
+        <Link to="/" className={buttonClassName()}>
           <ArrowLeft className="size-3.5" aria-hidden="true" />
           <span>Back to projects</span>
         </Link>
@@ -85,52 +89,37 @@ export function AdminLayout({ section, title, description, actions, children }: 
   }
 
   return (
-    <main className="h-full overflow-y-auto px-4 py-6 sm:px-6">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-        <div className="flex flex-col gap-2">
-          <Link
-            to="/"
-            className="inline-flex w-fit items-center gap-1.5 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" aria-hidden="true" />
-            <span>Back to projects</span>
-          </Link>
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight text-foreground">{title}</h1>
-              <p className="text-[13px] text-muted-foreground">{description}</p>
-            </div>
-            {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
-          </div>
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-[180px_minmax(0,1fr)]">
-          <nav aria-label="Admin sections" className="flex flex-row gap-1 md:flex-col">
-            {NAV_ITEMS.map(({ id, label, to, Icon }) => {
-              const active = section === id;
-              return (
-                <Link
-                  key={id}
-                  to={to}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
-                    active
-                      ? "bg-surface text-foreground shadow-2xs ring-1 ring-border"
-                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                  )}
-                >
-                  <Icon className="size-3.5 shrink-0" aria-hidden="true" />
-                  <span>{label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          <div className="min-w-0">{children}</div>
-        </div>
-      </div>
-    </main>
+    <SettingsShell
+      width="wide"
+      back={
+        <Link to="/" className={settingsBackLinkClassName}>
+          <ArrowLeft className="size-3.5" aria-hidden="true" />
+          <span>Back to projects</span>
+        </Link>
+      }
+      title={title}
+      description={description}
+      actions={actions}
+      nav={
+        <nav aria-label="Admin sections" className={settingsNavClassName}>
+          {NAV_ITEMS.map(({ id, label, to, Icon }) => {
+            const active = section === id;
+            return (
+              <Link
+                key={id}
+                to={to}
+                aria-current={active ? "page" : undefined}
+                className={settingsNavItemClassName(active)}
+              >
+                <Icon className={settingsNavIconClassName(active)} aria-hidden="true" />
+                <span>{label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      }
+    >
+      {children}
+    </SettingsShell>
   );
 }
