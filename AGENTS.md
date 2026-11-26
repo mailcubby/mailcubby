@@ -22,7 +22,7 @@ Status: pre-alpha. Copyright NOOP, PolyForm Shield 1.0.0 license (source-availab
 | `docs/PLAN.md` | Order of work: phases with checkboxes and acceptance criteria. |
 | `docs/decisions/` | ADRs: why key choices were made. Do not reverse them without a new ADR. |
 
-## 3. Tech stack (pinned versions, verified 2026-11-23)
+## 3. Tech stack (pinned versions, verified 2026-11-26)
 
 ### Backend
 
@@ -33,7 +33,7 @@ Status: pre-alpha. Copyright NOOP, PolyForm Shield 1.0.0 license (source-availab
 | `github.com/emersion/go-sasl` | v0.0.0-20241020182733-b788ff22d5a6 | PLAIN server; no tagged releases. LOGIN server is ours (`internal/smtpd/saslogin.go`) |
 | `github.com/jhillyerd/enmime/v2` | v2.5.0 | MIME parsing |
 | `modernc.org/sqlite` | v1.63.0 | Pure Go SQLite driver (FTS5 included) |
-| `github.com/pressly/goose/v3` | v3.30.1 | Migrations, embedded, Provider API |
+| `github.com/pressly/goose/v3` | v3.30.2 | Migrations, embedded, Provider API |
 | `sqlc` (CLI, dev tool) | v1.31.1 | Release binary installed by `make tools`, not a Go dependency |
 | `github.com/klauspost/compress` | v1.20.5 | zstd |
 | `github.com/oklog/ulid/v2` | v2.1.2 | Message IDs |
@@ -57,18 +57,18 @@ HTTP routing uses the standard library `net/http.ServeMux` (Go 1.22+ method and 
 | Tailwind CSS | 4.3.5 | via `@tailwindcss/vite` 4.3.5, CSS-first config |
 | shadcn/ui CLI | 4.23.0 | `pnpm dlx shadcn@4.23.0 add <component>` |
 | `@tanstack/react-router` | 1.170.46 | file-based routes via `@tanstack/router-plugin` 1.169.0 |
-| `@tanstack/react-query` | 5.108.3 | all server state |
+| `@tanstack/react-query` | 5.108.4 | all server state |
 | `@tanstack/react-virtual` | 3.14.28 | message list virtualisation |
 | `cmdk` | 1.1.1 | command palette (via shadcn `command`) |
 | `sonner` | 2.0.8 | toasts (via shadcn `sonner`) |
-| `react-resizable-panels` | 4.24.1 | panes (via shadcn `resizable`) |
+| `react-resizable-panels` | 4.24.2 | panes (via shadcn `resizable`) |
 | `lucide-react` | 1.78.0 | icons |
 | `@fontsource-variable/inter` | 5.3.0 | self-hosted Inter (no Google Fonts requests) |
 | `shiki` | 4.6.0 | read-only syntax highlighting, lazy-loaded, `shiki/core` + JavaScript regex engine (no WASM) |
 | `openapi-typescript` / `openapi-fetch` | 7.13.0 / 0.17.0 | types and typed client from `internal/api/openapi.yaml` |
-| `@biomejs/biome` | 2.6.8 | lint + format (no ESLint, no Prettier) |
-| Vitest | 5.1.1 | with `@testing-library/react` 16.3.3, `jsdom` 31.0.1 |
-| `@playwright/test` | 1.65.1 | e2e from Phase 4a (Chromium only); `@axe-core/playwright` 4.14.0 added in Phase 13 |
+| `@biomejs/biome` | 2.6.9 | lint + format (no ESLint, no Prettier) |
+| Vitest | 5.1.2 | with `@testing-library/react` 16.3.3, `jsdom` 31.0.1 |
+| `@playwright/test` | 1.65.1 | e2e from Phase 4a (Chromium only); `@axe-core/playwright` 4.14.1 added in Phase 13 |
 
 Pin exact versions in `go.mod` and `web/package.json` (no `^` or `~` for runtime dependencies). Commit `go.sum` and `web/pnpm-lock.yaml`.
 
