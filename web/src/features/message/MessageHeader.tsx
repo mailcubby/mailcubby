@@ -141,9 +141,10 @@ export function MessageHeader({
   const emlHref = `/api/v1/projects/${encodeURIComponent(projectSlug)}/messages/${encodeURIComponent(message.id)}/eml`;
 
   return (
-    <header className="flex shrink-0 flex-col gap-3 border-b border-border bg-surface px-6 pt-4 pb-3.5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+    <header className="flex shrink-0 flex-col gap-3 border-b border-border bg-surface px-4 pt-4 pb-3.5 sm:px-6">
+      {/* In a narrow pane the actions wrap under the subject instead of squeezing it. */}
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+        <div className="min-w-48 flex-1">
           <button
             type="button"
             onClick={() => void copyToClipboard(subject, "subject")}

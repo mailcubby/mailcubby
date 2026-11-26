@@ -908,9 +908,9 @@ export function MessageListPane({
                     // The list scrolls, so the focus ring sits inside the row.
                     "absolute top-0 left-0 flex w-full cursor-pointer items-start gap-2.5 border-b border-border px-3 transition-colors duration-150 focus-visible:z-10 focus-visible:-outline-offset-2",
                     density === "compact" ? "py-2" : "py-3",
-                    // Open message: accent tint and a 2 px accent bar; checked rows: muted.
+                    // Open message: accent tint; checked rows: muted.
                     isActive
-                      ? "bg-accent-subtle shadow-[inset_2px_0_0_var(--accent)]"
+                      ? "bg-accent-subtle"
                       : isSelected
                         ? "bg-muted"
                         : "hover:bg-muted",
