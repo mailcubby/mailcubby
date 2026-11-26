@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useEffect, useId } from "react";
+import { Card } from "@/components/ui/card";
+import { NativeSelect } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { AccountLayout } from "@/features/account/AccountLayout";
 import {
   type DensityPreference,
@@ -68,11 +71,11 @@ export function PreferencesPage() {
       title="Preferences"
       description="Saved locally in this browser. Changes apply immediately across open views."
     >
-      <div className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
+      <Card className="flex flex-col divide-y divide-border">
         <section aria-label="Appearance" className="flex flex-col gap-3 p-5">
           <div>
-            <h2 className="text-sm font-medium text-foreground">Theme</h2>
-            <p className="text-xs text-muted-foreground">
+            <h2 className="text-[15px] leading-[22px] font-semibold text-foreground">Theme</h2>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
               Choose light, dark, or match your operating system appearance.
             </p>
           </div>
@@ -89,8 +92,8 @@ export function PreferencesPage() {
                   className={cn(
                     "flex cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-[13px] font-medium transition-colors",
                     active
-                      ? "border-accent bg-accent/10 text-foreground"
-                      : "border-border bg-background text-muted-foreground hover:text-foreground",
+                      ? "border-accent bg-accent-subtle text-accent-subtle-foreground"
+                      : "border-input bg-surface text-foreground hover:bg-muted",
                   )}
                 >
                   <Icon className="size-4" aria-hidden="true" />
@@ -103,8 +106,10 @@ export function PreferencesPage() {
 
         <section aria-label="Message list density" className="flex flex-col gap-3 p-5">
           <div>
-            <h2 className="text-sm font-medium text-foreground">Message list density</h2>
-            <p className="text-xs text-muted-foreground">
+            <h2 className="text-[15px] leading-[22px] font-semibold text-foreground">
+              Message list density
+            </h2>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
               Adjust row spacing in the project inbox list.
             </p>
           </div>
@@ -121,15 +126,15 @@ export function PreferencesPage() {
                   className={cn(
                     "flex cursor-pointer flex-col items-start gap-0.5 rounded-md border px-3.5 py-2.5 text-left transition-colors",
                     active
-                      ? "border-accent bg-accent/10 text-foreground"
-                      : "border-border bg-background text-muted-foreground hover:text-foreground",
+                      ? "border-accent bg-accent-subtle text-accent-subtle-foreground"
+                      : "border-input bg-surface text-foreground hover:bg-muted",
                   )}
                 >
-                  <span className="text-[13px] font-medium text-foreground">{opt.label}</span>
+                  <span className="text-[13px] font-medium">{opt.label}</span>
                   <span
                     className={cn(
                       "text-xs",
-                      active ? "text-foreground/80" : "text-muted-foreground",
+                      active ? "text-accent-subtle-foreground" : "text-muted-foreground",
                     )}
                   >
                     {opt.description}
@@ -143,14 +148,17 @@ export function PreferencesPage() {
         <section aria-label="Reading behaviour" className="flex flex-col gap-3 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <label htmlFor={readDelayId} className="text-sm font-medium text-foreground">
+              <label
+                htmlFor={readDelayId}
+                className="text-[15px] leading-[22px] font-semibold text-foreground"
+              >
                 Mark as read delay
               </label>
-              <p className="text-xs text-muted-foreground">
+              <p className="mt-0.5 text-[13px] text-muted-foreground">
                 Wait before marking an opened message as seen.
               </p>
             </div>
-            <select
+            <NativeSelect
               id={readDelayId}
               value={String(markReadDelay)}
               onChange={(e) => {
@@ -164,62 +172,61 @@ export function PreferencesPage() {
                   }
                 }
               }}
-              className="h-8 cursor-pointer rounded-md border border-input bg-background px-2.5 text-[13px] text-foreground"
             >
               {MARK_READ_OPTIONS.map((opt) => (
                 <option key={String(opt.value)} value={String(opt.value)}>
                   {opt.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
         </section>
 
         <section aria-label="Keyboard shortcuts" className="flex flex-col gap-4 p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <label htmlFor={shortcutsId} className="text-sm font-medium text-foreground">
+              <label
+                htmlFor={shortcutsId}
+                className="text-[15px] leading-[22px] font-semibold text-foreground"
+              >
                 Single-key keyboard shortcuts
               </label>
-              <p id={shortcutsDescId} className="text-xs text-muted-foreground">
+              <p id={shortcutsDescId} className="mt-0.5 text-[13px] text-muted-foreground">
                 Enable single-character shortcuts such as j/k, e, u, and 1–7. Modifier shortcuts
                 (Cmd/Ctrl+K) stay active either way.
               </p>
             </div>
-            <input
+            <Switch
               id={shortcutsId}
-              type="checkbox"
-              role="switch"
-              aria-checked={singleKeyShortcuts}
               aria-describedby={shortcutsDescId}
               checked={singleKeyShortcuts}
               onChange={(e) => setSingleKeyShortcuts(e.target.checked)}
-              className="mt-1 size-4 shrink-0 cursor-pointer rounded-sm border border-border accent-accent"
+              className="mt-1"
             />
           </div>
 
           <div className="flex items-start justify-between gap-4 border-t border-border/70 pt-4">
             <div>
-              <label htmlFor={clockId} className="text-sm font-medium text-foreground">
+              <label
+                htmlFor={clockId}
+                className="text-[15px] leading-[22px] font-semibold text-foreground"
+              >
                 24-hour clock
               </label>
-              <p id={clockDescId} className="text-xs text-muted-foreground">
+              <p id={clockDescId} className="mt-0.5 text-[13px] text-muted-foreground">
                 Display message times in 24-hour format (e.g. 14:03 instead of 2:03 PM).
               </p>
             </div>
-            <input
+            <Switch
               id={clockId}
-              type="checkbox"
-              role="switch"
-              aria-checked={clock24h}
               aria-describedby={clockDescId}
               checked={clock24h}
               onChange={(e) => setClock24h(e.target.checked)}
-              className="mt-1 size-4 shrink-0 cursor-pointer rounded-sm border border-border accent-accent"
+              className="mt-1"
             />
           </div>
         </section>
-      </div>
+      </Card>
     </AccountLayout>
   );
 }

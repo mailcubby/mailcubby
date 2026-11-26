@@ -13,7 +13,14 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { RoleBadge } from "@/components/RoleBadge";
-import { Button } from "@/components/ui/button";
+import {
+  SettingsShell,
+  settingsBackLinkClassName,
+  settingsNavClassName,
+  settingsNavIconClassName,
+  settingsNavItemClassName,
+} from "@/components/SettingsShell";
+import { Button, buttonClassName } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, getApiErrorMessage, type ProjectDetail } from "@/lib/api";
 import { PROJECT_COLOR_DOT_CLASS } from "@/lib/format";
@@ -33,7 +40,10 @@ export interface ProjectSettingsLayoutProps {
   projectSlug: string;
   section: ProjectSettingsSection;
   title: string;
-  description: string;
+  /** Page subtitle; a function when the text depends on the project or role (audit M5). */
+  description: string | ((project: ProjectDetail) => string);
+  /** The page's main action in the header (audit M7), rendered once the project loads. */
+  actions?: (project: ProjectDetail) => ReactNode;
   children: (project: ProjectDetail) => ReactNode;
 }
 
@@ -42,6 +52,7 @@ export function ProjectSettingsLayout({
   section,
   title,
   description,
+  actions,
   children,
 }: ProjectSettingsLayoutProps) {
   const { data: meta } = useQuery(metaQueryOptions());
@@ -74,10 +85,7 @@ export function ProjectSettingsLayout({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            to="/"
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-[13px] font-medium text-foreground hover:bg-muted"
-          >
+          <Link to="/" className={buttonClassName()}>
             <ArrowLeft className="size-3.5" aria-hidden="true" />
             <span>Back to projects</span>
           </Link>
@@ -94,10 +102,10 @@ export function ProjectSettingsLayout({
   if (isPending || !project) {
     return (
       <main className="h-full overflow-y-auto px-4 py-6 sm:px-6">
-        <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
           <Skeleton className="h-5 w-36" />
           <Skeleton className="h-7 w-52" />
-          <div className="grid gap-6 md:grid-cols-[190px_minmax(0,1fr)]">
+          <div className="grid gap-6 md:grid-cols-[200px_minmax(0,1fr)] lg:gap-8">
             <div className="flex flex-col gap-2">
               <Skeleton className="h-8 w-full" />
               <Skeleton className="h-8 w-full" />
@@ -119,11 +127,7 @@ export function ProjectSettingsLayout({
             Project settings are not available for viewers.
           </p>
         </div>
-        <Link
-          to="/p/$project"
-          params={{ project: project.slug }}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-[13px] font-medium text-foreground hover:bg-muted"
-        >
+        <Link to="/p/$project" params={{ project: project.slug }} className={buttonClassName()}>
           <ArrowLeft className="size-3.5" aria-hidden="true" />
           <span>Back to {project.name}</span>
         </Link>
@@ -200,62 +204,45 @@ export function ProjectSettingsLayout({
   }
 
   return (
-    <main className="h-full overflow-y-auto px-4 py-6 sm:px-6">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-        <div className="flex flex-col gap-2">
-          <Link
-            to="/p/$project"
-            params={{ project: project.slug }}
-            className="inline-flex w-fit items-center gap-1.5 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" aria-hidden="true" />
-            <span>Back to {project.name}</span>
-          </Link>
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn("size-2.5 shrink-0 rounded-full", dotClass)}
-                  aria-hidden="true"
-                />
-                <h1 className="text-lg font-semibold tracking-tight text-foreground">
-                  {project.name}
-                </h1>
-                <RoleBadge role={project.role} />
-              </div>
-              <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-[190px_minmax(0,1fr)]">
-          <nav aria-label="Project settings sections" className="flex flex-row gap-1 md:flex-col">
-            {navItems.map(({ id, label, to, Icon }) => {
-              const active = section === id;
-              return (
-                <Link
-                  key={id}
-                  to={to}
-                  params={{ project: project.slug }}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
-                    active
-                      ? "bg-surface text-foreground shadow-2xs ring-1 ring-border"
-                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                  )}
-                >
-                  <Icon className="size-3.5 shrink-0" aria-hidden="true" />
-                  <span>{label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          <div className="min-w-0">{children(project)}</div>
-        </div>
-      </div>
-    </main>
+    <SettingsShell
+      back={
+        <Link
+          to="/p/$project"
+          params={{ project: project.slug }}
+          className={settingsBackLinkClassName}
+        >
+          <ArrowLeft className="size-3.5" aria-hidden="true" />
+          <span>Back to {project.name}</span>
+        </Link>
+      }
+      leading={
+        <span className={cn("size-2.5 shrink-0 rounded-full", dotClass)} aria-hidden="true" />
+      }
+      title={project.name}
+      trailing={<RoleBadge role={project.role} />}
+      description={typeof description === "function" ? description(project) : description}
+      actions={actions?.(project)}
+      nav={
+        <nav aria-label="Project settings sections" className={settingsNavClassName}>
+          {navItems.map(({ id, label, to, Icon }) => {
+            const active = section === id;
+            return (
+              <Link
+                key={id}
+                to={to}
+                params={{ project: project.slug }}
+                aria-current={active ? "page" : undefined}
+                className={settingsNavItemClassName(active)}
+              >
+                <Icon className={settingsNavIconClassName(active)} aria-hidden="true" />
+                <span>{label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      }
+    >
+      {children(project)}
+    </SettingsShell>
   );
 }

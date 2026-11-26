@@ -4,7 +4,9 @@ import { type FormEvent, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AdminLayout } from "@/features/admin/AdminLayout";
 import {
@@ -154,11 +156,13 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      <section className="rounded-lg border border-border bg-surface p-5">
+      <Card className="p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-sm font-semibold text-foreground">Instance identity</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <h2 className="text-[15px] leading-[22px] font-semibold text-foreground">
+              Instance identity
+            </h2>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
               Shown in the header, page titles, and login screen. Database overrides take precedence
               over <code className="font-mono text-foreground">MAILCUBBY_INSTANCE_NAME</code>.
             </p>
@@ -198,12 +202,14 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
             className="mt-1.5"
           />
         </div>
-      </section>
+      </Card>
 
-      <section className="rounded-lg border border-border bg-surface p-5">
+      <Card className="p-5">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Default retention policies</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <h2 className="text-[15px] leading-[22px] font-semibold text-foreground">
+            Default retention policies
+          </h2>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">
             Applied to every project that inherits instance defaults. Set a limit to{" "}
             <code className="font-mono text-foreground">0</code> to disable it by default.
           </p>
@@ -241,15 +247,14 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
               <label htmlFor={ageUnitId} className="sr-only">
                 Default max age unit
               </label>
-              <select
+              <NativeSelect
                 id={ageUnitId}
                 value={ageUnit}
                 onChange={(e) => setAgeUnit(e.target.value as AgeUnit)}
-                className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
               >
                 <option value="days">days</option>
                 <option value="hours">hours</option>
-              </select>
+              </NativeSelect>
               {data.source.retention_max_age === "override" ? (
                 <Button
                   type="button"
@@ -343,16 +348,15 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
               <label htmlFor={bytesUnitId} className="sr-only">
                 Default max storage size unit
               </label>
-              <select
+              <NativeSelect
                 id={bytesUnitId}
                 value={sizeUnit}
                 onChange={(e) => setSizeUnit(e.target.value as SizeUnit)}
-                className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
               >
                 <option value="KB">KB</option>
                 <option value="MB">MB</option>
                 <option value="GB">GB</option>
-              </select>
+              </NativeSelect>
               {data.source.retention_max_bytes === "override" ? (
                 <Button
                   type="button"
@@ -397,11 +401,16 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
           >
             Discard
           </Button>
-          <Button type="submit" size="sm" disabled={!hasChanges || updateMutation.isPending}>
+          <Button
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={!hasChanges || updateMutation.isPending}
+          >
             {updateMutation.isPending ? "Saving..." : "Save settings"}
           </Button>
         </div>
-      </section>
+      </Card>
     </form>
   );
 }
@@ -430,7 +439,7 @@ export function AdminSettingsPage() {
       ) : settingsQuery.error ? (
         <div
           role="alert"
-          className="rounded-lg border border-destructive/40 bg-surface p-5 text-xs text-destructive"
+          className="rounded-lg border border-destructive/40 bg-destructive-subtle p-5 text-[13px] text-destructive"
         >
           Failed to load instance settings: {getApiErrorMessage(settingsQuery.error)}
         </div>

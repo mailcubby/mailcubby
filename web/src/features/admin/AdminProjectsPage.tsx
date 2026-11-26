@@ -5,8 +5,17 @@ import { useId, useMemo, useState } from "react";
 import { useAppCommands } from "@/components/AppCommandContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { AdminLayout } from "@/features/admin/AdminLayout";
 import { getApiErrorMessage } from "@/lib/api";
 import {
@@ -88,7 +97,7 @@ export function AdminProjectsPage() {
           </span>
         </div>
 
-        <section className="rounded-lg border border-border bg-surface">
+        <Card>
           {projectsQuery.isPending ? (
             <div className="flex flex-col gap-2 p-5">
               <Skeleton className="h-10 w-full" />
@@ -104,30 +113,18 @@ export function AdminProjectsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left text-[13px]">
-                <thead>
-                  <tr className="border-b border-border bg-background/50 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    <th scope="col" className="px-4 py-2.5">
-                      Project
-                    </th>
-                    <th scope="col" className="px-3 py-2.5">
-                      Owners
-                    </th>
-                    <th scope="col" className="px-3 py-2.5 text-right">
-                      Messages
-                    </th>
-                    <th scope="col" className="px-3 py-2.5 text-right">
-                      Storage
-                    </th>
-                    <th scope="col" className="px-3 py-2.5">
-                      Last message
-                    </th>
-                    <th scope="col" className="px-4 py-2.5 text-right">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Project</TableHead>
+                    <TableHead>Owners</TableHead>
+                    <TableHead className="text-right">Messages</TableHead>
+                    <TableHead className="text-right">Storage</TableHead>
+                    <TableHead>Last message</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {filteredProjects.map((project) => {
                     const dotClass =
                       PROJECT_COLOR_DOT_CLASS[project.color] ?? PROJECT_COLOR_DOT_CLASS.slate;
@@ -139,8 +136,8 @@ export function AdminProjectsPage() {
                       : undefined;
 
                     return (
-                      <tr key={project.id} className="hover:bg-muted/30">
-                        <td className="px-4 py-3">
+                      <TableRow key={project.id}>
+                        <TableCell>
                           <Link
                             to="/p/$project"
                             params={{ project: project.slug }}
@@ -155,9 +152,9 @@ export function AdminProjectsPage() {
                           <div className="mt-0.5 pl-4.5 font-mono text-xs text-muted-foreground">
                             {project.slug}
                           </div>
-                        </td>
+                        </TableCell>
 
-                        <td className="px-3 py-3 text-xs">
+                        <TableCell className="text-xs">
                           {project.owners.length === 0 ? (
                             <span className="text-muted-foreground">No explicit owners</span>
                           ) : (
@@ -169,9 +166,9 @@ export function AdminProjectsPage() {
                               ))}
                             </div>
                           )}
-                        </td>
+                        </TableCell>
 
-                        <td className="px-3 py-3 text-right text-xs tabular-nums">
+                        <TableCell className="text-right text-xs tabular-nums">
                           <span className="font-medium text-foreground">
                             {formatCount(project.message_count)}
                           </span>
@@ -180,20 +177,20 @@ export function AdminProjectsPage() {
                               {formatCount(project.unread_count)} unread
                             </Badge>
                           ) : null}
-                        </td>
+                        </TableCell>
 
-                        <td className="px-3 py-3 text-right text-xs text-muted-foreground tabular-nums">
+                        <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
                           {formatBytes(project.size_bytes)}
-                        </td>
+                        </TableCell>
 
-                        <td
-                          className="px-3 py-3 text-xs text-muted-foreground tabular-nums"
+                        <TableCell
+                          className="text-xs text-muted-foreground tabular-nums"
                           title={lastExact}
                         >
                           {lastRel ?? "No mail"}
-                        </td>
+                        </TableCell>
 
-                        <td className="px-4 py-3 text-right">
+                        <TableCell className="text-right">
                           <div className="inline-flex items-center gap-1">
                             <Link
                               to="/p/$project"
@@ -213,15 +210,15 @@ export function AdminProjectsPage() {
                               <span className="hidden lg:inline">Settings</span>
                             </Link>
                           </div>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
-        </section>
+        </Card>
       </div>
     </AdminLayout>
   );

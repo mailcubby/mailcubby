@@ -3,7 +3,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/select";
 import { ProjectSettingsLayout } from "@/features/settings/ProjectSettingsLayout";
 import {
   ApiError,
@@ -262,243 +264,250 @@ function RetentionSettingsForm({ project }: { project: ProjectDetail }) {
     defaults.retention_max_bytes > 0 ? formatBytes(defaults.retention_max_bytes) : "Unlimited";
 
   return (
-    <div className="flex flex-col gap-6">
-      <section className="rounded-lg border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold text-foreground">Current usage</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Oldest messages are pruned automatically whenever any active limit is exceeded.
-        </p>
+    <>
+      <Card aria-labelledby="usage-heading">
+        <CardHeader
+          titleId="usage-heading"
+          title="Current usage"
+          description="Oldest messages are pruned automatically whenever any active limit is exceeded."
+        />
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <UsageBar
+              label="Messages"
+              current={project.message_count}
+              limit={effectiveMessages}
+              currentText={formatCount(project.message_count)}
+              limitText={`${formatCount(effectiveMessages)} messages`}
+            />
+            <UsageBar
+              label="Storage"
+              current={project.size_bytes}
+              limit={effectiveBytes}
+              currentText={formatBytes(project.size_bytes)}
+              limitText={formatBytes(effectiveBytes)}
+            />
+          </div>
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <UsageBar
-            label="Messages"
-            current={project.message_count}
-            limit={effectiveMessages}
-            currentText={formatCount(project.message_count)}
-            limitText={`${formatCount(effectiveMessages)} messages`}
-          />
-          <UsageBar
-            label="Storage"
-            current={project.size_bytes}
-            limit={effectiveBytes}
-            currentText={formatBytes(project.size_bytes)}
-            limitText={formatBytes(effectiveBytes)}
-          />
-        </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Age policy:{" "}
+            <span className="font-medium text-foreground">
+              {effectiveAge > 0
+                ? `Keep messages for ${formatRetentionAge(effectiveAge)}`
+                : "No age limit"}
+            </span>
+          </p>
+        </CardContent>
+      </Card>
 
-        <p className="mt-3 text-xs text-muted-foreground">
-          Age policy:{" "}
-          <span className="font-medium text-foreground">
-            {effectiveAge > 0
-              ? `Keep messages for ${formatRetentionAge(effectiveAge)}`
-              : "No age limit"}
-          </span>
-        </p>
-      </section>
+      <Card aria-labelledby="limits-heading">
+        <CardHeader
+          titleId="limits-heading"
+          title="Retention limits"
+          description={
+            <>
+              Inherit instance defaults or set per-project overrides. Enter{" "}
+              <code className="font-mono text-foreground">0</code> to disable a specific limit.
+            </>
+          }
+        />
 
-      <section className="rounded-lg border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold text-foreground">Retention limits</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Inherit instance defaults or set per-project overrides. Enter{" "}
-          <code className="font-mono text-foreground">0</code> to disable a specific limit.
-        </p>
-
-        <form onSubmit={handleSave} className="mt-5 flex flex-col divide-y divide-border">
-          <div className="flex flex-col gap-3 pb-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="text-xs font-medium text-foreground">Max age</div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Remove messages older than this threshold.
-                </p>
-              </div>
-              <label
-                htmlFor={inheritAgeId}
-                className="inline-flex cursor-pointer items-center gap-2 text-xs text-foreground"
-              >
-                <input
-                  id={inheritAgeId}
-                  type="checkbox"
-                  checked={inheritAge}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setInheritAge(checked);
-                    if (!checked) {
-                      const next = splitAgeSeconds(defaults.retention_max_age);
-                      setAgeValue(next.value);
-                      setAgeUnit(next.unit);
-                    }
-                    setFormError(null);
-                  }}
-                  className="size-3.5 rounded-sm border border-border accent-accent"
-                />
-                <span>Inherit instance default ({defaultAgeLabel})</span>
-              </label>
-            </div>
-            {!inheritAge ? (
-              <div className="flex items-center gap-2">
-                <label htmlFor={ageValId} className="sr-only">
-                  Max age
-                </label>
-                <Input
-                  id={ageValId}
-                  type="number"
-                  min={0}
-                  step="any"
-                  value={ageValue}
-                  onChange={(e) => {
-                    setAgeValue(e.target.value);
-                    if (formError) {
-                      setFormError(null);
-                    }
-                  }}
-                  className="w-28 tabular-nums"
-                />
-                <label htmlFor={ageUnitId} className="sr-only">
-                  Max age unit
-                </label>
-                <select
-                  id={ageUnitId}
-                  value={ageUnit}
-                  onChange={(e) => setAgeUnit(e.target.value as AgeUnit)}
-                  className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+        <form onSubmit={handleSave}>
+          <CardContent className="flex flex-col divide-y divide-border">
+            <div className="flex flex-col gap-3 pb-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-[13px] font-medium text-foreground">Max age</div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Remove messages older than this threshold.
+                  </p>
+                </div>
+                <label
+                  htmlFor={inheritAgeId}
+                  className="inline-flex cursor-pointer items-center gap-2 text-xs text-foreground"
                 >
-                  <option value="days">days</option>
-                  <option value="hours">hours</option>
-                </select>
-                <span className="text-xs text-muted-foreground">0 = unlimited</span>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="flex flex-col gap-3 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="text-xs font-medium text-foreground">Max messages</div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Keep at most this many newest messages in the project.
-                </p>
-              </div>
-              <label
-                htmlFor={inheritMessagesId}
-                className="inline-flex cursor-pointer items-center gap-2 text-xs text-foreground"
-              >
-                <input
-                  id={inheritMessagesId}
-                  type="checkbox"
-                  checked={inheritMessages}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setInheritMessages(checked);
-                    if (!checked) {
-                      setMaxMessages(String(defaults.retention_max_messages));
-                    }
-                    setFormError(null);
-                  }}
-                  className="size-3.5 rounded-sm border border-border accent-accent"
-                />
-                <span>Inherit instance default ({defaultMessagesLabel})</span>
-              </label>
-            </div>
-            {!inheritMessages ? (
-              <div className="flex items-center gap-2">
-                <label htmlFor={messagesValId} className="sr-only">
-                  Max messages
-                </label>
-                <Input
-                  id={messagesValId}
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={maxMessages}
-                  onChange={(e) => {
-                    setMaxMessages(e.target.value);
-                    if (formError) {
+                  <input
+                    id={inheritAgeId}
+                    type="checkbox"
+                    checked={inheritAge}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setInheritAge(checked);
+                      if (!checked) {
+                        const next = splitAgeSeconds(defaults.retention_max_age);
+                        setAgeValue(next.value);
+                        setAgeUnit(next.unit);
+                      }
                       setFormError(null);
-                    }
-                  }}
-                  className="w-32 tabular-nums"
-                />
-                <span className="text-xs text-muted-foreground">messages (0 = unlimited)</span>
+                    }}
+                    className="size-3.5 rounded-sm border border-border accent-accent"
+                  />
+                  <span>Inherit instance default ({defaultAgeLabel})</span>
+                </label>
               </div>
-            ) : null}
-          </div>
-
-          <div className="flex flex-col gap-3 pt-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="text-xs font-medium text-foreground">Max storage size</div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Cap total raw message bytes retained in the project.
-                </p>
-              </div>
-              <label
-                htmlFor={inheritBytesId}
-                className="inline-flex cursor-pointer items-center gap-2 text-xs text-foreground"
-              >
-                <input
-                  id={inheritBytesId}
-                  type="checkbox"
-                  checked={inheritBytes}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setInheritBytes(checked);
-                    if (!checked) {
-                      const next = splitStorageBytes(defaults.retention_max_bytes);
-                      setSizeValue(next.value);
-                      setSizeUnit(next.unit);
-                    }
-                    setFormError(null);
-                  }}
-                  className="size-3.5 rounded-sm border border-border accent-accent"
-                />
-                <span>Inherit instance default ({defaultBytesLabel})</span>
-              </label>
+              {!inheritAge ? (
+                <div className="flex items-center gap-2">
+                  <label htmlFor={ageValId} className="sr-only">
+                    Max age
+                  </label>
+                  <Input
+                    id={ageValId}
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={ageValue}
+                    onChange={(e) => {
+                      setAgeValue(e.target.value);
+                      if (formError) {
+                        setFormError(null);
+                      }
+                    }}
+                    className="w-28 tabular-nums"
+                  />
+                  <label htmlFor={ageUnitId} className="sr-only">
+                    Max age unit
+                  </label>
+                  <NativeSelect
+                    id={ageUnitId}
+                    value={ageUnit}
+                    onChange={(e) => setAgeUnit(e.target.value as AgeUnit)}
+                  >
+                    <option value="days">days</option>
+                    <option value="hours">hours</option>
+                  </NativeSelect>
+                  <span className="text-xs text-muted-foreground">0 = unlimited</span>
+                </div>
+              ) : null}
             </div>
-            {!inheritBytes ? (
-              <div className="flex items-center gap-2">
-                <label htmlFor={bytesValId} className="sr-only">
-                  Max storage size
-                </label>
-                <Input
-                  id={bytesValId}
-                  type="number"
-                  min={0}
-                  step="any"
-                  value={sizeValue}
-                  onChange={(e) => {
-                    setSizeValue(e.target.value);
-                    if (formError) {
-                      setFormError(null);
-                    }
-                  }}
-                  className="w-28 tabular-nums"
-                />
-                <label htmlFor={bytesUnitId} className="sr-only">
-                  Max storage size unit
-                </label>
-                <select
-                  id={bytesUnitId}
-                  value={sizeUnit}
-                  onChange={(e) => setSizeUnit(e.target.value as SizeUnit)}
-                  className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+
+            <div className="flex flex-col gap-3 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-[13px] font-medium text-foreground">Max messages</div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Keep at most this many newest messages in the project.
+                  </p>
+                </div>
+                <label
+                  htmlFor={inheritMessagesId}
+                  className="inline-flex cursor-pointer items-center gap-2 text-xs text-foreground"
                 >
-                  <option value="KB">KB</option>
-                  <option value="MB">MB</option>
-                  <option value="GB">GB</option>
-                </select>
-                <span className="text-xs text-muted-foreground">0 = unlimited</span>
+                  <input
+                    id={inheritMessagesId}
+                    type="checkbox"
+                    checked={inheritMessages}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setInheritMessages(checked);
+                      if (!checked) {
+                        setMaxMessages(String(defaults.retention_max_messages));
+                      }
+                      setFormError(null);
+                    }}
+                    className="size-3.5 rounded-sm border border-border accent-accent"
+                  />
+                  <span>Inherit instance default ({defaultMessagesLabel})</span>
+                </label>
               </div>
+              {!inheritMessages ? (
+                <div className="flex items-center gap-2">
+                  <label htmlFor={messagesValId} className="sr-only">
+                    Max messages
+                  </label>
+                  <Input
+                    id={messagesValId}
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={maxMessages}
+                    onChange={(e) => {
+                      setMaxMessages(e.target.value);
+                      if (formError) {
+                        setFormError(null);
+                      }
+                    }}
+                    className="w-32 tabular-nums"
+                  />
+                  <span className="text-xs text-muted-foreground">messages (0 = unlimited)</span>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-3 pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-[13px] font-medium text-foreground">Max storage size</div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Cap total raw message bytes retained in the project.
+                  </p>
+                </div>
+                <label
+                  htmlFor={inheritBytesId}
+                  className="inline-flex cursor-pointer items-center gap-2 text-xs text-foreground"
+                >
+                  <input
+                    id={inheritBytesId}
+                    type="checkbox"
+                    checked={inheritBytes}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setInheritBytes(checked);
+                      if (!checked) {
+                        const next = splitStorageBytes(defaults.retention_max_bytes);
+                        setSizeValue(next.value);
+                        setSizeUnit(next.unit);
+                      }
+                      setFormError(null);
+                    }}
+                    className="size-3.5 rounded-sm border border-border accent-accent"
+                  />
+                  <span>Inherit instance default ({defaultBytesLabel})</span>
+                </label>
+              </div>
+              {!inheritBytes ? (
+                <div className="flex items-center gap-2">
+                  <label htmlFor={bytesValId} className="sr-only">
+                    Max storage size
+                  </label>
+                  <Input
+                    id={bytesValId}
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={sizeValue}
+                    onChange={(e) => {
+                      setSizeValue(e.target.value);
+                      if (formError) {
+                        setFormError(null);
+                      }
+                    }}
+                    className="w-28 tabular-nums"
+                  />
+                  <label htmlFor={bytesUnitId} className="sr-only">
+                    Max storage size unit
+                  </label>
+                  <NativeSelect
+                    id={bytesUnitId}
+                    value={sizeUnit}
+                    onChange={(e) => setSizeUnit(e.target.value as SizeUnit)}
+                  >
+                    <option value="KB">KB</option>
+                    <option value="MB">MB</option>
+                    <option value="GB">GB</option>
+                  </NativeSelect>
+                  <span className="text-xs text-muted-foreground">0 = unlimited</span>
+                </div>
+              ) : null}
+            </div>
+
+            {formError ? (
+              <p role="alert" className="pt-4 text-xs font-medium text-destructive">
+                {formError}
+              </p>
             ) : null}
-          </div>
+          </CardContent>
 
-          {formError ? (
-            <p role="alert" className="pt-4 text-xs font-medium text-destructive">
-              {formError}
-            </p>
-          ) : null}
-
-          <div className="mt-5 flex items-center justify-end gap-2 pt-4">
+          <CardFooter>
             <Button
               type="button"
               variant="outline"
@@ -508,13 +517,18 @@ function RetentionSettingsForm({ project }: { project: ProjectDetail }) {
             >
               Reset
             </Button>
-            <Button type="submit" size="sm" disabled={!hasChanges || updateMutation.isPending}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              disabled={!hasChanges || updateMutation.isPending}
+            >
               {updateMutation.isPending ? "Saving..." : "Save changes"}
             </Button>
-          </div>
+          </CardFooter>
         </form>
-      </section>
-    </div>
+      </Card>
+    </>
   );
 }
 

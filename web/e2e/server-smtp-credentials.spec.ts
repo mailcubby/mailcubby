@@ -253,3 +253,67 @@ test.describe("Phase 8: SMTP credentials sidebar filter and credential: search",
     }
   });
 });
+
+test.describe("Phase 15d: SMTP settings layout", () => {
+  test("SMTP credentials table has no horizontal overflow at 1024 px (audit M1)", async ({
+    browser,
+  }) => {
+    const srv = await startBootstrappedServer();
+    const context = await browser.newContext({ viewport: { width: 1024, height: 768 } });
+    const page = await context.newPage();
+
+    try {
+      await page.goto(`${srv.httpURL}/login`);
+      await page.getByLabel("Email").fill(ADMIN_EMAIL);
+      await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
+      await page.getByRole("button", { name: "Sign in" }).click();
+      await expect(page).toHaveURL(`${srv.httpURL}/`);
+
+      const meRes = await page.request.get(`${srv.httpURL}/api/v1/auth/me`);
+      const me = (await meRes.json()) as { csrf_token: string };
+      const headers = { "X-CSRF-Token": me.csrf_token, Origin: srv.httpURL };
+      const projectRes = await page.request.post(`${srv.httpURL}/api/v1/projects`, {
+        headers,
+        data: { name: "Acme Storefront Production" },
+      });
+      expect(projectRes.status()).toBe(201);
+      const { slug } = (await projectRes.json()) as { slug: string };
+      for (const label of ["staging", "production worker queue (eu-west-1, nightly batch jobs)"]) {
+        const res = await page.request.post(
+          `${srv.httpURL}/api/v1/projects/${slug}/smtp-credentials`,
+          { headers, data: { label } },
+        );
+        expect(res.status()).toBe(201);
+      }
+
+      await page.goto(`${srv.httpURL}/p/${slug}/settings/smtp`);
+      const card = page.getByRole("region", { name: "SMTP credentials" });
+      await expect(card.getByRole("table")).toBeVisible();
+      await expect(card.getByRole("button", { name: /^Delete / })).toHaveCount(2);
+
+      const layout = await card.evaluate((section) => {
+        const sectionBox = section.getBoundingClientRect();
+        const overflowing = Array.from(section.querySelectorAll<HTMLElement>("*"))
+          .filter((el) => el.scrollWidth > el.clientWidth + 1)
+          .filter((el) => getComputedStyle(el).overflowX !== "visible")
+          // Truncated cells (with a title) and screen-reader-only text clip on purpose.
+          .filter((el) => !el.classList.contains("truncate") && !el.classList.contains("sr-only"))
+          .map((el) => el.tagName.toLowerCase());
+        const outside = Array.from(section.querySelectorAll("button, td, th"))
+          .map((el) => el.getBoundingClientRect())
+          .filter((box) => box.right > sectionBox.right + 0.5).length;
+        return {
+          overflowing,
+          outside,
+          page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      expect(layout.overflowing).toEqual([]);
+      expect(layout.outside).toBe(0);
+      expect(layout.page).toBeLessThanOrEqual(0);
+    } finally {
+      await context.close();
+      await srv.stop();
+    }
+  });
+});

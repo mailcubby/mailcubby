@@ -3,6 +3,7 @@ import { Fragment, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { AuditEntry } from "@/lib/api";
 import { formatExactTimestamp, formatRelativeTime } from "@/lib/format";
 
@@ -86,7 +87,7 @@ export function AuditLogTable({
 
   if (isPending) {
     return (
-      <div className="space-y-2 rounded-md border border-border bg-surface p-4">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-5 shadow-xs">
         <Skeleton className="h-7 w-full" />
         <Skeleton className="h-7 w-full" />
         <Skeleton className="h-7 w-full" />
@@ -96,7 +97,7 @@ export function AuditLogTable({
 
   if (entries.length === 0) {
     return (
-      <div className="rounded-md border border-border bg-surface px-4 py-8 text-center text-[13px] text-muted-foreground">
+      <div className="rounded-lg border border-border bg-surface px-5 py-10 text-center text-[13px] text-muted-foreground shadow-xs">
         {emptyMessage}
       </div>
     );
@@ -106,20 +107,20 @@ export function AuditLogTable({
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-md border border-border bg-surface">
-        <table className="w-full border-collapse text-left text-[13px]">
-          <thead>
-            <tr className="border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground">
-              <th className="w-8 px-2 py-2" aria-label="Details" />
-              <th className="px-3 py-2">Time</th>
-              <th className="px-3 py-2">Actor</th>
-              <th className="px-3 py-2">Action</th>
-              {showProject ? <th className="px-3 py-2">Project</th> : null}
-              <th className="px-3 py-2">Target</th>
-              <th className="px-3 py-2">IP</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
+      <div className="overflow-x-auto rounded-lg border border-border bg-surface shadow-xs">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-12 border-t-0" aria-label="Details" />
+              <TableHead className="border-t-0">Time</TableHead>
+              <TableHead className="border-t-0">Actor</TableHead>
+              <TableHead className="border-t-0">Action</TableHead>
+              {showProject ? <TableHead className="border-t-0">Project</TableHead> : null}
+              <TableHead className="border-t-0">Target</TableHead>
+              <TableHead className="border-t-0">IP</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {entries.map((entry) => {
               const hasMetadata = entry.metadata !== null && Object.keys(entry.metadata).length > 0;
               const expanded = Boolean(expandedIds[entry.id]);
@@ -131,8 +132,8 @@ export function AuditLogTable({
 
               return (
                 <Fragment key={entry.id}>
-                  <tr className="hover:bg-muted/30">
-                    <td className="px-2 py-2 align-middle">
+                  <tr>
+                    <td className="py-2 pr-1 pl-4 align-middle">
                       {hasMetadata ? (
                         <button
                           type="button"
@@ -180,12 +181,10 @@ export function AuditLogTable({
                     </td>
                   </tr>
                   {expanded && hasMetadata ? (
-                    <tr className="bg-muted/20">
-                      <td colSpan={colCount} className="px-4 py-3">
+                    <tr className="bg-muted/40">
+                      <td colSpan={colCount} className="px-5 py-3">
                         <div className="space-y-1">
-                          <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Metadata
-                          </div>
+                          <div className="text-xs font-medium text-muted-foreground">Metadata</div>
                           <pre
                             // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable JSON region needs keyboard focus (WCAG 2.1.1).
                             tabIndex={0}
@@ -200,8 +199,8 @@ export function AuditLogTable({
                 </Fragment>
               );
             })}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {hasNextPage ? (

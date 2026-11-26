@@ -4,8 +4,19 @@ import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "rea
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardHeader } from "@/components/ui/card";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { IntegrationSnippetsPanel } from "@/features/settings/IntegrationSnippetsPanel";
 import { ProjectSettingsLayout } from "@/features/settings/ProjectSettingsLayout";
 import {
@@ -23,6 +34,7 @@ import { formatExactTimestamp, formatRelativeTime } from "@/lib/format";
 import { useClock24hPreference } from "@/lib/preferences";
 import { metaQueryOptions, projectSMTPCredentialsQueryOptions } from "@/lib/queries";
 import { queryKeys } from "@/lib/queryKeys";
+import { cn } from "@/lib/utils";
 
 const REVEAL_TTL_MS = 30_000;
 
@@ -30,6 +42,61 @@ function formatTLSLabel(tlsMode: "starttls" | "tls" | "none"): string {
   if (tlsMode === "starttls") return "STARTTLS";
   if (tlsMode === "tls") return "Implicit TLS";
   return "None";
+}
+
+const LAST_FIELD_SPAN: Record<number, string> = { 2: "sm:col-span-2", 3: "sm:col-span-3" };
+
+interface ConnectionField {
+  label: string;
+  /** Undefined while loading. */
+  value: string | undefined;
+  copyValue?: string | undefined;
+}
+
+/** ConnectionFields is the grid of copyable SMTP connection values in the connection card. */
+function ConnectionFields({ items, columns }: { items: ConnectionField[]; columns: 2 | 3 }) {
+  return (
+    <dl
+      className={cn(
+        "grid grid-cols-1 gap-px border-t border-border bg-border",
+        columns === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2",
+      )}
+    >
+      {items.map((item, index) => (
+        <div
+          key={item.label}
+          className={cn(
+            "flex min-w-0 flex-col gap-0.5 bg-surface px-5 py-3",
+            // The last field fills the rest of its row, so no empty grid cell shows.
+            index === items.length - 1 &&
+              LAST_FIELD_SPAN[columns - (items.length % columns || columns) + 1],
+          )}
+        >
+          <dt className="text-xs text-muted-foreground">{item.label}</dt>
+          <dd className="flex min-w-0 items-center justify-between gap-2 font-mono text-[13px] font-medium text-foreground">
+            <span className="truncate" title={item.value}>
+              {item.value ?? "…"}
+            </span>
+            {item.value !== undefined ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={`Copy ${item.label}`}
+                title={`Copy ${item.label.toLowerCase()}`}
+                onClick={() =>
+                  void copyToClipboard(item.copyValue ?? item.value ?? "", item.label.toLowerCase())
+                }
+                className="size-7 shrink-0"
+              >
+                <Copy className="size-3.5" aria-hidden="true" />
+              </Button>
+            ) : null}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
@@ -325,104 +392,91 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-border bg-surface p-5 text-xs text-muted-foreground">
-        <p className="font-medium text-foreground">Failed to load SMTP credentials</p>
-        <p className="mt-1">{getApiErrorMessage(error)}</p>
-        <Button variant="outline" size="xs" className="mt-3" onClick={() => void refetch()}>
-          Retry
-        </Button>
-      </div>
+      <Card role="alert">
+        <CardHeader
+          title="Failed to load SMTP credentials"
+          description={getApiErrorMessage(error)}
+          actions={
+            <Button variant="outline" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      </Card>
     );
   }
 
+  const openCreate = (label: string) => {
+    setCreateLabel(label);
+    setCreateError(null);
+    setCreateOpen(true);
+  };
+
   return (
-    <div className="flex flex-col gap-6">
-      <section className="rounded-lg border border-border bg-surface">
-        <div className="border-b border-border px-5 py-3">
-          <h2 className="text-sm font-semibold text-foreground">SMTP connection</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Use these server settings with any active project credential below.
-          </p>
-        </div>
-        <dl className="grid grid-cols-1 divide-y divide-border text-xs sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          {[
-            { label: "Host", value: connection?.host ?? "…" },
-            { label: "Port", value: connection ? String(connection.port) : "…" },
+    <>
+      <Card aria-labelledby="smtp-connection-heading">
+        <CardHeader
+          titleId="smtp-connection-heading"
+          title="SMTP connection"
+          description="Use these server settings with any active project credential below."
+        />
+        <ConnectionFields
+          columns={3}
+          items={[
+            { label: "Host", value: connection?.host },
+            { label: "Port", value: connection ? String(connection.port) : undefined },
             {
               label: "TLS mode",
-              value: connection ? formatTLSLabel(connection.tls_mode) : "…",
+              value: connection ? formatTLSLabel(connection.tls_mode) : undefined,
               copyValue: connection?.tls_mode,
             },
-          ].map((item) => (
-            <div key={item.label} className="flex flex-col gap-0.5 px-5 py-3">
-              <dt className="text-[11px] text-muted-foreground">{item.label}</dt>
-              <dd className="flex min-w-0 items-center justify-between gap-2 font-mono text-xs font-medium text-foreground">
-                <span className="truncate">{item.value}</span>
-                {connection ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Copy ${item.label}`}
-                    onClick={() =>
-                      void copyToClipboard(item.copyValue ?? item.value, item.label.toLowerCase())
-                    }
-                    className="size-7 shrink-0"
-                  >
-                    <Copy className="size-3.5" aria-hidden="true" />
-                  </Button>
-                ) : null}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+          ]}
+        />
+      </Card>
 
-      <section className="rounded-lg border border-border bg-surface">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3.5">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">SMTP credentials</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Create separate credentials per environment (up to 20 per project) to filter messages
-              by source.
-            </p>
-          </div>
-          {isOwner ? (
-            <Button
-              size="sm"
-              disabled={items.length >= 20}
-              onClick={() => {
-                setCreateLabel("");
-                setCreateError(null);
-                setCreateOpen(true);
-              }}
-            >
-              <Plus className="size-3.5" aria-hidden="true" />
-              <span>New credential</span>
-            </Button>
-          ) : null}
-        </div>
+      <Card aria-labelledby="smtp-credentials-heading">
+        <CardHeader
+          titleId="smtp-credentials-heading"
+          title="SMTP credentials"
+          description="Create separate credentials per environment (up to 20 per project) to filter messages by source."
+          actions={
+            isOwner ? (
+              // One primary per screen: the empty state's "Create first credential" is primary.
+              <Button
+                variant={!isPending && items.length === 0 ? "outline" : "primary"}
+                size="sm"
+                disabled={items.length >= 20}
+                onClick={() => openCreate("")}
+              >
+                <Plus className="size-3.5" aria-hidden="true" />
+                <span>New credential</span>
+              </Button>
+            ) : null
+          }
+        />
 
         {isPending ? (
-          <div className="p-5 text-xs text-muted-foreground">Loading credentials...</div>
+          <div className="flex flex-col gap-2 border-t border-border p-5">
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+          </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 px-5 py-8 text-center">
-            <KeyRound className="size-6 text-muted-foreground/70" aria-hidden="true" />
-            <p className="text-xs font-medium text-foreground">No SMTP credentials yet</p>
-            <p className="max-w-sm text-xs text-muted-foreground">
+          <div className="flex flex-col items-center justify-center gap-2 border-t border-border px-5 py-10 text-center">
+            <span className="flex size-10 items-center justify-center rounded-full bg-accent-subtle text-accent-subtle-foreground">
+              <KeyRound className="size-5" aria-hidden="true" />
+            </span>
+            <p className="text-[13px] font-medium text-foreground">No SMTP credentials yet</p>
+            <p className="max-w-sm text-[13px] text-muted-foreground">
               {isOwner
                 ? "Create a credential to send mail to this project over authenticated SMTP."
                 : "Ask a project owner to create an SMTP credential for this project."}
             </p>
             {isOwner ? (
               <Button
+                variant="primary"
                 size="sm"
-                className="mt-1"
-                onClick={() => {
-                  setCreateLabel("staging");
-                  setCreateError(null);
-                  setCreateOpen(true);
-                }}
+                className="mt-2"
+                onClick={() => openCreate("staging")}
               >
                 <Plus className="size-3.5" aria-hidden="true" />
                 <span>Create first credential</span>
@@ -431,39 +485,49 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-xs">
-              <thead>
-                <tr className="border-b border-border bg-background/50 text-[11px] font-medium text-muted-foreground">
-                  <th className="px-4 py-2">Label</th>
-                  <th className="px-4 py-2">Username</th>
-                  <th className="px-4 py-2">Password</th>
-                  <th className="px-4 py-2">Last used</th>
-                  <th className="px-4 py-2">Status</th>
-                  {isOwner ? <th className="px-4 py-2 text-right">Actions</th> : null}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+            <Table className="min-w-[600px] table-fixed">
+              <colgroup>
+                <col className="w-[20%]" />
+                <col />
+                <col className="w-[136px]" />
+                <col className="w-[116px]" />
+                {isOwner ? <col className="w-[152px]" /> : null}
+              </colgroup>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Label</TableHead>
+                  <TableHead>Username</TableHead>
+                  <TableHead>Password</TableHead>
+                  <TableHead>Status</TableHead>
+                  {isOwner ? (
+                    <TableHead className="text-right">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  ) : null}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {items.map((cred) => {
                   const revealed = revealedPasswords[cred.id];
                   const isRevealing = revealingId === cred.id;
                   const isCopying = copyingId === cred.id;
                   return (
-                    <tr key={cred.id} className="hover:bg-muted/30">
-                      <td className="px-4 py-2.5 align-middle font-medium text-foreground">
-                        <div className="flex items-center gap-1.5">
-                          <span>{cred.label}</span>
+                    <TableRow key={cred.id}>
+                      <TableCell>
+                        <div className="truncate font-medium text-foreground" title={cred.label}>
+                          {cred.label}
                         </div>
                         <div
-                          className="text-[11px] font-normal text-muted-foreground"
+                          className="truncate text-xs text-muted-foreground"
                           title={formatExactTimestamp(cred.created_at, clock24h).combined}
                         >
                           Created {formatRelativeTime(cred.created_at, new Date(), clock24h)}
                         </div>
-                      </td>
+                      </TableCell>
 
-                      <td className="px-4 py-2.5 align-middle">
-                        <div className="flex items-center gap-1 font-mono text-foreground">
-                          <span className="max-w-44 truncate" title={cred.username}>
+                      <TableCell>
+                        <div className="flex min-w-0 items-center gap-0.5 font-mono text-xs text-foreground">
+                          <span className="min-w-0 truncate" title={cred.username}>
                             {cred.username}
                           </span>
                           <Button
@@ -471,21 +535,22 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
                             variant="ghost"
                             size="icon"
                             aria-label={`Copy username for ${cred.label}`}
+                            title="Copy username"
                             onClick={() => void copyToClipboard(cred.username, "SMTP username")}
                             className="size-6 shrink-0"
                           >
                             <Copy className="size-3" aria-hidden="true" />
                           </Button>
                         </div>
-                      </td>
+                      </TableCell>
 
-                      <td className="px-4 py-2.5 align-middle">
-                        <div className="flex items-center gap-1 font-mono">
+                      <TableCell>
+                        <div className="flex min-w-0 items-center gap-0.5 font-mono text-xs">
                           <span
-                            className="max-w-36 truncate text-foreground"
+                            className="min-w-0 truncate text-foreground"
                             title={revealed ? "Auto-hides after 30 seconds" : "Hidden"}
                           >
-                            {revealed ?? "••••••••••••"}
+                            {revealed ?? "••••••••"}
                           </span>
                           <Button
                             type="button"
@@ -520,30 +585,29 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
                             <Copy className="size-3" aria-hidden="true" />
                           </Button>
                         </div>
-                      </td>
+                      </TableCell>
 
-                      <td
-                        className="px-4 py-2.5 align-middle tabular-nums text-muted-foreground"
-                        title={
-                          cred.last_used_at
-                            ? formatExactTimestamp(cred.last_used_at, clock24h).combined
-                            : undefined
-                        }
-                      >
-                        {cred.last_used_at
-                          ? formatRelativeTime(cred.last_used_at, new Date(), clock24h)
-                          : "Never"}
-                      </td>
-
-                      <td className="px-4 py-2.5 align-middle">
+                      <TableCell>
                         <Badge variant={cred.disabled ? "neutral" : "success"} dot>
                           {cred.disabled ? "Disabled" : "Active"}
                         </Badge>
-                      </td>
+                        <div
+                          className="mt-1 truncate text-xs text-muted-foreground tabular-nums"
+                          title={
+                            cred.last_used_at
+                              ? formatExactTimestamp(cred.last_used_at, clock24h).combined
+                              : undefined
+                          }
+                        >
+                          {cred.last_used_at
+                            ? `Used ${formatRelativeTime(cred.last_used_at, new Date(), clock24h)}`
+                            : "Never used"}
+                        </div>
+                      </TableCell>
 
                       {isOwner ? (
-                        <td className="px-4 py-2.5 align-middle text-right">
-                          <div className="inline-flex items-center justify-end gap-1">
+                        <TableCell className="text-right">
+                          <div className="inline-flex items-center justify-end gap-0.5">
                             <Button
                               type="button"
                               variant="ghost"
@@ -593,49 +657,57 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
                               aria-label={`Delete ${cred.label}`}
                               title="Delete credential"
                               onClick={() => setDeletingCred(cred)}
-                              className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              className="size-7 text-destructive hover:bg-destructive-subtle hover:text-destructive"
                             >
                               <Trash2 className="size-3.5" aria-hidden="true" />
                             </Button>
                           </div>
-                        </td>
+                        </TableCell>
                       ) : null}
-                    </tr>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
-      </section>
+      </Card>
 
       {connection ? (
-        <section className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+        <section aria-labelledby="smtp-snippets-heading" className="flex flex-col gap-3 pt-2">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Integration snippets</h2>
-              <p className="text-xs text-muted-foreground">
+              <h2
+                id="smtp-snippets-heading"
+                className="text-[15px] leading-[22px] font-semibold text-foreground"
+              >
+                Integration snippets
+              </h2>
+              <p className="mt-0.5 text-[13px] text-muted-foreground">
                 Ready-to-paste configuration populated with your SMTP endpoint and selected
                 credential.
               </p>
             </div>
             {items.length > 1 ? (
               <div className="flex items-center gap-2">
-                <label htmlFor={snippetCredSelectId} className="text-xs text-muted-foreground">
+                <label
+                  htmlFor={snippetCredSelectId}
+                  className="text-xs font-medium text-foreground"
+                >
                   Credential
                 </label>
-                <select
+                <NativeSelect
                   id={snippetCredSelectId}
                   value={selectedCred ? String(selectedCred.id) : ""}
                   onChange={(e) => setSelectedCredId(Number(e.target.value))}
-                  className="h-8 rounded-md border border-input bg-surface px-2.5 text-xs text-foreground"
+                  wrapperClassName="max-w-64"
                 >
                   {items.map((cred) => (
                     <option key={cred.id} value={String(cred.id)}>
                       {cred.label} ({cred.username})
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             ) : null}
           </div>
@@ -689,7 +761,7 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
             <Button type="button" variant="outline" size="sm" onClick={() => setCreateOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={createMutation.isPending}>
+            <Button type="submit" variant="primary" size="sm" disabled={createMutation.isPending}>
               {createMutation.isPending ? "Creating..." : "Create credential"}
             </Button>
           </div>
@@ -739,7 +811,12 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
               </div>
             </div>
             <div className="flex justify-end pt-1">
-              <Button type="button" size="sm" onClick={() => setCreatedSecret(null)}>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => setCreatedSecret(null)}
+              >
                 Done
               </Button>
             </div>
@@ -778,7 +855,7 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
             <Button type="button" variant="outline" size="sm" onClick={() => setEditingCred(null)}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={updateMutation.isPending}>
+            <Button type="submit" variant="primary" size="sm" disabled={updateMutation.isPending}>
               {updateMutation.isPending ? "Saving..." : "Save label"}
             </Button>
           </div>
@@ -814,7 +891,7 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
           if (deletingCred) deleteMutation.mutate(deletingCred);
         }}
       />
-    </div>
+    </>
   );
 }
 
@@ -825,51 +902,34 @@ function LocalSmtpSettings({ project }: { project: ProjectDetail }) {
   const tlsMode = meta?.smtp.tls_mode ?? "none";
 
   return (
-    <div className="flex flex-col gap-6">
-      <section className="rounded-lg border border-border bg-surface">
-        <div className="border-b border-border px-5 py-3">
-          <h2 className="text-sm font-semibold text-foreground">Local SMTP connection</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            In local mode any password is accepted and the SMTP username selects the project.
-          </p>
-        </div>
-        <dl className="grid grid-cols-1 divide-y divide-border text-xs sm:grid-cols-2 sm:divide-y-0">
-          {[
+    <>
+      <Card aria-labelledby="smtp-local-connection-heading">
+        <CardHeader
+          titleId="smtp-local-connection-heading"
+          title="Local SMTP connection"
+          description="In local mode any password is accepted and the SMTP username selects the project."
+        />
+        <ConnectionFields
+          columns={3}
+          items={[
             { label: "Host", value: host },
             { label: "Port", value: String(port) },
             { label: "TLS", value: formatTLSLabel(tlsMode), copyValue: tlsMode },
             { label: "Username", value: project.slug },
             { label: "Password", value: "any (e.g. dev)", copyValue: "dev" },
-          ].map((row) => (
-            <div
-              key={row.label}
-              className="flex items-center justify-between gap-2 border-b border-border px-5 py-2.5 sm:odd:border-r"
-            >
-              <dt className="text-muted-foreground">{row.label}</dt>
-              <dd className="flex min-w-0 items-center gap-1.5 font-mono text-foreground">
-                <span className="truncate">{row.value}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Copy ${row.label}`}
-                  onClick={() =>
-                    void copyToClipboard(row.copyValue ?? row.value, row.label.toLowerCase())
-                  }
-                  className="size-6 shrink-0"
-                >
-                  <Copy className="size-3" aria-hidden="true" />
-                </Button>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+          ]}
+        />
+      </Card>
 
-      <section className="flex flex-col gap-3">
+      <section aria-labelledby="smtp-snippets-heading" className="flex flex-col gap-3 pt-2">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Integration snippets</h2>
-          <p className="text-xs text-muted-foreground">
+          <h2
+            id="smtp-snippets-heading"
+            className="text-[15px] leading-[22px] font-semibold text-foreground"
+          >
+            Integration snippets
+          </h2>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">
             Copy a ready-to-use configuration for your framework or sendmail binary.
           </p>
         </div>
@@ -884,7 +944,7 @@ function LocalSmtpSettings({ project }: { project: ProjectDetail }) {
           }}
         />
       </section>
-    </div>
+    </>
   );
 }
 

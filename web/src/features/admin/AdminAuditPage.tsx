@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ALL_AUDIT_ACTIONS, AuditLogTable } from "@/components/AuditLogTable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/select";
 import { AdminLayout } from "@/features/admin/AdminLayout";
 import { api, getApiErrorMessage, unwrap } from "@/lib/api";
 import { adminProjectsQueryOptions } from "@/lib/queries";
@@ -88,7 +89,7 @@ export function AdminAuditPage() {
       }
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-surface p-4">
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface px-5 py-4 shadow-xs">
           <div className="space-y-1">
             <label
               htmlFor="admin-audit-action"
@@ -96,11 +97,10 @@ export function AdminAuditPage() {
             >
               Action
             </label>
-            <select
+            <NativeSelect
               id="admin-audit-action"
               value={actionFilter}
               onChange={(e) => setActionFilter(e.target.value)}
-              className="h-8 rounded-md border border-input bg-background px-2.5 text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
             >
               <option value="">All actions</option>
               {ALL_AUDIT_ACTIONS.map((action) => (
@@ -108,7 +108,7 @@ export function AdminAuditPage() {
                   {action}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           <div className="space-y-1">
@@ -118,11 +118,10 @@ export function AdminAuditPage() {
             >
               Project
             </label>
-            <select
+            <NativeSelect
               id="admin-audit-project"
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
-              className="h-8 rounded-md border border-input bg-background px-2.5 text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
             >
               <option value="">All projects</option>
               {(projects ?? []).map((p) => (
@@ -130,7 +129,7 @@ export function AdminAuditPage() {
                   {p.name} ({p.slug})
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           <div className="min-w-48 flex-1 space-y-1">
@@ -158,7 +157,7 @@ export function AdminAuditPage() {
         </div>
 
         {auditQuery.error ? (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-[13px] text-destructive">
+          <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-5 py-3 text-[13px] text-destructive">
             {getApiErrorMessage(auditQuery.error, "Failed to load audit log.")}
           </div>
         ) : (

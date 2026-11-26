@@ -3,6 +3,7 @@ import { AlertCircle, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { AuditLogTable, PROJECT_AUDIT_ACTIONS } from "@/components/AuditLogTable";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/select";
 import { ProjectSettingsLayout } from "@/features/settings/ProjectSettingsLayout";
 import { api, getApiErrorMessage, type ProjectDetail, unwrap } from "@/lib/api";
 import { metaQueryOptions } from "@/lib/queries";
@@ -72,7 +73,7 @@ function AuditSettingsContent({ project }: { project: ProjectDetail }) {
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3 rounded-md border border-border bg-surface p-4">
+      <div className="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-border bg-surface px-5 py-4 shadow-xs">
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
             <label
@@ -81,11 +82,10 @@ function AuditSettingsContent({ project }: { project: ProjectDetail }) {
             >
               Action
             </label>
-            <select
+            <NativeSelect
               id="project-audit-action"
               value={actionFilter}
               onChange={(e) => setActionFilter(e.target.value)}
-              className="h-8 rounded-md border border-input bg-background px-2.5 text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
             >
               <option value="">All actions</option>
               {PROJECT_AUDIT_ACTIONS.map((action) => (
@@ -93,7 +93,7 @@ function AuditSettingsContent({ project }: { project: ProjectDetail }) {
                   {action}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           {actionFilter ? (
@@ -116,7 +116,10 @@ function AuditSettingsContent({ project }: { project: ProjectDetail }) {
       </div>
 
       {auditQuery.error ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-[13px] text-destructive">
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/30 bg-destructive-subtle px-5 py-3 text-[13px] text-destructive"
+        >
           {getApiErrorMessage(auditQuery.error, "Failed to load project audit log.")}
         </div>
       ) : (

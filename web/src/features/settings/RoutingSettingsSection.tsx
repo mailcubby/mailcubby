@@ -3,6 +3,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, Copy } from "lucide-react";
 import { useEffect, useId } from "react";
 import { toast } from "sonner";
+import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { ProjectSettingsLayout } from "@/features/settings/ProjectSettingsLayout";
 import { api, handleApiError, type ProjectDetail, type ProjectSettings, unwrap } from "@/lib/api";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -87,31 +89,31 @@ function RoutingSettingsForm({ project }: { project: ProjectDetail }) {
   const inboxDomain = meta?.inbox_domain;
 
   return (
-    <div className="flex flex-col gap-6">
+    <>
       {isServer ? (
-        <section className="rounded-lg border border-border bg-surface p-5">
+        <Card aria-labelledby={recipientRoutingId} className="p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <label htmlFor={recipientRoutingId} className="text-sm font-semibold text-foreground">
+              <label
+                htmlFor={recipientRoutingId}
+                className="text-[15px] leading-[22px] font-semibold text-foreground"
+              >
                 Recipient routing (unauthenticated SMTP)
               </label>
-              <p id={recipientRoutingDescId} className="mt-1 text-xs text-muted-foreground">
+              <p id={recipientRoutingDescId} className="mt-0.5 text-[13px] text-muted-foreground">
                 Accept mail without SMTP AUTH when addressed to this project&apos;s inbox domain
                 routes.
               </p>
             </div>
-            <input
+            <Switch
               id={recipientRoutingId}
-              type="checkbox"
-              role="switch"
-              aria-checked={settings.recipient_routing_enabled}
               aria-describedby={recipientRoutingDescId}
-              checked={settings.recipient_routing_enabled}
+              checked={settings.recipient_routing_enabled === true}
               disabled={toggleMutation.isPending}
               onChange={(e) =>
                 toggleMutation.mutate({ recipient_routing_enabled: e.target.checked })
               }
-              className="mt-1 size-4 shrink-0 cursor-pointer rounded-sm border border-border accent-accent"
+              className="mt-1"
             />
           </div>
 
@@ -129,7 +131,7 @@ function RoutingSettingsForm({ project }: { project: ProjectDetail }) {
 
           {inboxDomain ? (
             <div className="mt-4">
-              <div className="text-[11px] font-medium text-muted-foreground">
+              <div className="text-xs font-medium text-muted-foreground">
                 Resulting routing addresses
               </div>
               <div className="mt-2 flex flex-wrap gap-2 font-mono text-xs">
@@ -142,7 +144,8 @@ function RoutingSettingsForm({ project }: { project: ProjectDetail }) {
                     key={addr}
                     type="button"
                     onClick={() => void copyToClipboard(addr, "routing address")}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-foreground hover:bg-muted"
+                    title="Copy routing address"
+                    className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-surface px-2.5 text-foreground transition-colors hover:bg-muted"
                   >
                     <span>{addr}</span>
                     <Copy className="size-3 text-muted-foreground" aria-hidden="true" />
@@ -151,35 +154,35 @@ function RoutingSettingsForm({ project }: { project: ProjectDetail }) {
               </div>
             </div>
           ) : (
-            <p className="mt-3 text-xs text-muted-foreground">
+            <p className="mt-3 text-[13px] text-muted-foreground">
               Set <code className="font-mono text-foreground">MAILCUBBY_INBOX_DOMAIN</code> on the
               server to enable address-based routing.
             </p>
           )}
-        </section>
+        </Card>
       ) : null}
 
-      <section className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
+      <Card aria-label="Tags and client view" className="flex flex-col divide-y divide-border">
         <div className="flex items-start justify-between gap-4 p-5">
           <div>
-            <label htmlFor={plusTagsId} className="text-sm font-semibold text-foreground">
+            <label
+              htmlFor={plusTagsId}
+              className="text-[15px] leading-[22px] font-semibold text-foreground"
+            >
               Plus-addressing tags
             </label>
-            <p id={plusTagsDescId} className="mt-1 text-xs text-muted-foreground">
+            <p id={plusTagsDescId} className="mt-0.5 text-[13px] text-muted-foreground">
               Automatically tag incoming messages from envelope recipients using{" "}
               <code className="font-mono text-foreground">local+tag@domain</code>.
             </p>
           </div>
-          <input
+          <Switch
             id={plusTagsId}
-            type="checkbox"
-            role="switch"
-            aria-checked={settings.plus_address_tags}
             aria-describedby={plusTagsDescId}
             checked={settings.plus_address_tags}
             disabled={toggleMutation.isPending}
             onChange={(e) => toggleMutation.mutate({ plus_address_tags: e.target.checked })}
-            className="mt-1 size-4 shrink-0 cursor-pointer rounded-sm border border-border accent-accent"
+            className="mt-1"
           />
         </div>
 
@@ -187,56 +190,56 @@ function RoutingSettingsForm({ project }: { project: ProjectDetail }) {
           <>
             <div className="flex items-start justify-between gap-4 p-5">
               <div>
-                <label htmlFor={hideTechId} className="text-sm font-semibold text-foreground">
+                <label
+                  htmlFor={hideTechId}
+                  className="text-[15px] leading-[22px] font-semibold text-foreground"
+                >
                   Hide technical views from viewers
                 </label>
-                <p id={hideTechDescId} className="mt-1 text-xs text-muted-foreground">
+                <p id={hideTechDescId} className="mt-0.5 text-[13px] text-muted-foreground">
                   Hide Raw source, HTML source, Headers, <code className="font-mono">.eml</code>{" "}
                   downloads, and the Tech tab from client viewers so they only see Preview, Text,
                   and Attachments.
                 </p>
               </div>
-              <input
+              <Switch
                 id={hideTechId}
-                type="checkbox"
-                role="switch"
-                aria-checked={settings.viewer_hide_technical}
                 aria-describedby={hideTechDescId}
                 checked={settings.viewer_hide_technical}
                 disabled={toggleMutation.isPending}
                 onChange={(e) => toggleMutation.mutate({ viewer_hide_technical: e.target.checked })}
-                className="mt-1 size-4 shrink-0 cursor-pointer rounded-sm border border-border accent-accent"
+                className="mt-1"
               />
             </div>
 
             <div className="flex items-start justify-between gap-4 p-5">
               <div>
-                <label htmlFor={membersRevealId} className="text-sm font-semibold text-foreground">
+                <label
+                  htmlFor={membersRevealId}
+                  className="text-[15px] leading-[22px] font-semibold text-foreground"
+                >
                   Members can reveal SMTP passwords
                 </label>
-                <p id={membersRevealDescId} className="mt-1 text-xs text-muted-foreground">
+                <p id={membersRevealDescId} className="mt-0.5 text-[13px] text-muted-foreground">
                   Allow project members (in addition to owners) to reveal and copy SMTP credential
                   passwords. Every reveal is recorded in the audit log.
                 </p>
               </div>
-              <input
+              <Switch
                 id={membersRevealId}
-                type="checkbox"
-                role="switch"
-                aria-checked={settings.members_can_reveal_smtp}
                 aria-describedby={membersRevealDescId}
-                checked={settings.members_can_reveal_smtp}
+                checked={settings.members_can_reveal_smtp === true}
                 disabled={toggleMutation.isPending}
                 onChange={(e) =>
                   toggleMutation.mutate({ members_can_reveal_smtp: e.target.checked })
                 }
-                className="mt-1 size-4 shrink-0 cursor-pointer rounded-sm border border-border accent-accent"
+                className="mt-1"
               />
             </div>
           </>
         ) : null}
-      </section>
-    </div>
+      </Card>
+    </>
   );
 }
 

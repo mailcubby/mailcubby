@@ -14,9 +14,19 @@ import { type FormEvent, useEffect, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { AdminLayout } from "@/features/admin/AdminLayout";
 import {
   type AdminCreateUserResponse,
@@ -274,7 +284,7 @@ export function AdminUsersPage() {
           </span>
         </div>
 
-        <section className="rounded-lg border border-border bg-surface">
+        <Card>
           {usersQuery.isPending ? (
             <div className="flex flex-col gap-2 p-5">
               <Skeleton className="h-10 w-full" />
@@ -291,30 +301,18 @@ export function AdminUsersPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left text-[13px]">
-                <thead>
-                  <tr className="border-b border-border bg-background/50 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    <th scope="col" className="px-4 py-2.5">
-                      User
-                    </th>
-                    <th scope="col" className="px-3 py-2.5">
-                      Admin
-                    </th>
-                    <th scope="col" className="px-3 py-2.5">
-                      Create projects
-                    </th>
-                    <th scope="col" className="px-3 py-2.5 text-right">
-                      Projects
-                    </th>
-                    <th scope="col" className="px-3 py-2.5">
-                      Last login
-                    </th>
-                    <th scope="col" className="px-4 py-2.5 text-right">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>User</TableHead>
+                    <TableHead>Admin</TableHead>
+                    <TableHead>Create projects</TableHead>
+                    <TableHead className="text-right">Projects</TableHead>
+                    <TableHead>Last login</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {users.map((user) => {
                     const isSelf = user.id === me?.user.id;
                     const isDisabled = user.disabled_at !== null;
@@ -326,8 +324,8 @@ export function AdminUsersPage() {
                       : undefined;
 
                     return (
-                      <tr key={user.id} className="hover:bg-muted/30">
-                        <td className="px-4 py-3">
+                      <TableRow key={user.id}>
+                        <TableCell>
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span className="font-medium text-foreground">{user.name}</span>
                             {isSelf ? <Badge variant="neutral">You</Badge> : null}
@@ -345,13 +343,10 @@ export function AdminUsersPage() {
                           <div className="font-mono text-xs text-muted-foreground">
                             {user.email}
                           </div>
-                        </td>
+                        </TableCell>
 
-                        <td className="px-3 py-3">
-                          <input
-                            type="checkbox"
-                            role="switch"
-                            aria-checked={user.is_admin}
+                        <TableCell>
+                          <Switch
                             aria-label={`Instance admin for ${user.email}`}
                             checked={user.is_admin}
                             disabled={updateUserMutation.isPending}
@@ -365,15 +360,11 @@ export function AdminUsersPage() {
                                 body: { is_admin: true },
                               });
                             }}
-                            className="size-4 cursor-pointer accent-accent disabled:cursor-not-allowed"
                           />
-                        </td>
+                        </TableCell>
 
-                        <td className="px-3 py-3">
-                          <input
-                            type="checkbox"
-                            role="switch"
-                            aria-checked={user.can_create_projects}
+                        <TableCell>
+                          <Switch
                             aria-label={`Can create projects for ${user.email}`}
                             checked={user.can_create_projects}
                             disabled={updateUserMutation.isPending}
@@ -383,22 +374,21 @@ export function AdminUsersPage() {
                                 body: { can_create_projects: e.target.checked },
                               })
                             }
-                            className="size-4 cursor-pointer accent-accent disabled:cursor-not-allowed"
                           />
-                        </td>
+                        </TableCell>
 
-                        <td className="px-3 py-3 text-right text-xs text-muted-foreground tabular-nums">
+                        <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
                           {formatCount(user.project_count)}
-                        </td>
+                        </TableCell>
 
-                        <td
-                          className="px-3 py-3 text-xs text-muted-foreground tabular-nums"
+                        <TableCell
+                          className="text-xs text-muted-foreground tabular-nums"
                           title={lastLoginExact}
                         >
                           {lastLoginRel ?? "Never"}
-                        </td>
+                        </TableCell>
 
-                        <td className="px-4 py-3 text-right">
+                        <TableCell className="text-right">
                           <div className="inline-flex items-center gap-1">
                             <Button
                               variant="ghost"
@@ -452,12 +442,12 @@ export function AdminUsersPage() {
                               <Trash2 className="size-3.5" aria-hidden="true" />
                             </Button>
                           </div>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
 
@@ -473,7 +463,7 @@ export function AdminUsersPage() {
               </Button>
             </div>
           ) : null}
-        </section>
+        </Card>
       </div>
 
       <Dialog
@@ -634,7 +624,12 @@ export function AdminUsersPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={createUserMutation.isPending}>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={createUserMutation.isPending}
+              >
                 {createUserMutation.isPending ? "Creating..." : "Create user & invite link"}
               </Button>
             </div>
