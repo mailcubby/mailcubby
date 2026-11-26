@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { AlertCircle } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { BrandMark } from "@/components/BrandMark";
+import { PublicFooter } from "@/components/MadeBy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/features/auth/PasswordInput";
@@ -171,9 +172,7 @@ export function LoginPage({ returnTo }: LoginPageProps) {
         </form>
       </div>
       {/* Audit V6: the instance name is the title; the product name stays as a quiet footer. */}
-      {instanceName !== "Mailcubby" ? (
-        <p className="text-xs text-muted-foreground">Powered by Mailcubby</p>
-      ) : null}
+      <PublicFooter poweredBy={instanceName !== "Mailcubby"} />
     </main>
   );
 }
