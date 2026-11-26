@@ -22,7 +22,7 @@ In Google Antigravity, `AGENTS.md` is loaded automatically; type `/next-phase` (
 | M2 Local feature-complete | 5 | Search and tags |
 | M3 Multi-tenant server | 6 to 9 | Login, projects, roles, invites, per-project SMTP credentials, settings UI, API tokens |
 | M4 Production-ready | 10 to 12 | Retention, security hardening, TLS, packaging |
-| M5 v1.0 | 13 to 14 | Release |
+| M5 v0.1.0 | 13 to 14 | Release |
 
 ---
 
@@ -394,9 +394,9 @@ Acceptance:
 
 ---
 
-## Phase 13: v1.0 release checklist
+## Phase 13: v0.1.0 release checklist
 
-**Goal**: ship v1.0.
+**Goal**: ship v0.1.0.
 
 Tasks:
 - [x] Complete the Playwright suite (`make e2e`): local mode inbox flow, server mode setup wizard, login, invite accept as viewer, viewer restrictions, credential reveal, search, delete with undo, keyboard flows; add `@axe-core/playwright` (already pinned in `AGENTS.md`, so adding it is not a stop condition) on every screen with zero serious/critical violations (NFR-010).
@@ -405,7 +405,7 @@ Tasks:
 - [x] Upgrade test: data dir created by the previous tag migrates cleanly (skip with a note if no previous tag exists — skipped: no previous git tag exists yet; `00001+00002 -> 00003` forward migration with populated data verified in `internal/store/migration_projects_autoincrement_test.go`).
 - [ ] Security review of the diff since Phase 11; dependency updates to latest patch versions (stop condition: list them for the owner); `govulncheck` clean. (blocked: `govulncheck` and upstream patch-version checks require network/CI; Phase 12–13 diff security review and `gosec` completed cleanly locally; known dependency version notes listed in Open questions)
 - [x] `CHANGELOG.md`, GitHub release notes draft.
-- [ ] GitHub org, GHCR namespace and `mailcubby.dev` domain registered and matching the docs; tag `v1.0.0` pushed (owner).
+- [ ] GitHub org, GHCR namespace and `mailcubby.dev` domain registered and matching the docs; tag `v0.1.0` pushed (owner).
 
 Acceptance:
 - All checkboxes in this file are ticked or marked owner/blocked with a reason; `make check` and `make e2e` green; CI and release workflows green, images published, README quick starts work from the published image (owner).
@@ -568,11 +568,11 @@ Acceptance:
 
 ---
 
-## Backlog (after v1.0.0)
+## Backlog (after v0.1.0)
 
 Not scheduled. When an item is picked up it becomes a phase above. Items marked "SPEC 14.n" are in the SPEC roadmap.
 
-### v1.0.x (small, no design change)
+### v0.1.x (small, no design change)
 
 - `mailcubby backup` command for an online SQLite backup that works in the distroless image and compose volumes (audit V6).
 - Docs: password reset does not revoke API tokens; long-poll `/messages/wait` limits; `MAILCUBBY_TRUSTED_PROXIES` scope in compose (audit S5, S6, S7).
@@ -583,7 +583,7 @@ Not scheduled. When an item is picked up it becomes a phase above. Items marked 
 - Framework snippets, a `curl` example for `/messages/wait` and a `host.docker.internal` note in the README; `sendmail` dial timeout; quieter access log (audit L4, L5).
 - OCI labels in `deploy/Dockerfile`, healthcheck `start_period`, pinned Caddy image (audit I7).
 
-### v1.1 (features)
+### v0.2 (features)
 
 1. HTML compatibility check (caniemail data, offline). Most useful for agencies building templates. SPEC 14.2.
 2. Link checker, opt-in per instance, with SSRF protection (no private, loopback or link-local targets, timeouts, size caps) because the server fetches URLs found in untrusted email. SPEC 14.2.
@@ -679,3 +679,4 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
 - 2026-11-26, Phase 15e: the skip link renders only while the message list is on screen (`messageListVisible` on the active inbox context), so a phone with a message open has no control without a target; the e2e checks both cases at 375 px. `Switch` keeps the native checkbox as the track and draws the knob as a sibling span (it was a `::before` on the input); the routing card's `aria-labelledby` now points at its label text instead of the input.
 - 2026-11-26, Phase 15e final review (screens in `docs/visual-pass/after/15e/`), fixed: the "Color" legend touched the selected swatch ring (flex gap does not apply to a `legend`; project general settings, create project and create tag dialogs); the projects home title was 18 px while every other page title is 20 px; the project audit log had Refresh inside its filter card while admin audit and stats have it in the page header; profile, change password and instance settings ended their forms with inline buttons while general and retention used `CardFooter` (all now use `CardFooter`; instance settings "Discard" is now "Reset" like the others; the profile card gained the title "Account details"); card stacks used 16, 20 and 24 px gaps (now 16 px everywhere); form error alerts mixed `bg-destructive/10` with `bg-destructive-subtle` (now the token everywhere). Left as is: the setup card widens on step 5 for the snippets. (The accent line beside the list in the after-sign-in shots is the resize handle's hover state: the pointer is still where "Sign in" was.)
 - 2026-11-26, Phase 15e: `accessibility.spec.ts` now runs every screen in light and dark: local mode (one test), and a serial server-mode group on one fresh instance (setup wizard, owner and admin, viewer, public pages). Public pages switch theme with their own toggle, the rest through the header menu (`chooseTheme`), and both assert the `dark` class. It also covers the empty inbox, no results, no unread, SMTP without credentials, preview as viewer, the invite dialog, page and project not found, settings unavailable, the invalid invite and the sign-in error. UI.md 1.6 now lists the soft accent badge (owner, Admin, current session, `write` scope, overridden setting) among the accent's uses, which matches what shipped since 15a.
+- 2026-11-26, release (owner decision): the first release is **v0.1.0**, not v1.0.0, because the project is pre-alpha with no users. v1.0.0 will be tagged once the REST API, configuration and data format are declared stable; until then a 0.x minor version may change them, with upgrade steps in `CHANGELOG.md`. The `v1.0.0-rc.1` rehearsal (2026-11-25) published a GitHub pre-release, its tag and archives, and (per `.goreleaser.yaml`) only the GHCR tag `1.0.0-rc.1` (pre-releases get no `1.0` or `latest`); removing them is the owner's call. No Homebrew formula was published (`skip_upload: auto` skips pre-releases; `mailcubby/homebrew-tap` holds only its README), so nobody needs `brew reinstall`, and v0.1.0 is the first real run of the tap upload and the `HOMEBREW_TAP_GITHUB_TOKEN` check in `release.yml`. `release.yml` derives the notes file from the tag, so `docs/release-notes-v0.1.0.md` is picked up without a workflow change.
