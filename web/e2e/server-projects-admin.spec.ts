@@ -267,6 +267,10 @@ test.describe("Phase 7b: Multi-tenant projects, invites, viewer mode, and admin 
         ).toBeVisible();
         await expect(switcherList.getByRole("option")).toHaveCount(1);
         await expect(switcherList.getByText("Internal Ops")).toHaveCount(0);
+        // The switcher has no "All projects" either: `/` would bounce back here.
+        await expect(
+          viewerPage.getByRole("link", { name: "All projects", exact: true }),
+        ).toHaveCount(0);
         await viewerPage.keyboard.press("Escape");
         await expect(switcherList).toHaveCount(0);
 
@@ -331,6 +335,15 @@ test.describe("Phase 7b: Multi-tenant projects, invites, viewer mode, and admin 
       // Toggle Preview as viewer.
       await expect(adminPage.getByRole("button", { name: "Keyboard shortcuts" })).toBeVisible();
       await expect(adminPage.getByRole("link", { name: "Back to all projects" })).toBeVisible();
+      await adminPage
+        .getByRole("complementary", { name: "Project sidebar" })
+        .getByRole("button", { name: "Client Portal Staging" })
+        .click();
+      await expect(
+        adminPage.getByRole("link", { name: "All projects", exact: true }),
+      ).toBeVisible();
+      await adminPage.keyboard.press("Escape");
+      await expect(adminPage.getByRole("listbox", { name: "Projects" })).toHaveCount(0);
       await adminPage.getByRole("button", { name: "Preview as viewer" }).click();
       await expect(adminPage.getByTestId("viewer-preview-banner")).toBeVisible();
       await expect(adminPage.getByRole("button", { name: "Keyboard shortcuts" })).toHaveCount(0);
