@@ -316,6 +316,14 @@
   }
 }
 
+/* Sonner's own (unlayered) theme variables win over utility classes, so map
+   them to the tokens here; otherwise dark toasts render on pure black. */
+:root [data-sonner-toaster][data-sonner-theme] {
+  --normal-bg: var(--surface);
+  --normal-border: var(--border);
+  --normal-text: var(--foreground);
+}
+
 @keyframes mailcubby-arrival {
   0% {
     background-color: color-mix(in srgb, var(--accent) 18%, transparent);
