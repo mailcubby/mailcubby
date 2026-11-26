@@ -245,7 +245,7 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
                 id={ageUnitId}
                 value={ageUnit}
                 onChange={(e) => setAgeUnit(e.target.value as AgeUnit)}
-                className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+                className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
               >
                 <option value="days">days</option>
                 <option value="hours">hours</option>
@@ -347,7 +347,7 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
                 id={bytesUnitId}
                 value={sizeUnit}
                 onChange={(e) => setSizeUnit(e.target.value as SizeUnit)}
-                className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+                className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
               >
                 <option value="KB">KB</option>
                 <option value="MB">MB</option>

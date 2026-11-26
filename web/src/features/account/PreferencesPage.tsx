@@ -164,7 +164,7 @@ export function PreferencesPage() {
                   }
                 }
               }}
-              className="h-8 cursor-pointer rounded-md border border-border bg-background px-2.5 text-[13px] text-foreground"
+              className="h-8 cursor-pointer rounded-md border border-input bg-background px-2.5 text-[13px] text-foreground"
             >
               {MARK_READ_OPTIONS.map((opt) => (
                 <option key={String(opt.value)} value={String(opt.value)}>

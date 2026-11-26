@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
-import { Badge } from "@/components/ui/badge";
+import { RoleBadge } from "@/components/RoleBadge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, getApiErrorMessage, type ProjectDetail } from "@/lib/api";
@@ -82,7 +82,7 @@ export function ProjectSettingsLayout({
             <span>Back to projects</span>
           </Link>
           {!isNotFound ? (
-            <Button variant="default" size="sm" onClick={() => void refetch()}>
+            <Button variant="primary" size="sm" onClick={() => void refetch()}>
               Retry
             </Button>
           ) : null}
@@ -222,7 +222,7 @@ export function ProjectSettingsLayout({
                 <h1 className="text-lg font-semibold tracking-tight text-foreground">
                   {project.name}
                 </h1>
-                <Badge variant="outline">{project.role}</Badge>
+                <RoleBadge role={project.role} />
               </div>
               <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>
             </div>

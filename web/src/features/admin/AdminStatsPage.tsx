@@ -169,7 +169,7 @@ export function AdminStatsPage() {
                           quotaPct >= 100
                             ? "bg-destructive"
                             : quotaPct >= 80
-                              ? "bg-amber-500"
+                              ? "bg-warning"
                               : "bg-accent",
                         )}
                         style={{ width: `${quotaPct}%` }}

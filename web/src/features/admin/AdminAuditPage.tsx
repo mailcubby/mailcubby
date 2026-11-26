@@ -100,7 +100,7 @@ export function AdminAuditPage() {
               id="admin-audit-action"
               value={actionFilter}
               onChange={(e) => setActionFilter(e.target.value)}
-              className="h-8 rounded-md border border-border bg-background px-2.5 text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+              className="h-8 rounded-md border border-input bg-background px-2.5 text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
             >
               <option value="">All actions</option>
               {ALL_AUDIT_ACTIONS.map((action) => (
@@ -122,7 +122,7 @@ export function AdminAuditPage() {
               id="admin-audit-project"
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
-              className="h-8 rounded-md border border-border bg-background px-2.5 text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+              className="h-8 rounded-md border border-input bg-background px-2.5 text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
             >
               <option value="">All projects</option>
               {(projects ?? []).map((p) => (

@@ -211,12 +211,9 @@ function GeneralSettingsForm({ project }: { project: ProjectDetail }) {
           {slugChanged ? (
             <div
               role="status"
-              className="flex items-start gap-2.5 rounded-md border border-amber-500/35 bg-amber-500/10 p-3 text-xs text-foreground"
+              className="flex items-start gap-2.5 rounded-md border border-warning/30 bg-warning-subtle p-3 text-xs text-foreground"
             >
-              <AlertTriangle
-                className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400"
-                aria-hidden="true"
-              />
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
               <div className="min-w-0 space-y-1">
                 <p className="font-medium">Renaming the slug changes URLs and routing addresses</p>
                 <p className="text-muted-foreground">

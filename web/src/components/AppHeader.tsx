@@ -254,7 +254,7 @@ export function AppHeader() {
       <nav aria-label="Application utilities" className="flex items-center gap-1.5 sm:gap-2">
         {canPreviewAsViewer ? (
           <Button
-            variant={previewAsViewer ? "default" : "ghost"}
+            variant={previewAsViewer ? "primary" : "ghost"}
             size="xs"
             aria-pressed={previewAsViewer}
             aria-label={previewAsViewer ? "Exit viewer preview" : "Preview as viewer"}

@@ -609,7 +609,7 @@ export function InboxLayout() {
             <span>Back to projects</span>
           </Link>
           {!isNotFound ? (
-            <Button variant="default" size="sm" onClick={() => void refetchProject()}>
+            <Button variant="primary" size="sm" onClick={() => void refetchProject()}>
               Retry
             </Button>
           ) : null}
@@ -713,13 +713,10 @@ export function InboxLayout() {
           <div
             role="status"
             data-testid="viewer-preview-banner"
-            className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-500/35 bg-amber-500/10 px-4 py-1.5 text-xs text-foreground"
+            className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-warning/30 bg-warning-subtle px-4 py-1.5 text-xs text-foreground"
           >
             <span className="flex items-center gap-2">
-              <Eye
-                className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
-                aria-hidden="true"
-              />
+              <Eye className="size-3.5 shrink-0 text-warning" aria-hidden="true" />
               <span>
                 <strong className="font-semibold">Previewing as viewer.</strong>{" "}
                 {project.settings.viewer_hide_technical
@@ -882,7 +879,7 @@ export function InboxLayout() {
                 type="button"
                 aria-label="Dismiss sidebar"
                 onClick={() => setDrawerOpen(false)}
-                className="flex-1 bg-black/40"
+                className="flex-1 bg-overlay"
               />
             </div>
           ) : null}

@@ -320,7 +320,7 @@ export function MessageView() {
             >
               <span>{tab.label}</span>
               {tab.id === "attachments" && message.attachments.length > 0 ? (
-                <Badge variant="secondary">{message.attachments.length}</Badge>
+                <Badge variant="neutral">{message.attachments.length}</Badge>
               ) : null}
             </button>
           );

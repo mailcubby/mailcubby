@@ -365,7 +365,7 @@ export function InboxSidebar({
               <span>Unread</span>
             </span>
             {project.unread_count > 0 ? (
-              <Badge variant="accent">{formatCount(project.unread_count)}</Badge>
+              <Badge variant="primary">{formatCount(project.unread_count)}</Badge>
             ) : (
               <span className="text-xs tabular-nums text-muted-foreground">0</span>
             )}
@@ -586,9 +586,9 @@ export function InboxSidebar({
             className={cn(
               "size-2 shrink-0 rounded-full",
               realtimeStatus === "connected"
-                ? "bg-emerald-500"
+                ? "bg-success"
                 : realtimeStatus === "reconnecting"
-                  ? "animate-pulse bg-amber-500"
+                  ? "animate-pulse bg-warning"
                   : "bg-muted-foreground/50",
             )}
             aria-hidden="true"
