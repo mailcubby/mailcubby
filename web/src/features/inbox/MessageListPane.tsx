@@ -5,11 +5,15 @@ import {
   ArrowUp,
   Check,
   CheckSquare,
+  Inbox,
   Mail,
+  MailCheck,
   MailOpen,
   PanelLeftOpen,
   Paperclip,
   RefreshCw,
+  SearchX,
+  Send,
   Trash2,
   X,
 } from "lucide-react";
@@ -23,6 +27,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { EmptyState } from "@/components/EmptyState";
 import { useRealtime } from "@/components/RealtimeProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,6 +100,10 @@ export interface MessageListPaneProps {
   onDeleteAllOpenChange: (open: boolean) => void;
   showSidebarTrigger?: boolean;
   onOpenSidebar?: () => void;
+  /** False below 768 px, where the list is the only pane and owns the empty state. */
+  readingPaneVisible: boolean;
+  onSendTestEmail?: () => void;
+  sendingTestEmail?: boolean;
 }
 
 export function MessageListPane({
@@ -128,6 +137,9 @@ export function MessageListPane({
   onDeleteAllOpenChange,
   showSidebarTrigger = false,
   onOpenSidebar,
+  readingPaneVisible,
+  onSendTestEmail,
+  sendingTestEmail = false,
 }: MessageListPaneProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -775,29 +787,61 @@ export function MessageListPane({
             ))}
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 py-12 text-center text-muted-foreground">
-            <Mail className="size-6 opacity-60" aria-hidden="true" />
-            <p className="text-[13px] font-medium text-foreground">
-              {hasActiveFilter
-                ? "No matching messages"
-                : filter === "unread"
-                  ? "No unread messages"
-                  : "No messages yet"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {hasActiveFilter
-                ? "Try broadening or clearing your search filters."
-                : filter === "unread"
-                  ? "All messages in this project have been read."
-                  : isViewer
-                    ? "Messages captured for this project will appear here."
-                    : "Send mail via SMTP or use the setup guide to test."}
-            </p>
-            {hasActiveFilter ? (
-              <Button variant="outline" size="xs" onClick={onClearSearchAll} className="mt-1">
-                Clear filters
-              </Button>
-            ) : null}
+          <div className="flex h-full items-center justify-center">
+            {filter === "unread" ? (
+              <EmptyState
+                icon={MailCheck}
+                size="sm"
+                title="No unread messages"
+                description="All messages in this project have been read."
+              />
+            ) : hasActiveFilter ? (
+              <EmptyState
+                icon={SearchX}
+                size="sm"
+                title="No matching messages"
+                description="Try broadening or clearing your search filters."
+                action={
+                  <Button variant="outline" size="xs" onClick={onClearSearchAll}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : readingPaneVisible ? (
+              // Audit M6: the reading pane carries "No messages yet" and the
+              // setup guide, so the list only says it is listening.
+              <EmptyState
+                icon={Inbox}
+                size="sm"
+                title="Waiting for mail"
+                description="New messages appear here as they arrive."
+              />
+            ) : (
+              // Below 768 px there is no reading pane, so the list is the empty state.
+              <EmptyState
+                icon={Inbox}
+                size="sm"
+                title="No messages yet"
+                description={
+                  isViewer
+                    ? `Emails sent to ${project.name} appear here as they arrive.`
+                    : "Point your app's SMTP client at Mailcubby, or send a sample message now."
+                }
+                action={
+                  !isViewer && onSendTestEmail ? (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={sendingTestEmail}
+                      onClick={onSendTestEmail}
+                    >
+                      <Send className="size-3.5" aria-hidden="true" />
+                      <span>{sendingTestEmail ? "Sending..." : "Send test email"}</span>
+                    </Button>
+                  ) : undefined
+                }
+              />
+            )}
           </div>
         ) : (
           <div

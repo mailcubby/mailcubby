@@ -671,6 +671,9 @@ export function InboxLayout() {
       readingPaneRef={readingPaneRef}
       deleteAllOpen={deleteAllOpen}
       onDeleteAllOpenChange={setDeleteAllOpen}
+      readingPaneVisible={!isMobile}
+      {...(effectiveRole !== "viewer" ? { onSendTestEmail: () => sendTestMutate() } : {})}
+      sendingTestEmail={sendTestMutation.isPending}
       showSidebarTrigger={!isDesktop || sidebarCollapsed}
       onOpenSidebar={() => {
         if (isDesktop) {

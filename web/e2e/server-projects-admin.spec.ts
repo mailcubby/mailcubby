@@ -257,6 +257,13 @@ test.describe("Phase 7b: Multi-tenant projects, invites, viewer mode, and admin 
         await expect(viewerPage.getByRole("button", { name: "New project" })).toHaveCount(0);
         await expect(viewerPage.getByRole("link", { name: "Admin" })).toHaveCount(0);
 
+        // Audit V2: the viewer's empty reading pane uses plain language, no shortcuts.
+        await expect(viewerPage.getByRole("heading", { name: "No email selected" })).toBeVisible();
+        await expect(
+          viewerPage.getByText("Choose an email from the list to read it."),
+        ).toBeVisible();
+        await expect(viewerPage.getByText("next / prev")).toHaveCount(0);
+
         // Audit V1: after signing in again, the viewer lands in the inbox and
         // reaches the first email in one click.
         await viewerPage.getByRole("button", { name: /Account menu/ }).click();

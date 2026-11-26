@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, MailX } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -232,23 +233,23 @@ export function MessageView() {
   if (error || !message) {
     const isNotFound = error instanceof ApiError && error.status === 404;
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <AlertCircle className="size-7 text-muted-foreground" aria-hidden="true" />
-        <div className="max-w-sm space-y-1">
-          <h2 className="text-sm font-semibold text-foreground">
-            {isNotFound ? "Message not found" : "Failed to load message"}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            {isNotFound
+      <div className="flex h-full items-center justify-center">
+        <EmptyState
+          icon={isNotFound ? MailX : AlertCircle}
+          title={isNotFound ? "Message not found" : "Failed to load message"}
+          description={
+            isNotFound
               ? "This message may have been deleted or removed by retention."
-              : getApiErrorMessage(error)}
-          </p>
-        </div>
-        {!isNotFound ? (
-          <Button variant="outline" size="xs" onClick={() => void refetch()}>
-            Retry
-          </Button>
-        ) : null}
+              : getApiErrorMessage(error)
+          }
+          action={
+            !isNotFound ? (
+              <Button variant="outline" size="xs" onClick={() => void refetch()}>
+                Retry
+              </Button>
+            ) : undefined
+          }
+        />
       </div>
     );
   }

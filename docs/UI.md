@@ -128,12 +128,27 @@ In server mode a non-admin with exactly one project never sees this page: openin
 - **Sidebar** (collapsible with `[`, on the chrome layer like the header): project switcher (project colour dot, name, popover with search, also `Cmd+K`), Inbox (count), Unread (count in an accent pill), tags with counts (click filters; `+` creates tag for members), credentials (filter by credential, owner/member only), Settings link, "Back to all projects", connection quick-copy (SMTP host/port/username) for members, and the Live indicator. Group labels are sentence case ("Tags", "Credentials", "SMTP quick copy"). "Back to all projects" is hidden in server mode for a non-admin with exactly one project (for them the projects home opens the inbox, 3.3), and it renders only once the user and project list have loaded, so it never flashes. Below 1024 px the sidebar opens as a drawer on the same chrome surface.
 - **Skip link**: the first focus stop on the inbox route is "Skip to message list", visually hidden until focused; it moves focus to the message list (the listbox, or the list pane when it is empty), so Tab, Enter reaches the list in two stops.
 - **Message list** (virtualised): search bar with operator autocomplete (typing `from:` suggests recent senders; `tag:` suggests tags; `is:` suggests `unread`/`read`; `has:` suggests `attachment`) and parsed operators shown as removable chips. Row content: unread dot, sender name (bold if unread), subject, snippet (muted, single line), attachment icon, tag pills (max 2 + "+N"), relative time. Multi-select with `x` or checkbox/shift-click; bulk bar shows delete, mark read/unread, tag. Infinite scroll with cursor pagination. Header shows total and "Delete all" (member) with confirmation that states the count and active filter. A 2 px line in the project colour runs along the top of the list pane.
-- **Reading pane**: message header and tabbed views (3.5). When nothing is selected: keyboard hints, or the setup guide when the project has no messages (3.4.1).
+- **Reading pane**: message header and tabbed views (3.5). When nothing is selected it shows an empty state (3.4.2): for owners and members "Select a message to inspect" with the `j`/`k`, `⌘K` and `?` hints; for viewers (and "Preview as viewer") the plain "No email selected. Choose an email from the list to read it." without shortcuts (audit V2); "Nothing to show" when the current filters match nothing; the setup guide when the project has no messages (3.4.1).
 - Pane widths persist per user (localStorage). Below 1024 px the layout becomes two panes (sidebar collapses into a drawer); below 768 px it becomes a single stacked view with back navigation.
 
 #### 3.4.1 Empty inbox = setup guide
 
-For a project with zero messages, the list area shows: "No messages yet", connection details (host, port, TLS, username; password reveal for allowed roles), the integration snippet tabs (3.6.2), recipient routing addresses if enabled, and a primary "Send test email" button (member+; calls `POST /send-test`). Viewers see "No messages yet" only.
+For a project with zero messages, "No messages yet" appears once (audit M6). The reading pane holds it: an empty state with the title, one line ("Point your app's SMTP client at Mailcubby, or send a sample message now.") and a primary "Send test email" button (member+; calls `POST /send-test`), followed by the connection details (host, port, TLS, username; password reveal for allowed roles), recipient routing addresses if enabled, and the integration snippet tabs (3.6.2). Viewers see only the empty state "No messages yet" with "Emails sent to <project> appear here as they arrive." The list pane meanwhile shows a compact "Waiting for mail" state. Below 768 px there is no reading pane, so the list shows the "No messages yet" empty state itself, with "Send test email" for members and owners.
+
+#### 3.4.2 Empty states
+
+Every empty pane uses one component, `EmptyState` (`web/src/components/EmptyState.tsx`): a lucide icon on a neutral tinted circle (`--secondary`, decorative and `aria-hidden`), a title (a heading), one line of help text, and at most one action. It has a compact size for the message list. The tint stays neutral because the accent is reserved for its 1.6 roles. Uses:
+
+| Pane | Title | Action |
+|---|---|---|
+| List, project empty (reading pane visible) | Waiting for mail | none |
+| List, project empty (below 768 px) | No messages yet | Send test email (member+) |
+| List, search or tag/credential filter with no results | No matching messages | Clear filters |
+| List, Unread filter with nothing unread | No unread messages | none |
+| Reading pane, project empty | No messages yet (+ setup guide for member+) | Send test email (member+) |
+| Reading pane, nothing selected | Select a message to inspect (+ keyboard hints); viewers: No email selected | none |
+| Reading pane, filters match nothing | Nothing to show | none |
+| Reading pane, message missing | Message not found | Retry (load errors only) |
 
 ### 3.5 Message view
 
