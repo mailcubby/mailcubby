@@ -138,6 +138,10 @@ test.describe("Phase 9: Setup wizard steps 1-5, project settings UI, and API tok
 
       // Step 1: Setup token
       await expect(page.getByRole("heading", { name: "Step 1: Setup token" })).toBeVisible();
+      // The wizard card keeps one width on every step (Phase 15 follow-up).
+      const setupCard = page.getByRole("main").locator(":scope > div");
+      const stepOneWidth = (await setupCard.boundingBox())?.width;
+      expect(stepOneWidth).toBeGreaterThan(0);
       await page.getByLabel("Setup token").fill(srv.setupToken);
       await page.getByRole("button", { name: "Continue to admin account" }).click();
 
@@ -163,6 +167,19 @@ test.describe("Phase 9: Setup wizard steps 1-5, project settings UI, and API tok
       await expect(page.getByRole("heading", { name: "Step 5: Connect your app" })).toBeVisible();
       await expect(page.getByText("Waiting for first message...")).toBeVisible();
       await expect(page.getByText("MAIL_HOST=mail.agency.test")).toBeVisible();
+      expect((await setupCard.boundingBox())?.width).toBe(stepOneWidth);
+      // No connection value is cut off at that width (default and WordPress tabs).
+      const truncatedValues = () =>
+        page
+          .getByRole("main")
+          .locator("dd span.truncate")
+          .evaluateAll((spans) =>
+            spans.filter((s) => s.scrollWidth > s.clientWidth).map((s) => s.textContent),
+          );
+      expect(await truncatedValues()).toEqual([]);
+      await page.getByRole("tab", { name: "WordPress" }).click();
+      await expect(page.getByText("WP Mail SMTP plugin settings")).toBeVisible();
+      expect(await truncatedValues()).toEqual([]);
 
       await page.getByRole("button", { name: "Send test email" }).click();
       await expect(page.getByText("First message received!")).toBeVisible({ timeout: 5_000 });

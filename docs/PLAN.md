@@ -566,6 +566,20 @@ Acceptance:
 - Axe shows no serious or critical violations on changed screens (e2e).
 - Local mode needs no new step compared to v1.0.0.
 
+### Phase 15 follow-ups
+
+Small leftovers from the Phase 15 final review (frontend only).
+
+Tasks:
+- [x] Invite accept page: the signed-in links out ("Back to projects" on an instance invite, "Go to projects" on an unavailable invite) follow the single-project rule and open `/p/<slug>` as "Back to inbox" / "Go to inbox".
+- [x] Project switcher: "All projects" is hidden for the users who have no "Back to all projects" (audit V4 rule).
+- [x] A non-404 load error on a single-project user's only project offers "Try again" as the primary action instead of a back link to `/`.
+- [x] Setup wizard card keeps one width across all steps without clipping the step 5 snippets.
+- [x] Projects home while the V1 redirect decides: skeleton or documented empty pane (UI.md 4.6).
+
+Acceptance:
+- Vitest or Playwright covers each item; `make check` and `make e2e` green.
+
 ---
 
 ## Backlog (after v0.1.0)
@@ -759,4 +773,6 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
   | `jsdom` | dev | 31.0.1 | 31.0.1 | 31.0.1 | none |
   | `openapi-typescript` | dev | 7.13.0 | 7.13.0 | 7.13.0 | none |
   | `pnpm` (`packageManager`, CI) | tool | 12.21.0 | 12.21.0 | 12.24.0 | skip (minor) |
+- 2026-11-26, Phase 15 follow-ups: the setup wizard card is `max-w-2xl` (672 px) on every step, which supersedes the 15e final-review note that left it widening on step 5. `max-w-xl` (576 px) was measured first and truncated the generated SMTP username on step 5 at 1280 px; `server-onboarding-settings-tokens.spec.ts` now asserts the same card width on steps 1 and 5 and that no connection value is truncated (default and WordPress tabs). Long snippet lines still scroll inside the focusable code block, as before.
+- 2026-11-26, Phase 15 follow-ups: the projects home keeps the empty `aria-busy` pane (no skeleton) while the single-project redirect decides; UI.md 4.6 now names it as the one exception to "skeletons, not spinners". A project card skeleton there is exactly the projects-page flash that 15c recorded and 15e removed, and the pane lasts one request. A Vitest case pins it (no skeleton during the first load, then the redirect). Also in the follow-ups: the invite page's signed-in "Go to projects" on an unavailable invite follows the same rule as "Back to projects" ("Go to inbox"), and a non-404 failure on a single-project user's only project shows only a primary "Try again" (with `RefreshCw`, like the other refresh actions); other load errors keep the back link and "Retry", so no existing selector changed.
 - 2026-11-26, release (owner decision): the first release is **v0.1.0**, not v1.0.0, because the project is pre-alpha with no users. v1.0.0 will be tagged once the REST API, configuration and data format are declared stable; until then a 0.x minor version may change them, with upgrade steps in `CHANGELOG.md`. The `v1.0.0-rc.1` rehearsal (2026-11-25) published a GitHub pre-release with its tag and archives, and (per `.goreleaser.yaml`) only the GHCR tag `1.0.0-rc.1` (pre-releases get no `1.0` or `latest`). The owner deleted the rc.1 GitHub release and its tag on 2026-11-26 (`gh release delete v1.0.0-rc.1 --cleanup-tag`); the GHCR `1.0.0-rc.1` image tags remain and the owner will remove them (needs a token with `delete:packages`). No Homebrew formula was ever published (`skip_upload: auto` skips pre-releases; `mailcubby/homebrew-tap` holds only its README), so nobody needs `brew reinstall`, and v0.1.0 is the first real run of the tap upload and the `HOMEBREW_TAP_GITHUB_TOKEN` check in `release.yml`. `release.yml` derives the notes file from the tag, so `docs/release-notes-v0.1.0.md` is picked up without a workflow change.

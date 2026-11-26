@@ -427,12 +427,9 @@ export function SetupWizardPage() {
 
   return (
     <main className="flex min-h-full items-center justify-center px-4 py-10">
-      <div
-        className={cn(
-          "w-full rounded-lg border border-border bg-surface p-6 shadow-xs",
-          step >= 5 ? "max-w-2xl" : "max-w-lg",
-        )}
-      >
+      {/* One width for every step (wide enough for the step 5 snippets), so the
+          card does not jump when the wizard reaches step 5. */}
+      <div className="w-full max-w-2xl rounded-lg border border-border bg-surface p-6 shadow-xs">
         <div className="mb-5 flex items-center gap-2.5">
           <BrandMark />
           <div>

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NotFoundPage, ProjectLoadError } from "@/components/PageStates";
@@ -158,6 +158,30 @@ describe("single-project redirect after losing the project (audit V1, FR-035)", 
     expect(mockNavigateTo).not.toHaveBeenCalled();
   });
 
+  it("keeps the content area empty, without the page skeleton, while the first load decides", async () => {
+    const client = newClient();
+    const projects = deferred<ReturnType<typeof ok<ProjectSummary[]>>>();
+    mockGet.mockImplementation(async (path: string) => {
+      if (path === "/api/v1/projects") {
+        return projects.promise;
+      }
+      throw new Error(`unexpected GET ${path}`);
+    });
+
+    const { container } = renderWith(client, <ProjectsHome />);
+
+    // UI.md 3.3 and 4.6: a card skeleton here would be the projects page
+    // flashing before the inbox opens, so the pane stays empty for this request.
+    const main = container.querySelector('main[aria-busy="true"]');
+    expect(main).not.toBeNull();
+    expect(main?.childElementCount).toBe(0);
+    expect(container.querySelector(".animate-pulse")).toBeNull();
+
+    projects.resolve(ok([CLIENT_PORTAL]));
+
+    await waitFor(() => expect(mockNavigateTo).toHaveBeenCalledWith("/p/client-portal"));
+  });
+
   it("still opens the only project once the list is settled", async () => {
     const client = newClient();
     mockGet.mockImplementation(async (path: string) => {
@@ -205,5 +229,47 @@ describe("back links of page states for a single-project user (audit V1)", () =>
     expect(screen.getByRole("link", { name: "Back to inbox" }).getAttribute("href")).toBe(
       "/p/client-portal",
     );
+  });
+
+  it("offers only Try again when the only project fails to load", () => {
+    const client = newClient();
+    client.setQueryData(queryKeys.projects(), [CLIENT_PORTAL]);
+    const onRetry = vi.fn();
+
+    renderWith(
+      client,
+      <ProjectLoadError
+        projectSlug="client-portal"
+        error={new ApiError(500, "internal", "database is locked")}
+        onRetry={onRetry}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Could not load project" })).toBeTruthy();
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a way back and Retry when another project is left", () => {
+    const client = newClient();
+    const internal: ProjectSummary = { ...CLIENT_PORTAL, id: 2, slug: "internal", name: "Ops" };
+    client.setQueryData(queryKeys.projects(), [CLIENT_PORTAL, internal]);
+
+    renderWith(
+      client,
+      <ProjectLoadError
+        projectSlug="internal"
+        error={new ApiError(500, "internal", "database is locked")}
+        onRetry={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Back to inbox" }).getAttribute("href")).toBe(
+      "/p/client-portal",
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
   });
 });
