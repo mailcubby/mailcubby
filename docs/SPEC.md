@@ -867,7 +867,7 @@ See FR-105. Admin and owner screens show the log.
 | NFR-003 | Message list | first page p95 under 50 ms with 100k messages in the project | Go benchmark on seeded DB |
 | NFR-004 | Search | p95 under 150 ms for a two-word query with 100k messages | Go benchmark |
 | NFR-005 | Memory | idle RSS under 40 MB; under 150 MB while ingesting at NFR-001 rate with 1M stored messages | manual + CI smoke |
-| NFR-006 | Image size | compressed image about 9 MB (measured for v1.0.0), 25 MB hard limit per arch | CI check on `docker image inspect` |
+| NFR-006 | Image size | compressed image about 9 MB (measured for v0.1.0), 25 MB hard limit per arch | CI check on `docker image inspect` |
 | NFR-007 | Startup | under 1 s to ready with 1M messages (no full scans at startup) | integration test |
 | NFR-008 | Max message size | default 25 MiB, configurable up to 100 MiB | config validation |
 | NFR-009 | UI performance | initial JS under 250 KB gzip; inbox list scrolls 60 fps with 10k loaded rows (virtualised); interaction to next paint under 100 ms | Lighthouse / bundle size check in CI |
