@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { test as base, expect } from "@playwright/test";
+import { test as base, expect, type Page } from "@playwright/test";
 
 export interface E2EConfig {
   httpURL: string;
@@ -109,4 +109,19 @@ export async function createProjectViaAPI(
 /** uniqueSlug returns a project slug unique per test attempt, so Playwright retries never hit 409 conflicts. */
 export function uniqueSlug(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/**
+ * chooseTheme switches the theme from the header menu (the account menu in
+ * server mode, the preferences menu in local mode) and waits for it to apply.
+ */
+export async function chooseTheme(page: Page, theme: "Light" | "Dark" | "System"): Promise<void> {
+  await page.getByRole("button", { name: /Account menu|Preferences menu/ }).click();
+  await page.getByRole("menuitemradio", { name: theme }).click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  if (theme === "Dark") {
+    await expect(page.locator("html")).toHaveClass(/(^|\s)dark(\s|$)/);
+  } else if (theme === "Light") {
+    await expect(page.locator("html")).not.toHaveClass(/(^|\s)dark(\s|$)/);
+  }
 }

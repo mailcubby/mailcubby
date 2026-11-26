@@ -621,10 +621,10 @@ export function InboxLayout() {
   if (projectPending || !project) {
     return (
       <main className="flex h-full gap-px bg-border">
-        <div className="hidden w-56 flex-col gap-3 bg-surface p-3 lg:flex">
-          <Skeleton className="h-8 w-full" />
-          <Skeleton className="h-7 w-full" />
-          <Skeleton className="h-7 w-full" />
+        <div className="hidden w-56 flex-col gap-3 bg-sidebar p-3 lg:flex">
+          <Skeleton className="h-9 w-full bg-sidebar-active" />
+          <Skeleton className="h-8 w-full bg-sidebar-active" />
+          <Skeleton className="h-8 w-full bg-sidebar-active" />
         </div>
         <div className="flex w-80 flex-col gap-2 bg-surface p-3">
           <Skeleton className="h-8 w-full" />
@@ -774,7 +774,7 @@ export function InboxLayout() {
                       onCollapse={() => setSidebarCollapsed(true)}
                     />
                   </ResizablePanel>
-                  <ResizableHandle aria-label="Resize sidebar" />
+                  <ResizableHandle aria-label="Resize sidebar" className="bg-sidebar-border" />
                 </>
               ) : null}
 
@@ -843,15 +843,17 @@ export function InboxLayout() {
 
           {!isDesktop && drawerOpen ? (
             <div className="fixed inset-0 z-40 flex">
-              <div className="relative z-10 flex h-full w-64 flex-col border-r border-border bg-surface shadow-xl">
-                <div className="flex h-11 items-center justify-between border-b border-border px-3">
-                  <span className="text-xs font-semibold text-foreground">Navigation</span>
+              <div
+                data-chrome
+                className="relative z-10 flex h-full w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl"
+              >
+                <div className="flex h-11 items-center justify-between border-b border-sidebar-border px-3">
+                  <span className="text-xs font-semibold text-sidebar-foreground">Navigation</span>
                   <Button
-                    variant="ghost"
+                    variant="chrome"
                     size="icon"
                     aria-label="Close sidebar"
                     onClick={() => setDrawerOpen(false)}
-                    className="size-7"
                   >
                     <X className="size-4" aria-hidden="true" />
                   </Button>

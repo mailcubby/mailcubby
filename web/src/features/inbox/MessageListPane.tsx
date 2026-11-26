@@ -565,9 +565,19 @@ export function MessageListPane({
 
   return (
     <section
+      id="message-list"
+      tabIndex={-1}
       aria-label="Message list"
-      className="relative flex h-full min-w-0 flex-col bg-surface text-[13px]"
+      className="relative flex h-full min-w-0 flex-col bg-surface text-[13px] outline-none"
     >
+      <div
+        aria-hidden="true"
+        data-testid="project-colour-line"
+        className={cn(
+          "h-0.5 shrink-0",
+          PROJECT_COLOR_DOT_CLASS[project.color] ?? PROJECT_COLOR_DOT_CLASS.slate,
+        )}
+      />
       {!isViewer && selectedIds.size > 0 ? (
         <div
           role="toolbar"

@@ -4,7 +4,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { getE2EConfig } from "./helpers";
+import { chooseTheme, getE2EConfig } from "./helpers";
 
 const DEV_APP_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
@@ -201,6 +201,19 @@ test.describe("Server mode setup wizard, login, account, and logout", () => {
       await page.getByRole("link", { name: "Security" }).click();
       await expect(page).toHaveURL(`${srv.httpURL}/account/security`);
       await expect(page.getByText("Current", { exact: true })).toBeVisible();
+
+      // Theme lives in the account menu (Phase 15b, audit V3), not in the header.
+      await expect(page.getByRole("button", { name: "Dark", exact: true })).toHaveCount(0);
+      await chooseTheme(page, "Dark");
+      await page.reload();
+      await expect(page.locator("html")).toHaveClass(/(^|\s)dark(\s|$)/);
+      await page.getByRole("button", { name: "Account menu" }).click();
+      await expect(page.getByRole("menuitemradio", { name: "Dark" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      await page.keyboard.press("Escape");
+      await chooseTheme(page, "Light");
 
       // Log out from account menu -> redirected to /login.
       await page.getByRole("button", { name: "Account menu" }).click();

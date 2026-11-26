@@ -3,7 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Check,
-  ChevronDown,
+  ChevronsUpDown,
   Copy,
   Inbox,
   KeyRound,
@@ -17,7 +17,6 @@ import {
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useRealtime } from "@/components/RealtimeProvider";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -36,7 +35,7 @@ import {
 } from "@/lib/api";
 import { copyToClipboard } from "@/lib/clipboard";
 import { formatCount, PROJECT_COLOR_DOT_CLASS, PROJECT_COLORS } from "@/lib/format";
-import { metaQueryOptions, projectsQueryOptions } from "@/lib/queries";
+import { authMeQueryOptions, metaQueryOptions, projectsQueryOptions } from "@/lib/queries";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import type { InboxFilter } from "@/routes/p.$project";
@@ -77,6 +76,8 @@ export function InboxSidebar({
   const { status: realtimeStatus } = useRealtime();
   const { data: meta } = useQuery(metaQueryOptions());
   const { data: projects } = useQuery(projectsQueryOptions());
+  const isServer = meta?.mode === "server";
+  const { data: me } = useQuery({ ...authMeQueryOptions(), enabled: isServer });
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [switcherFilter, setSwitcherFilter] = useState("");
@@ -186,11 +187,21 @@ export function InboxSidebar({
   const showServerCredentials = meta?.mode === "server" && effectiveRole !== "viewer";
   const quickCopyCredential = credentials.find((c) => !c.disabled) ?? credentials[0];
   const quickCopyUser = meta?.mode === "local" ? project.slug : quickCopyCredential?.username;
+  // Audit V4: with exactly one project there is nowhere to go back to (server
+  // mode, non-admins only; the logo still links to the projects home).
+  const showBackToProjects = !(
+    isServer &&
+    me !== undefined &&
+    !me.user.is_admin &&
+    projects !== undefined &&
+    projects.length === 1
+  );
 
   return (
     <aside
       aria-label="Project sidebar"
-      className="flex h-full flex-col justify-between bg-surface text-[13px]"
+      data-chrome
+      className="flex h-full flex-col justify-between bg-sidebar text-[13px] text-sidebar-foreground"
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-2.5">
         <div className="relative" ref={switcherRef}>
@@ -200,25 +211,25 @@ export function InboxSidebar({
               aria-expanded={switcherOpen}
               aria-haspopup="listbox"
               onClick={() => setSwitcherOpen((prev) => !prev)}
-              className="flex h-8 min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-md border border-border bg-background px-2.5 text-left transition-colors hover:bg-muted"
+              className="flex h-9 min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-md border border-sidebar-border bg-sidebar-input px-2.5 text-left transition-colors duration-150 hover:bg-sidebar-hover"
             >
               <span className="flex min-w-0 items-center gap-2">
                 <span
                   className={cn("size-2.5 shrink-0 rounded-full", dotClass)}
                   aria-hidden="true"
                 />
-                <span className="truncate font-medium text-foreground">{project.name}</span>
+                <span className="truncate font-medium text-sidebar-foreground">{project.name}</span>
               </span>
-              <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <ChevronsUpDown className="size-3.5 shrink-0 text-sidebar-muted" aria-hidden="true" />
             </button>
             {onCollapse ? (
               <Button
-                variant="ghost"
+                variant="chrome"
                 size="icon"
                 aria-label="Collapse sidebar"
                 title="Collapse sidebar"
                 onClick={onCollapse}
-                className="size-8"
+                className="size-9"
               >
                 <PanelLeftClose className="size-4" aria-hidden="true" />
               </Button>
@@ -226,7 +237,10 @@ export function InboxSidebar({
           </div>
 
           {switcherOpen ? (
-            <div className="absolute top-full left-0 z-30 mt-1 w-full min-w-52 rounded-md border border-border bg-surface p-1.5 shadow-lg">
+            <div
+              data-surface
+              className="absolute top-full left-0 z-30 mt-1 w-full min-w-52 rounded-md border border-border bg-surface p-1.5 text-foreground shadow-lg"
+            >
               <div className="relative mb-1.5">
                 <label htmlFor={switcherSearchId} className="sr-only">
                   Switch project
@@ -327,19 +341,17 @@ export function InboxSidebar({
               onCloseDrawer?.();
             }}
             className={cn(
-              "flex h-8 w-full cursor-pointer items-center justify-between rounded-md px-2.5 text-[13px] transition-colors",
+              "flex h-8 w-full cursor-pointer items-center justify-between rounded-md px-2.5 text-[13px] transition-colors duration-150",
               filter === "all" && !activeTag && activeCredentialId === undefined
-                ? "bg-muted font-medium text-foreground"
-                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                ? "bg-sidebar-active font-medium text-sidebar-active-foreground"
+                : "text-sidebar-foreground hover:bg-sidebar-hover",
             )}
           >
-            <span className="flex items-center gap-2">
-              <Inbox className="size-3.5" aria-hidden="true" />
+            <span className="flex items-center gap-2.5">
+              <Inbox className="size-4" aria-hidden="true" />
               <span>Inbox</span>
             </span>
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {formatCount(project.message_count)}
-            </span>
+            <span className="text-xs tabular-nums">{formatCount(project.message_count)}</span>
           </button>
 
           <button
@@ -354,32 +366,32 @@ export function InboxSidebar({
               onCloseDrawer?.();
             }}
             className={cn(
-              "flex h-8 w-full cursor-pointer items-center justify-between rounded-md px-2.5 text-[13px] transition-colors",
+              "flex h-8 w-full cursor-pointer items-center justify-between rounded-md px-2.5 text-[13px] transition-colors duration-150",
               filter === "unread" && !activeTag && activeCredentialId === undefined
-                ? "bg-muted font-medium text-foreground"
-                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                ? "bg-sidebar-active font-medium text-sidebar-active-foreground"
+                : "text-sidebar-foreground hover:bg-sidebar-hover",
             )}
           >
-            <span className="flex items-center gap-2">
-              <MailOpen className="size-3.5" aria-hidden="true" />
+            <span className="flex items-center gap-2.5">
+              <MailOpen className="size-4" aria-hidden="true" />
               <span>Unread</span>
             </span>
             {project.unread_count > 0 ? (
-              <Badge variant="primary">{formatCount(project.unread_count)}</Badge>
+              <span className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-sidebar-accent px-1.5 text-[11px] font-semibold tabular-nums text-sidebar-accent-foreground">
+                {formatCount(project.unread_count)}
+              </span>
             ) : (
-              <span className="text-xs tabular-nums text-muted-foreground">0</span>
+              <span className="text-xs tabular-nums">0</span>
             )}
           </button>
         </nav>
 
         <section aria-label="Tags" className="mt-5">
           <div className="mb-1 flex items-center justify-between px-2.5">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Tags
-            </h2>
+            <h2 className="text-xs font-medium text-sidebar-muted">Tags</h2>
             {canManageTags ? (
               <Button
-                variant="ghost"
+                variant="chrome"
                 size="icon"
                 aria-label="New tag"
                 title="Create tag"
@@ -388,7 +400,7 @@ export function InboxSidebar({
                   setNewTagError(null);
                   setCreateTagOpen(true);
                 }}
-                className="size-5 text-muted-foreground hover:text-foreground"
+                className="size-6"
               >
                 <Plus className="size-3.5" aria-hidden="true" />
               </Button>
@@ -396,7 +408,7 @@ export function InboxSidebar({
           </div>
 
           {tags.length === 0 ? (
-            <p className="px-2.5 py-1 text-xs text-muted-foreground">No tags yet</p>
+            <p className="px-2.5 py-1 text-xs text-sidebar-muted">No tags yet</p>
           ) : (
             <ul className="flex flex-col gap-0.5">
               {tags.map((tag) => {
@@ -415,10 +427,10 @@ export function InboxSidebar({
                         onCloseDrawer?.();
                       }}
                       className={cn(
-                        "flex h-7 min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 text-xs transition-colors",
+                        "flex h-8 min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 text-[13px] transition-colors duration-150",
                         isSelected
-                          ? "bg-muted font-medium text-foreground"
-                          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                          ? "bg-sidebar-active font-medium text-sidebar-active-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-hover",
                       )}
                     >
                       <span className="flex min-w-0 items-center gap-2">
@@ -430,7 +442,10 @@ export function InboxSidebar({
                       </span>
                       <span
                         data-testid={`sidebar-tag-count-${tag.name}`}
-                        className="shrink-0 text-[11px] tabular-nums text-muted-foreground"
+                        className={cn(
+                          "shrink-0 text-xs tabular-nums",
+                          !isSelected && "text-sidebar-muted",
+                        )}
                       >
                         {formatCount(tag.message_count)}
                       </span>
@@ -441,7 +456,7 @@ export function InboxSidebar({
                         aria-label={`Delete tag ${tag.name}`}
                         title={`Delete tag ${tag.name}`}
                         onClick={() => setDeletingTag(tag)}
-                        className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+                        className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-sm text-sidebar-muted opacity-0 transition-opacity hover:bg-sidebar-hover hover:text-sidebar-foreground focus-visible:opacity-100 group-hover:opacity-100"
                       >
                         <Trash2 className="size-3" aria-hidden="true" />
                       </button>
@@ -456,13 +471,11 @@ export function InboxSidebar({
         {showServerCredentials ? (
           <section aria-label="Credentials" className="mt-5">
             <div className="mb-1 flex items-center justify-between px-2.5">
-              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Credentials
-              </h2>
+              <h2 className="text-xs font-medium text-sidebar-muted">Credentials</h2>
             </div>
 
             {credentials.length === 0 ? (
-              <p className="px-2.5 py-1 text-xs text-muted-foreground">No credentials yet</p>
+              <p className="px-2.5 py-1 text-xs text-sidebar-muted">No credentials yet</p>
             ) : (
               <ul className="flex flex-col gap-0.5">
                 {credentials.map((cred) => {
@@ -478,20 +491,21 @@ export function InboxSidebar({
                           onCloseDrawer?.();
                         }}
                         className={cn(
-                          "flex h-7 w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 text-xs transition-colors",
+                          "flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 text-[13px] transition-colors duration-150",
                           isSelected
-                            ? "bg-muted font-medium text-foreground"
-                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                            ? "bg-sidebar-active font-medium text-sidebar-active-foreground"
+                            : "text-sidebar-foreground hover:bg-sidebar-hover",
                         )}
                       >
                         <span className="flex min-w-0 items-center gap-2">
-                          <KeyRound className="size-3 shrink-0" aria-hidden="true" />
+                          <KeyRound
+                            className="size-3.5 shrink-0 text-sidebar-muted"
+                            aria-hidden="true"
+                          />
                           <span className="truncate">{cred.label}</span>
                         </span>
                         {cred.disabled ? (
-                          <span className="shrink-0 text-[10px] text-muted-foreground">
-                            Disabled
-                          </span>
+                          <span className="shrink-0 text-[11px] text-sidebar-muted">Disabled</span>
                         ) : null}
                       </button>
                     </li>
@@ -502,7 +516,12 @@ export function InboxSidebar({
           </section>
         ) : null}
 
-        <div className="mt-6 flex flex-col gap-0.5 border-t border-border pt-3">
+        <div
+          className={cn(
+            "mt-5 flex flex-col gap-0.5 border-t border-sidebar-border pt-3",
+            effectiveRole === "viewer" && !showBackToProjects && "hidden",
+          )}
+        >
           {effectiveRole !== "viewer" ? (
             <Link
               to={
@@ -512,58 +531,58 @@ export function InboxSidebar({
               }
               params={{ project: project.slug }}
               onClick={onCloseDrawer}
-              className="flex h-7 items-center gap-2 rounded-md px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px] text-sidebar-foreground transition-colors duration-150 hover:bg-sidebar-hover"
             >
-              <Settings className="size-3.5" aria-hidden="true" />
+              <Settings className="size-4 text-sidebar-muted" aria-hidden="true" />
               <span>Settings</span>
             </Link>
           ) : null}
-          <Link
-            to="/"
-            onClick={onCloseDrawer}
-            className="flex h-7 items-center gap-2 rounded-md px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <ArrowLeft className="size-3.5" aria-hidden="true" />
-            <span>Back to all projects</span>
-          </Link>
+          {showBackToProjects ? (
+            <Link
+              to="/"
+              onClick={onCloseDrawer}
+              className="flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px] text-sidebar-foreground transition-colors duration-150 hover:bg-sidebar-hover"
+            >
+              <ArrowLeft className="size-4 text-sidebar-muted" aria-hidden="true" />
+              <span>Back to all projects</span>
+            </Link>
+          ) : null}
         </div>
       </div>
 
-      <div className="border-t border-border">
+      <div className="border-t border-sidebar-border">
         {effectiveRole !== "viewer" && (meta?.mode === "local" || meta?.mode === "server") ? (
           <div className="p-3">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              SMTP Quick Copy
-            </p>
+            <p className="text-xs font-medium text-sidebar-muted">SMTP quick copy</p>
             <dl className="mt-2 flex flex-col gap-1.5 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <dt className="text-muted-foreground">Server</dt>
+                <dt className="text-sidebar-muted">Server</dt>
                 <dd className="min-w-0">
                   <button
                     type="button"
                     onClick={() => void copyToClipboard(`${smtpHost}:${smtpPort}`, "SMTP server")}
-                    className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 font-mono text-[11px] text-foreground hover:bg-muted"
+                    className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 font-mono text-[11px] text-sidebar-foreground hover:bg-sidebar-hover"
                     title="Copy host and port"
                   >
                     <span className="truncate">
                       {smtpHost}:{smtpPort}
                     </span>
-                    <Copy className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <Copy className="size-3 shrink-0 text-sidebar-muted" aria-hidden="true" />
                   </button>
                 </dd>
               </div>
               {quickCopyUser ? (
                 <div className="flex items-center justify-between gap-2">
-                  <dt className="text-muted-foreground">User</dt>
+                  <dt className="text-sidebar-muted">User</dt>
                   <dd className="min-w-0">
                     <button
                       type="button"
                       onClick={() => void copyToClipboard(quickCopyUser, "SMTP username")}
-                      className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 font-mono text-[11px] text-foreground hover:bg-muted"
+                      className="inline-flex max-w-full cursor-pointer items-center gap-1 rounded-sm px-1 py-0.5 font-mono text-[11px] text-sidebar-foreground hover:bg-sidebar-hover"
                       title="Copy SMTP username"
                     >
                       <span className="truncate">{quickCopyUser}</span>
-                      <Copy className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <Copy className="size-3 shrink-0 text-sidebar-muted" aria-hidden="true" />
                     </button>
                   </dd>
                 </div>
@@ -573,7 +592,7 @@ export function InboxSidebar({
         ) : null}
 
         <div
-          className="flex items-center gap-2 border-t border-border px-3 py-2 text-[11px] text-muted-foreground"
+          className="flex items-center gap-2 border-t border-sidebar-border px-3 py-2 text-xs text-sidebar-muted"
           title={
             realtimeStatus === "connected"
               ? "Live updates connected"
@@ -586,10 +605,10 @@ export function InboxSidebar({
             className={cn(
               "size-2 shrink-0 rounded-full",
               realtimeStatus === "connected"
-                ? "bg-success"
+                ? "bg-sidebar-success"
                 : realtimeStatus === "reconnecting"
-                  ? "animate-pulse bg-warning"
-                  : "bg-muted-foreground/50",
+                  ? "animate-pulse bg-sidebar-warning"
+                  : "bg-sidebar-muted",
             )}
             aria-hidden="true"
           />
@@ -666,7 +685,12 @@ export function InboxSidebar({
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={createTagMutation.isPending}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              disabled={createTagMutation.isPending}
+            >
               {createTagMutation.isPending ? "Creating..." : "Create tag"}
             </Button>
           </div>
