@@ -11,7 +11,7 @@ The web UI is a single-page app in `web/`, built by Vite and embedded in the Go 
 5. **Themes.** Light, dark and system (default). Theme applied before first paint by `/theme.js` (a static file, because inline scripts are blocked by CSP).
 6. **Colour carries identity and state, not decoration.** Colour has three jobs:
    - **Chrome layer.** The top bar and sidebar sit on one deep ink-green surface (`--sidebar-*`) in both themes. In dark mode the chrome is lighter than the canvas, so it reads as a layer.
-   - **Accent.** One teal accent (`--accent`, `--primary`, `--ring`) is used only for focus rings, selection, unread indicators, primary buttons and the realtime arrival highlight.
+   - **Accent.** One teal accent (`--accent`, `--primary`, `--ring`) is used only for focus rings, selection (the open message, the active settings section, the chosen option), unread indicators, primary buttons, the realtime arrival highlight, and the soft `accent` badge that marks the elevated or current item in a set (the owner role, Admin, the current session, `write` token scope, an overridden instance setting). Empty-state icons, avatars and waiting states stay neutral.
    - **Semantic states.** `success`, `warning`, `info` and `destructive` mark status (alerts, status badges, the realtime dot). A status badge always carries text and a leading dot. A role badge always carries text and an icon (owner `Crown`, member `Pencil`, viewer `Eye`). Colour is never the only signal.
 
    Project colours appear only as small dots and the project line on the inbox list header. Content panes are neutral, and the email preview canvas is never themed. Components use only the tokens below: no raw Tailwind palette classes or hex values in `.tsx` (enforced by `web/src/styles/palette-guard.test.ts`).
@@ -80,7 +80,9 @@ Inbox search state lives in URL search params (`?q=from:alice is:unread&tag=invo
 
 ### 3.1 Login
 
-Centered card: instance name, email, password, "Sign in" (primary button). Errors inline under the form (generic "Email or password is incorrect"). Rate limit shows "Too many attempts, try again in N minutes". No sign-up link (invites only). Local mode never shows this screen.
+Centered card: the brand mark, the instance name as the title (from `GET /api/v1/meta`, audit V6) with "Sign in to your account" under it, email, password, "Sign in" (primary button). When the instance name is not "Mailcubby", a muted "Powered by Mailcubby" line sits under the card, so the product name stays visible without competing with the instance. Errors inline under the form on the `--destructive-subtle` alert (generic "Email or password is incorrect"). Rate limit shows "Too many attempts, try again in N minutes". No sign-up link (invites only). Local mode never shows this screen.
+
+The invite and reset pages use the same centered card. An invite link that is invalid, used or expired (and invites in local mode) shows the `EmptyState` (3.4.2) inside the card: "Invitation unavailable" with one primary action (Sign in, or Go to projects when signed in).
 
 ### 3.2 Setup wizard (first run, server mode)
 
@@ -90,23 +92,23 @@ The progress indicator uses short labels that never truncate (Token, Admin, Inst
 
 1. **Setup token**: paste the token from the server log. The step lists where to find it, each command with a copy button: Docker Compose (`docker compose -f deploy/compose.server.yml logs mailcubby | grep "setup token" | tail -1`), Docker (`docker logs <container> 2>&1 | grep "setup token" | tail -1`) and the binary (the `setup token:` line in the terminal or log of `mailcubby serve`). A restart prints a new token, so the latest one wins. The "Paste the setup token" error shows only after a submit attempt and clears when the user types.
 2. **Admin account**: name, email, password (strength hint, minimum 10 characters).
-3. **Instance**: instance name (sent as `instance_name`); read-only checks with green/amber status, all from `GET /api/v1/meta`: configured `base_url` vs `window.location.origin`, SMTP public host, port and TLS mode (`none` is amber), inbox domain (if set).
+3. **Instance**: instance name (sent as `instance_name`); read-only checks with success/warning status pills, all from `GET /api/v1/meta`: configured `base_url` vs `window.location.origin`, SMTP public host, port and TLS mode (`none` is a warning), inbox domain (if set).
 4. **First project**: name (slug auto-derived, editable). Creates the project and its first SMTP credential.
-5. **Connect your app**: connection details and integration snippets (3.6.2), "Send test email" button, and a live "waiting for first message" indicator that turns into a success state when any message arrives (SSE). "Go to inbox".
+5. **Connect your app**: connection details and integration snippets (3.6.2), "Send test email" button, and a live status card. While waiting it is neutral ("Waiting for first message...", a spinner on a `--secondary` circle); when any message arrives (SSE) it becomes the success state (audit M9): `--success-subtle` card, a check on a `--surface` circle, "First message received!" with the subject and sender. "Go to inbox".
 
 ### 3.3 Projects home
 
-In server mode a non-admin with exactly one project never sees this page: opening `/` (signing in without a return URL, accepting an instance invite, the logo, `g p`) replaces it with that project's inbox (SPEC FR-035, audit V1). An explicit return URL after sign-in wins. Admins, users with zero or two or more projects, and local mode see the page as below.
+In server mode a user who is neither an admin nor allowed to create projects and has exactly one project never sees this page: opening `/` (signing in without a return URL, accepting an instance invite, the logo, `g p`) replaces it with that project's inbox (SPEC FR-035, audit V1). While that decision waits for the project list, the content area stays empty (no skeleton), so the page never flashes before the inbox. An explicit return URL after sign-in wins. Admins, users who can create projects (the page holds "New project"), users with zero or two or more projects, and local mode see the page as below.
 
 - App header (every authenticated screen, 48 px, on the chrome layer): logo and instance name (links to this page), "Local mode" pill in local mode, "Admin" link (instance admins), then on the right "Preview as viewer" (project owners, inbox only), the search field that opens the command palette (`Cmd K`), the keyboard-shortcuts button (hidden for viewers: the effective role in a project, or outside a project a non-admin whose every project role is viewer; `?` and the palette still open the shortcuts), and the header menu. A viewer's header has at most three controls: logo, search and account menu.
 - Header menu: in server mode the account menu (avatar initial and name; Profile, Security and sessions, API tokens, Preferences, Admin for admins, Theme, Sign out); in local mode a "Preferences menu" with Preferences and Theme. Theme is a Light / Dark / System radio group (`menuitemradio`); choosing one applies it and closes the menu. The theme is also in the command palette and in Account > Preferences. The sign-in, setup, invite and reset pages have no account menu and keep a small Light / Dark / System toggle in their own top bar.
-- Page: "New project" (if allowed).
+- Page: title "Projects" (20 px, like the settings, account and admin titles) and "New project" (if allowed).
 - Filter input ("Filter projects", `/` focuses it).
 - Project list as cards in a responsive grid (or compact list, toggle remembered). Each card: colour dot, name, slug (mono, muted), role badge (owner/member/viewer), unread count (accent badge), total messages, size, "last message 3m ago", 24 h sparkline (inline SVG, 24 bars, muted colour; accent for the latest hour if non-zero).
 - Realtime: counts and sparklines update via SSE; a card briefly highlights when mail arrives.
 - Keyboard: arrows/`j`/`k` move focus, `Enter` opens, `n` new project.
 - Local mode: a banner with "SMTP `localhost:1025`, any username creates a project" and copy buttons.
-- Empty state (no projects): explains what a project is and offers "New project" (or, for users without permission, "Ask an admin to add you to a project").
+- Empty state (no projects, `EmptyState` on a dashed card): explains what a project is and offers "New project" (or, for users without permission, "Ask an admin to add you to a project"). A filter without matches shows "No matching projects" with "Clear filter"; a failed load shows "Could not load projects" with Retry.
 
 ### 3.4 Project inbox (three resizable panes)
 
@@ -125,8 +127,8 @@ In server mode a non-admin with exactly one project never sees this page: openin
 +------------+-------------------------------+----------------------------------+
 ```
 
-- **Sidebar** (collapsible with `[`, on the chrome layer like the header): project switcher (project colour dot, name, popover with search, also `Cmd+K`), Inbox (count), Unread (count in an accent pill), tags with counts (click filters; `+` creates tag for members), credentials (filter by credential, owner/member only), Settings link, "Back to all projects", connection quick-copy (SMTP host/port/username) for members, and the Live indicator. Group labels are sentence case ("Tags", "Credentials", "SMTP quick copy"). "Back to all projects" is hidden in server mode for a non-admin with exactly one project (for them the projects home opens the inbox, 3.3), and it renders only once the user and project list have loaded, so it never flashes. Below 1024 px the sidebar opens as a drawer on the same chrome surface.
-- **Skip link**: the first focus stop on the inbox route is "Skip to message list", visually hidden until focused; it moves focus to the message list (the listbox, or the list pane when it is empty), so Tab, Enter reaches the list in two stops.
+- **Sidebar** (collapsible with `[`, on the chrome layer like the header): project switcher (project colour dot, name, popover with search, also `Cmd+K`), Inbox (count), Unread (count in an accent pill), tags with counts (click filters; `+` creates tag for members), credentials (filter by credential, owner/member only), Settings link, "Back to all projects", connection quick-copy (SMTP host/port/username) for members, and the Live indicator. Group labels are sentence case ("Tags", "Credentials", "SMTP quick copy"). "Back to all projects" is hidden in server mode for exactly the users that 3.3 sends straight to their inbox (no admin rights, no project creation, one project), and it renders only once the user and project list have loaded, so it never flashes. Below 1024 px the sidebar opens as a drawer on the same chrome surface.
+- **Skip link**: the first focus stop on the inbox route is "Skip to message list", visually hidden until focused; it moves focus to the message list (the listbox, or the list pane when it is empty), so Tab, Enter reaches the list in two stops. It renders only while the list is on screen: below 768 px an open message replaces the list, and the skip link is absent there (the pane's "Back to <project>" link returns to the list).
 - **Message list** (virtualised): search bar with operator autocomplete (typing `from:` suggests recent senders; `tag:` suggests tags; `is:` suggests `unread`/`read`; `has:` suggests `attachment`) and parsed operators shown as removable chips. Row content, on three levels: unread dot (accent), sender name and relative time (both bolder when unread), subject (medium weight when unread) with the attachment icon and tag pills (soft neutral `Badge` with the tag colour dot, max 2 + "+N"), and the snippet (muted, single line). States use tokens only: the open message has the `--accent-subtle` tint (no side bar), checked rows `--muted`, hover `--muted`, keyboard focus an inset 2 px `--ring` outline (the list scrolls, so an outside ring would be clipped), and a new arrival fades from `--accent-subtle` over 1.5 s. The list title ("Inbox", "Unread", a tag or credential) is 15 px semibold with the count beside it; the bulk bar sits on `--accent-subtle`. Multi-select with `x` or checkbox/shift-click; bulk bar shows delete, mark read/unread, tag. Infinite scroll with cursor pagination. Header shows total and "Delete all" (member) with confirmation that states the count and active filter. A 2 px line in the project colour runs along the top of the list pane.
 - **Reading pane**: message header and tabbed views (3.5). When nothing is selected it shows an empty state (3.4.2): for owners and members "Select a message to inspect" with the `j`/`k`, `⌘K` and `?` hints; for viewers (and "Preview as viewer") the plain "No email selected. Choose an email from the list to read it." without shortcuts (audit V2); "Nothing to show" when the current filters match nothing; the setup guide when the project has no messages (3.4.1).
 - Pane widths persist per user (localStorage). Below 1024 px the layout becomes two panes (sidebar collapses into a drawer); below 768 px it becomes a single stacked view with back navigation.
@@ -137,7 +139,7 @@ For a project with zero messages, "No messages yet" appears once (audit M6). The
 
 #### 3.4.2 Empty states
 
-Every empty pane uses one component, `EmptyState` (`web/src/components/EmptyState.tsx`): a lucide icon on a neutral tinted circle (`--secondary`, decorative and `aria-hidden`), a title (a heading), one line of help text, and at most one action. It has a compact size for the message list. The tint stays neutral because the accent is reserved for its 1.6 roles. Uses:
+Every empty, error and not-found state uses one component, `EmptyState` (`web/src/components/EmptyState.tsx`): a lucide icon on a neutral tinted circle (`--secondary`, decorative and `aria-hidden`), a title (an `h1` for a full page, `h2` for a pane, `h3` inside a card), one line of help text, and at most one action (Back and Retry may sit side by side on an error page). It has a compact size for the message list. The tint stays neutral because the accent is reserved for its 1.6 roles. Inbox uses:
 
 | Pane | Title | Action |
 |---|---|---|
@@ -149,6 +151,21 @@ Every empty pane uses one component, `EmptyState` (`web/src/components/EmptyStat
 | Reading pane, nothing selected | Select a message to inspect (+ keyboard hints); viewers: No email selected | none |
 | Reading pane, filters match nothing | Nothing to show | none |
 | Reading pane, message missing | Message not found | Retry (load errors only) |
+| Attachments tab, no parts | No attachments | none |
+
+Elsewhere (audit V7), page-level states are centred in the content area under the app header (`web/src/components/PageStates.tsx`), and card states sit in the card body:
+
+| Where | Title | Action |
+|---|---|---|
+| Unknown address (router default) | Page not found | Back to projects |
+| Inbox or settings, project 404 | Project not found or you do not have access | Back to projects |
+| Inbox or settings, project load error | Could not load project | Back to projects, Retry |
+| Project settings for a viewer | Settings unavailable | Back to <project> |
+| Projects home | No projects yet / No matching projects / Could not load projects | New project / Clear filter / Retry |
+| SMTP credentials card | No SMTP credentials yet | Create first credential (owners) |
+| API tokens card | No API tokens yet (or Could not load API tokens) | Create first token (or Retry) |
+| Project audit log, not an owner or local mode | Audit log unavailable | none |
+| Invite page | Invitation unavailable, Too many requests, Invitations unavailable (local mode) | Sign in or Go to projects |
 
 ### 3.5 Message view
 
@@ -176,7 +193,7 @@ Viewers with `viewer_hide_technical` see only Preview, Text and Attachments. The
 
 Left nav of sections; each section saves independently with optimistic UI and toast confirmation. Owner-only sections are hidden for other roles.
 
-Layout (Phase 15d, shared with account and admin pages through `SettingsShell`, `web/src/components/SettingsShell.tsx`): a "Back to <project>" link, then the page title (20 px; for projects the colour dot, the name and its `RoleBadge`) with a one-line subtitle and, on the right, the page's main action (at most one primary button per screen). Below it, a 200 px section nav (34 px items, lucide icon, the active item on `--accent-subtle`; a horizontal scroller under 768 px) beside the content column, at most 1024 px wide (1152 px for admin). Content sits in `Card`s (`web/src/components/ui/card.tsx`: 12 px radius, `--surface`, hairline border; `CardHeader` title 15 px semibold, description 13 px muted, actions on the right; `CardFooter` for a form's Reset and Save, with Save primary). Tables use `web/src/components/ui/table.tsx`: 12 px sentence-case headers on `--muted`, 13 px rows with hairline dividers, 20 px outer padding aligned with the card header. Selects are native `<select>`s styled like inputs (`NativeSelect`, audit M11) and on/off settings are native checkboxes with `role="switch"` drawn as a track and knob (`Switch`). Empty states inside a card are a tinted icon circle, one line and one action.
+Layout (shared with account and admin pages through `SettingsShell`, `web/src/components/SettingsShell.tsx`): a "Back to <project>" link, then the page title (20 px; for projects the colour dot, the name and its `RoleBadge`) with a one-line subtitle and, on the right, the page's main action (at most one primary button per screen). Below it, a 200 px section nav (34 px items, lucide icon, the active item on `--accent-subtle`; a horizontal scroller under 768 px) beside the content column, at most 1024 px wide (1152 px for admin). Content sits in `Card`s (`web/src/components/ui/card.tsx`: 12 px radius, `--surface`, hairline border, 16 px between cards; `CardHeader` title 15 px semibold, description 13 px muted, actions on the right; `CardContent` with 20 px padding; `CardFooter` on a `--muted` strip for a form's Reset and Save, with Save primary). Every form card (general, retention, profile, change password, instance settings) ends in a `CardFooter`. Refresh actions sit in the page header (project audit log, admin audit log, stats). Tables use `web/src/components/ui/table.tsx`: 12 px sentence-case headers on `--muted`, 13 px rows with hairline dividers, 20 px outer padding aligned with the card header. Selects are native `<select>`s styled like inputs (`NativeSelect`, audit M11) and on/off settings use `Switch` (`web/src/components/ui/switch.tsx`): a native checkbox with `role="switch"` that is itself the track (so it keeps native keyboard, label and the focus ring), with the knob drawn by a sibling element rather than a pseudo-element of the input (pseudo-elements on form controls are not reliable outside Chromium). Empty states inside a card use `EmptyState` with an `h3` title (3.4.2).
 
 #### 3.6.1 General
 Name, slug (with a warning that recipient routing addresses change; shows old and new addresses), colour picker (12 tokens). Danger zone: delete project (type the slug to confirm).
@@ -217,9 +234,9 @@ Explains API tokens (created in Account > API tokens, optionally restricted to t
 
 ### 3.7 Account and admin
 
-- **Account**: profile (name, email read-only), security (change password, active sessions with revoke), API tokens (create with name, scope, project, expiry; token shown once), preferences (theme, density, mark-as-read delay 0/1/3 s/never, single-key shortcuts on/off, 24 h clock). Preferences are per browser (`usePersistentState`, localStorage), not stored on the server. In local mode only `/account/preferences` exists (reachable from the header "Preferences menu" and the palette); the other account sections are server-mode only. Theme is also switchable from the header menu (3.3).
+- **Account**: profile ("Account details" card: name, email read-only), security (change password, active sessions with revoke), API tokens (create with name, scope, project, expiry; token shown once), preferences (theme, density, mark-as-read delay 0/1/3 s/never, single-key shortcuts on/off, 24 h clock). Preferences are per browser (`usePersistentState`, localStorage), not stored on the server. In local mode only `/account/preferences` exists (reachable from the header "Preferences menu" and the palette); the other account sections are server-mode only. Theme is also switchable from the header menu (3.3).
 - **Admin**: Users (table, search, invite user, toggle admin / can-create-projects, disable, reset link), Projects (all projects with owners, counters, open), Settings (instance name, default retention with "from env" vs "overridden" indicator), Audit log (filterable table: time, actor, action, project, target, IP; JSON metadata on expand), Stats (cards: messages, storage, DB size, ingest rate, version, uptime).
-- Account and admin pages use the same frame and components as project settings (3.6, Phase 15d): `SettingsShell` with "Back to projects", the section nav, `Card`, the table primitives, `NativeSelect` and `Switch` (admin user toggles, preference toggles). Each page has at most one primary button: Save profile, Update password, New API token (Create first token when there are none), Invite user, Save settings. The project settings API section's "Create token for this project" link uses the primary button look (`buttonClassName`).
+- Account and admin pages use the same frame and components as project settings (3.6): `SettingsShell` with "Back to projects", the section nav, `Card`, the table primitives, `NativeSelect` and `Switch` (admin user toggles, preference toggles). Each page has at most one primary button: Save profile, Update password, New API token (Create first token when there are none), Invite user, Save settings. The project settings API section's "Create token for this project" link uses the primary button look (`buttonClassName`).
 
 ### 3.8 Client view mode
 
@@ -259,7 +276,7 @@ Viewers get a simplified UI: no delete or tag actions, no SMTP or settings secti
 12. **Client view mode** (3.8).
 13. **Remembered layout**: pane widths, sidebar collapsed state, selected tab, device, density, theme (localStorage, namespaced `mailcubby:`).
 14. **Connection state**: a small indicator in the sidebar footer shows realtime status (connected, reconnecting); on reconnect the app invalidates queries.
-15. **Error handling**: API errors show toasts with the server message; `401` redirects to login preserving the return URL; `404` on a project shows "Project not found or you do not have access".
+15. **Error handling**: API errors show toasts with the server message; `401` redirects to login preserving the return URL; `404` on a project shows "Project not found or you do not have access"; an unknown address shows "Page not found" inside the app shell (3.4.2).
 
 ## 5. Accessibility (WCAG 2.1 AA)
 
