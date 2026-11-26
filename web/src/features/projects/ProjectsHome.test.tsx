@@ -158,6 +158,30 @@ describe("single-project redirect after losing the project (audit V1, FR-035)", 
     expect(mockNavigateTo).not.toHaveBeenCalled();
   });
 
+  it("keeps the content area empty, without the page skeleton, while the first load decides", async () => {
+    const client = newClient();
+    const projects = deferred<ReturnType<typeof ok<ProjectSummary[]>>>();
+    mockGet.mockImplementation(async (path: string) => {
+      if (path === "/api/v1/projects") {
+        return projects.promise;
+      }
+      throw new Error(`unexpected GET ${path}`);
+    });
+
+    const { container } = renderWith(client, <ProjectsHome />);
+
+    // UI.md 3.3 and 4.6: a card skeleton here would be the projects page
+    // flashing before the inbox opens, so the pane stays empty for this request.
+    const main = container.querySelector('main[aria-busy="true"]');
+    expect(main).not.toBeNull();
+    expect(main?.childElementCount).toBe(0);
+    expect(container.querySelector(".animate-pulse")).toBeNull();
+
+    projects.resolve(ok([CLIENT_PORTAL]));
+
+    await waitFor(() => expect(mockNavigateTo).toHaveBeenCalledWith("/p/client-portal"));
+  });
+
   it("still opens the only project once the list is settled", async () => {
     const client = newClient();
     mockGet.mockImplementation(async (path: string) => {
