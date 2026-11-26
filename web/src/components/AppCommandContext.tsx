@@ -9,6 +9,8 @@ export interface ActiveInboxActions {
   messageCount: number;
   messages: ReadonlyArray<MessageSummary>;
   tags: ReadonlyArray<TagSummary>;
+  /** False when the message list is off screen (below 768 px with a message open). */
+  messageListVisible: boolean;
   toggleSidebar: () => void;
   openDeleteAll: () => void;
   sendTestEmail: () => void;

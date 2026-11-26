@@ -1,9 +1,10 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { AlertCircle, ArrowLeft, Eye, X } from "lucide-react";
+import { ArrowLeft, Eye, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAppCommands } from "@/components/AppCommandContext";
+import { ProjectLoadError } from "@/components/PageStates";
 import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,9 +12,7 @@ import { InboxProvider } from "@/features/inbox/InboxContext";
 import { InboxSidebar } from "@/features/inbox/InboxSidebar";
 import { MessageListPane } from "@/features/inbox/MessageListPane";
 import {
-  ApiError,
   api,
-  getApiErrorMessage,
   type MessageDetail,
   type MessageSummary,
   type ProjectDetail,
@@ -535,6 +534,8 @@ export function InboxLayout() {
   );
 
   const sendTestMutate = sendTestMutation.mutate;
+  // Below 768 px an open message replaces the list, so the skip link has no target.
+  const messageListVisible = !(isMobile && activeMessageId);
   useEffect(() => {
     if (!project) {
       setActiveInbox(null);
@@ -548,6 +549,7 @@ export function InboxLayout() {
       messageCount: project.message_count,
       messages: visibleMessages,
       tags: projectTags,
+      messageListVisible,
       toggleSidebar,
       openDeleteAll: () => setDeleteAllOpen(true),
       sendTestEmail: () => sendTestMutate(),
@@ -562,6 +564,7 @@ export function InboxLayout() {
     effectiveRole,
     visibleMessages,
     projectTags,
+    messageListVisible,
     toggleSidebar,
     sendTestMutate,
     applySearchOperator,
@@ -586,35 +589,12 @@ export function InboxLayout() {
   useKeyShortcuts(layoutShortcuts, { singleKeyEnabled });
 
   if (projectError) {
-    const isNotFound = projectError instanceof ApiError && projectError.status === 404;
     return (
-      <main className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-        <AlertCircle className="size-8 text-muted-foreground" aria-hidden="true" />
-        <div className="max-w-md space-y-1">
-          <h1 className="text-base font-semibold text-foreground">
-            {isNotFound ? "Project not found or you do not have access" : "Could not load project"}
-          </h1>
-          <p className="text-[13px] text-muted-foreground">
-            {isNotFound
-              ? `The project "${projectSlug}" does not exist or is unavailable.`
-              : getApiErrorMessage(projectError)}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/"
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-[13px] font-medium text-foreground hover:bg-muted"
-          >
-            <ArrowLeft className="size-3.5" aria-hidden="true" />
-            <span>Back to projects</span>
-          </Link>
-          {!isNotFound ? (
-            <Button variant="primary" size="sm" onClick={() => void refetchProject()}>
-              Retry
-            </Button>
-          ) : null}
-        </div>
-      </main>
+      <ProjectLoadError
+        projectSlug={projectSlug}
+        error={projectError}
+        onRetry={() => void refetchProject()}
+      />
     );
   }
 

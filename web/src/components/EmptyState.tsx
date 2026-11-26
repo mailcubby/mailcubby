@@ -12,16 +12,17 @@ export interface EmptyStateProps {
   action?: ReactNode;
   /** Supplementary content under the action (keyboard hints, a setup guide). */
   children?: ReactNode;
-  headingLevel?: 2 | 3;
+  /** 1 for a full-page state (not found, no access), 2 for a pane, 3 inside a card. */
+  headingLevel?: 1 | 2 | 3;
   /** `sm` is the compact variant for narrow panes. */
   size?: "md" | "sm";
   className?: string;
 }
 
 /**
- * EmptyState is the one structured empty state of the app (docs/UI.md 3.4.2):
- * an icon on a tinted circle, a title, one line of help text and an optional
- * single action. The tint is neutral because the accent is reserved for
+ * EmptyState is the one structured empty, error and not-found state of the app
+ * (docs/UI.md 3.4.2): an icon on a tinted circle, a title, one line of help
+ * text and an optional single action (or a small action row). The tint is neutral because the accent is reserved for
  * selection, unread, focus and primary actions (UI.md 1.6).
  */
 export function EmptyState({
@@ -34,7 +35,7 @@ export function EmptyState({
   size = "md",
   className,
 }: EmptyStateProps) {
-  const Heading = headingLevel === 3 ? "h3" : "h2";
+  const Heading = headingLevel === 1 ? "h1" : headingLevel === 3 ? "h3" : "h2";
   const compact = size === "sm";
   return (
     <div

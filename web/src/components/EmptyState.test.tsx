@@ -25,6 +25,12 @@ describe("EmptyState", () => {
     expect(icon?.closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
+  it("supports a level 1 heading for full-page states", () => {
+    render(<EmptyState icon={Inbox} title="Page not found" headingLevel={1} />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  });
+
   it("supports a level 3 heading without description or action", () => {
     render(<EmptyState icon={Inbox} title="Waiting for mail" headingLevel={3} size="sm" />);
 
