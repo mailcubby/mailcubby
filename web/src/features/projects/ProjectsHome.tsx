@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Navigate } from "@tanstack/react-router";
 import { Copy, Inbox, LayoutGrid, List, Plus, Search, Terminal } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useAppCommands } from "@/components/AppCommandContext";
@@ -14,7 +15,7 @@ import { authMeQueryOptions, metaQueryOptions, projectsQueryOptions } from "@/li
 import { type KeyShortcutBinding, useKeyShortcuts } from "@/lib/shortcuts";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { cn } from "@/lib/utils";
-import { canUserCreateProjects } from "@/lib/viewerPreview";
+import { canUserCreateProjects, getSingleProjectSlug } from "@/lib/viewerPreview";
 
 const SKELETON_CARD_IDS = ["s1", "s2", "s3", "s4", "s5", "s6"] as const;
 
@@ -41,6 +42,10 @@ export function ProjectsHome() {
   const { data: me } = useQuery(authMeQueryOptions());
   const { data: projects, isPending, error, refetch } = useQuery(projectsQueryOptions());
   const canCreateProjects = canUserCreateProjects(meta?.mode, me?.user);
+  // Audit V1 (SPEC FR-035): a non-admin with exactly one project opens that
+  // inbox instead of a one-card list. Sign-in without a return URL, instance
+  // invites, the logo and `g p` all land here, so this one rule covers them.
+  const singleProjectSlug = getSingleProjectSlug(meta?.mode, me?.user, projects);
 
   useEffect(() => {
     const instanceName = meta?.instance_name || "Mailcubby";
@@ -123,6 +128,10 @@ export function ProjectsHome() {
   const smtpHost = meta?.smtp.host ?? "localhost";
   const smtpPort = meta?.smtp.port ?? 1025;
   const smtpEndpoint = `${smtpHost}:${smtpPort}`;
+
+  if (singleProjectSlug) {
+    return <Navigate to="/p/$project" params={{ project: singleProjectSlug }} replace />;
+  }
 
   return (
     <main className="h-full overflow-y-auto px-4 py-6 sm:px-6">

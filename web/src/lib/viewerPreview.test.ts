@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canUserCreateProjects, getEffectiveRole } from "@/lib/viewerPreview";
+import { canUserCreateProjects, getEffectiveRole, getSingleProjectSlug } from "@/lib/viewerPreview";
 
 describe("viewerPreview helpers", () => {
   it("downgrades owner to viewer only when previewAsViewer is enabled", () => {
@@ -26,5 +26,20 @@ describe("viewerPreview helpers", () => {
     expect(canUserCreateProjects("server", { is_admin: true, can_create_projects: false })).toBe(
       true,
     );
+  });
+
+  // FR-035, audit V1 and V4: a non-admin with exactly one project skips the projects home.
+  it("returns the only project slug for a non-admin server-mode user", () => {
+    const one = [{ slug: "client-portal" }];
+    const two = [{ slug: "client-portal" }, { slug: "internal-ops" }];
+    const member = { is_admin: false };
+    expect(getSingleProjectSlug("server", member, one)).toBe("client-portal");
+    expect(getSingleProjectSlug("server", { is_admin: true }, one)).toBeNull();
+    expect(getSingleProjectSlug("server", member, two)).toBeNull();
+    expect(getSingleProjectSlug("server", member, [])).toBeNull();
+    expect(getSingleProjectSlug("local", member, one)).toBeNull();
+    expect(getSingleProjectSlug(undefined, member, one)).toBeNull();
+    expect(getSingleProjectSlug("server", undefined, one)).toBeNull();
+    expect(getSingleProjectSlug("server", member, undefined)).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import type { AuthUser, MetaResponse, ProjectRole } from "@/lib/api";
+import type { AuthUser, MetaResponse, ProjectRole, ProjectSummary } from "@/lib/api";
 
 /**
  * Resolves the UI role for a project, downgrading an owner to "viewer" when
@@ -22,4 +22,21 @@ export function canUserCreateProjects(
     return true;
   }
   return Boolean(user?.is_admin || user?.can_create_projects);
+}
+
+/**
+ * Returns the slug of the only project of a non-admin server-mode user, or
+ * null. Such a user skips the projects home and opens that inbox (audit V1,
+ * SPEC FR-035), and the sidebar has no "Back to all projects" (audit V4).
+ * Returns null while the user or the project list is not loaded.
+ */
+export function getSingleProjectSlug(
+  mode: MetaResponse["mode"] | undefined,
+  user: Pick<AuthUser, "is_admin"> | undefined,
+  projects: ReadonlyArray<Pick<ProjectSummary, "slug">> | undefined,
+): string | null {
+  if (mode !== "server" || !user || user.is_admin || projects?.length !== 1) {
+    return null;
+  }
+  return projects[0]?.slug ?? null;
 }

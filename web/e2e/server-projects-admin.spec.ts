@@ -247,12 +247,39 @@ test.describe("Phase 7b: Multi-tenant projects, invites, viewer mode, and admin 
         await expect(viewerPage.getByRole("button", { name: "Delete all" })).toHaveCount(0);
         await expect(viewerPage.getByRole("link", { name: "Settings" })).toHaveCount(0);
 
-        // Projects home shows ONLY Client Portal Staging, no Internal Ops, no New project, no Admin.
+        // Phase 15c (audit V1, FR-035): with a single project the projects home
+        // opens that inbox. It shows only Client Portal Staging, no Internal Ops,
+        // no New project and no Admin link.
         await viewerPage.goto(`${srv.httpURL}/`);
-        await expect(viewerPage.getByText("Client Portal Staging")).toBeVisible();
+        await expect(viewerPage).toHaveURL(`${srv.httpURL}/p/client-portal`);
+        await expect(viewerPage.getByText("Client Portal Staging").first()).toBeVisible();
         await expect(viewerPage.getByText("Internal Ops")).toHaveCount(0);
         await expect(viewerPage.getByRole("button", { name: "New project" })).toHaveCount(0);
         await expect(viewerPage.getByRole("link", { name: "Admin" })).toHaveCount(0);
+
+        // Audit V1: after signing in again, the viewer lands in the inbox and
+        // reaches the first email in one click.
+        await viewerPage.getByRole("button", { name: /Account menu/ }).click();
+        await viewerPage.getByRole("menuitem", { name: "Sign out" }).click();
+        await expect(viewerPage).toHaveURL(`${srv.httpURL}/login`);
+        await viewerPage.getByLabel("Email").fill("client@portal.test");
+        await viewerPage.getByLabel("Password", { exact: true }).fill("viewer-secret-pass-1");
+        await viewerPage.getByRole("button", { name: "Sign in" }).click();
+        await expect(viewerPage).toHaveURL(`${srv.httpURL}/p/client-portal`);
+        await viewerPage.getByRole("option").first().click();
+        await expect(viewerPage).toHaveURL(/\/p\/client-portal\/m\//);
+        await expect(viewerPage.locator('iframe[title^="Email preview:"]')).toBeVisible();
+
+        // An explicit return URL still wins over the single-project landing.
+        await viewerPage.getByRole("button", { name: /Account menu/ }).click();
+        await viewerPage.getByRole("menuitem", { name: "Sign out" }).click();
+        await expect(viewerPage).toHaveURL(`${srv.httpURL}/login`);
+        await viewerPage.goto(`${srv.httpURL}/account/profile`);
+        await expect(viewerPage).toHaveURL(/\/login\?returnTo=%2Faccount%2Fprofile/);
+        await viewerPage.getByLabel("Email").fill("client@portal.test");
+        await viewerPage.getByLabel("Password", { exact: true }).fill("viewer-secret-pass-1");
+        await viewerPage.getByRole("button", { name: "Sign in" }).click();
+        await expect(viewerPage).toHaveURL(`${srv.httpURL}/account/profile`);
       } finally {
         await viewerContext.close();
       }
@@ -384,8 +411,9 @@ test.describe("Phase 7b: Multi-tenant projects, invites, viewer mode, and admin 
         await resetPage.getByLabel("Email").fill("dev@agency.test");
         await resetPage.getByLabel("Password", { exact: true }).fill("dev-reset-pass-456");
         await resetPage.getByRole("button", { name: "Sign in" }).click();
-        await expect(resetPage).toHaveURL(`${srv.httpURL}/`);
-        await expect(resetPage.getByText("Dev Sandbox")).toBeVisible();
+        // Phase 15c (audit V1): a non-admin with one project lands in its inbox.
+        await expect(resetPage).toHaveURL(`${srv.httpURL}/p/dev-sandbox`);
+        await expect(resetPage.getByText("Dev Sandbox").first()).toBeVisible();
       } finally {
         await resetContext.close();
       }
