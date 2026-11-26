@@ -403,7 +403,7 @@ Tasks:
 - [x] Performance verification against NFR-001 to NFR-009; results recorded in `docs/benchmarks.md`.
 - [x] Final spec pass: every FR with acceptance criteria has at least one test referencing it (script that greps `FR-` IDs in tests vs SPEC).
 - [x] Upgrade test: data dir created by the previous tag migrates cleanly (skip with a note if no previous tag exists — skipped: no previous git tag exists yet; `00001+00002 -> 00003` forward migration with populated data verified in `internal/store/migration_projects_autoincrement_test.go`).
-- [ ] Security review of the diff since Phase 11; dependency updates to latest patch versions (stop condition: list them for the owner); `govulncheck` clean. (blocked: `govulncheck` and upstream patch-version checks require network/CI; Phase 12–13 diff security review and `gosec` completed cleanly locally; known dependency version notes listed in Open questions)
+- [x] Security review of the diff since Phase 11; dependency updates to latest patch versions (stop condition: list them for the owner); `govulncheck` clean. Done 2026-11-26: `govulncheck@v1.10.0` clean (vuln DB 2026-11-24), `pnpm audit` clean, security review of the diff since Phase 11 (`b8079de..c6c52d6`, Phases 12 to 15) cleared with no findings; the owner-approved patch upgrades are applied (see Open questions 2026-11-26).
 - [x] `CHANGELOG.md`, GitHub release notes draft.
 - [ ] GitHub org, GHCR namespace and `mailcubby.dev` domain registered and matching the docs; tag `v1.0.0` pushed (owner).
 
@@ -679,3 +679,83 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
 - 2026-11-26, Phase 15e: the skip link renders only while the message list is on screen (`messageListVisible` on the active inbox context), so a phone with a message open has no control without a target; the e2e checks both cases at 375 px. `Switch` keeps the native checkbox as the track and draws the knob as a sibling span (it was a `::before` on the input); the routing card's `aria-labelledby` now points at its label text instead of the input.
 - 2026-11-26, Phase 15e final review (screens in `docs/visual-pass/after/15e/`), fixed: the "Color" legend touched the selected swatch ring (flex gap does not apply to a `legend`; project general settings, create project and create tag dialogs); the projects home title was 18 px while every other page title is 20 px; the project audit log had Refresh inside its filter card while admin audit and stats have it in the page header; profile, change password and instance settings ended their forms with inline buttons while general and retention used `CardFooter` (all now use `CardFooter`; instance settings "Discard" is now "Reset" like the others; the profile card gained the title "Account details"); card stacks used 16, 20 and 24 px gaps (now 16 px everywhere); form error alerts mixed `bg-destructive/10` with `bg-destructive-subtle` (now the token everywhere). Left as is: the setup card widens on step 5 for the snippets. (The accent line beside the list in the after-sign-in shots is the resize handle's hover state: the pointer is still where "Sign in" was.)
 - 2026-11-26, Phase 15e: `accessibility.spec.ts` now runs every screen in light and dark: local mode (one test), and a serial server-mode group on one fresh instance (setup wizard, owner and admin, viewer, public pages). Public pages switch theme with their own toggle, the rest through the header menu (`chooseTheme`), and both assert the `dark` class. It also covers the empty inbox, no results, no unread, SMTP without credentials, preview as viewer, the invite dialog, page and project not found, settings unavailable, the invalid invite and the sign-in error. UI.md 1.6 now lists the soft accent badge (owner, Admin, current session, `write` scope, overridden setting) among the accent's uses, which matches what shipped since 15a.
+- 2026-11-26, Phase 13 security and dependency check (supersedes the dependency part of the 2026-11-25 Phase 13 entry):
+  - `go run golang.org/x/vuln/cmd/govulncheck@latest ./...` resolved to v1.10.0 (the version pinned in `ci.yml`), vuln DB updated 2026-11-24, Go 1.27.4: **no vulnerabilities**, at symbol or module level, in the 40 scanned modules or the standard library. `pnpm --dir web audit`: no known vulnerabilities. GitHub advisories list nothing for `pnpm@12.21.0` or `golang.org/x/net@0.62.0`.
+  - Security review of `b8079de..c6c52d6` (end of Phase 11 to Phase 15e), cleared with no findings, per AGENTS.md section 8 rule: (1) both preview iframes in `PreviewTab.tsx` keep `sandbox="allow-popups allow-popups-to-escape-sandbox"` and `referrerPolicy="no-referrer"`; `web/src` has no `dangerouslySetInnerHTML`, `innerHTML`, `insertAdjacentHTML`, `srcdoc` or `eval`; text-tab links are `http(s)` only; the attachment strip links to the attachment endpoint, whose `?inline=1` is allowlisted server side; the render rewrite now skips `cid:` in non-image `src`, which only narrows what is inlined. (2) The one new query, `ListSMTPCredentialSecrets`, is `-- isolation: global` and called only from the startup key check in `internal/app/app.go`; no handler reaches it. (3) No route was added; `openapi.yaml` only gains a `409` on credential reveal and `referenced_by_html`. (4) Secrets: the startup key check logs counts only; the reveal `409` carries no secret; `app.db*` are now 0600. (5) Attachment and raw responses are unchanged (the strip and its thumbnails use the existing endpoint and headers). (6) Local mode gained `http.CrossOriginProtection` (Phase 14a); server-mode Origin and CSRF checks are unchanged. (7) Input and limits: SMTPS shares the total and per-IP connection limits; SMTP AUTH lockout keyed by (IP, username) with a 5x per-IP ceiling bounds username-variation attempts per IP. (8) SMTP AUTH over implicit TLS is detected through `TLSConnectionState`, so the TLS-only rule holds on both listeners. (9) Blob paths are unchanged; only zstd encoder pooling changed. Deploy and CI: `release.yml` runs only on `v*` tag pushes and is the only workflow that sees `HOMEBREW_TAP_GITHUB_TOKEN`; no `github.event.*` or `head_ref` is interpolated into `run:` steps; Caddy 2 replaces untrusted client `X-Forwarded-For`, so the private-range `MAILCUBBY_TRUSTED_PROXIES` default in `compose.server.yml` cannot be spoofed through Caddy.
+  - **Owner** notes, no change made: `ci.yml` declares no `permissions:` block (the repository default token is `read`, checked 2026-11-26; an explicit `permissions: contents: read` would keep that if the default changes). Third-party actions are pinned by tag (`@v4`, `@v6`), not by commit SHA. `modernc.org/libc v1.80.2` comes from goose (v3.30.1, and still v3.30.2) while sqlite v1.63.0 was built against v1.80.1 (same minor; tests pass); keep libc and memory on whatever the sqlite release requires.
+  - Upgrades need the owner's approval (AGENTS.md section 7 stop condition). None is a security fix. The owner approved the "safe patch" rows on 2026-11-26 ("Sim aplica os novos patch") and they are applied: goose v3.30.2 and x/net v0.63.0 (`go mod tidy` dropped `sethvargo/go-retry` and listed `golang.org/x/crypto` v0.59.0 as a direct requirement, since `internal/auth` imports it; same version), `@tanstack/react-query` 5.108.4, `react-resizable-panels` 4.24.2, `@axe-core/playwright` 4.14.1, `@biomejs/biome` 2.6.9 (`biome.json` `$schema` migrated, no new findings), `vitest` 5.1.2, `@types/node` 26.6.10, `@types/react` 19.3.3. `react-resizable-panels` 4.24.3 and `@types/node` 26.6.11 were published less than a day earlier, inside pnpm's 1-day `minimumReleaseAge` quarantine, so the previous patches were taken instead of adding `minimumReleaseAgeExclude` entries; take them in the next patch round. Every other row waits.
+
+  Go (`go.mod`, every line; "latest minor" means the newest release with the same major version):
+
+  | Module | Kind | Current | Latest patch | Latest minor | Recommendation |
+  |---|---|---|---|---|---|
+  | `github.com/emersion/go-sasl` | direct | v0.0.0-20241020182733-b788ff22d5a6 | no tagged releases (current is the latest commit) | - | none |
+  | `github.com/emersion/go-smtp` | direct | v0.26.0 | v0.26.0 | v0.26.0 | none |
+  | `github.com/jhillyerd/enmime/v2` | direct | v2.5.0 | v2.5.0 | v2.5.0 | none |
+  | `github.com/klauspost/compress` | direct | v1.20.5 | v1.20.5 | v1.20.5 | none |
+  | `github.com/oklog/ulid/v2` | direct | v2.1.2 | v2.1.2 | v2.1.2 | none |
+  | `github.com/pressly/goose/v3` | direct | v3.30.1 | v3.30.2 | v3.30.2 | safe patch (replaces `sethvargo/go-retry` with an internal package; drops that indirect dependency) |
+  | `golang.org/x/net` | direct | v0.62.0 | v0.62.0 | v0.63.0 | safe patch in practice (v0.x minor; only `http2` changed, we use `x/net/html`; matches the AGENTS.md pin; no other `go.mod` change) |
+  | `golang.org/x/sync` | direct | v0.25.0 | v0.25.0 | v0.25.0 | none |
+  | `modernc.org/sqlite` | direct | v1.63.0 | v1.63.0 | v1.63.0 | none |
+  | `golang.org/x/crypto` | direct (argon2id in `internal/auth`; was marked indirect until `go mod tidy` in this change) | v0.59.0 | v0.59.0 | v0.59.0 | none |
+  | `golang.org/x/sys` | indirect | v0.50.0 | v0.50.0 | v0.50.0 | none |
+  | `golang.org/x/text` | indirect | v0.44.0 | v0.44.0 | v0.44.0 | none |
+  | `modernc.org/libc` | indirect | v1.80.2 | v1.80.2 | v1.82.13 | skip, follow sqlite |
+  | `modernc.org/memory` | indirect | v1.12.1 | v1.12.1 | v1.13.1 | skip, follow sqlite |
+  | `modernc.org/mathutil` | indirect | v1.7.1 | v1.7.1 | v1.7.1 | none |
+  | `github.com/mattn/go-colorable` | indirect | v0.1.14 | v0.1.16 | v0.1.16 | skip, moves with its direct dependency |
+  | `github.com/mattn/go-runewidth` | indirect | v0.0.23 | v0.0.31 | v0.0.31 | skip, moves with its direct dependency |
+  | `github.com/olekukonko/ll` | indirect | v0.1.8 | v0.1.9 | v0.1.9 | skip, moves with its direct dependency |
+  | `github.com/olekukonko/tablewriter` | indirect | v1.1.4 | v1.1.5 | v1.1.5 | skip, moves with its direct dependency |
+  | `github.com/goccy/go-json` | indirect | v0.10.6 | v0.10.6 | v0.12.0 | skip, moves with its direct dependency |
+  | `github.com/sethvargo/go-retry` | indirect | v0.5.0 | v0.5.0 | v0.7.0 | skip (goose v3.30.2 removes it) |
+  | `github.com/cespare/xxhash/v2` | indirect | v2.3.0 | v2.3.0 | v2.3.0 | none |
+  | `github.com/clipperhouse/displaywidth` | indirect | v0.11.0 | v0.11.0 | v0.11.0 | none |
+  | `github.com/clipperhouse/uax29/v2` | indirect | v2.7.0 | v2.7.0 | v2.7.0 | none |
+  | `github.com/dustin/go-humanize` | indirect | v1.1.0 | v1.1.0 | v1.1.0 | none |
+  | `github.com/fatih/color` | indirect | v1.19.0 | v1.19.0 | v1.19.0 | none |
+  | `github.com/google/uuid` | indirect | v1.6.0 | v1.6.0 | v1.6.0 | none |
+  | `github.com/inbucket/html2text` | indirect | v1.0.0 | v1.0.0 | v1.0.0 | none |
+  | `github.com/mattn/go-isatty` | indirect | v0.0.24 | v0.0.24 | v0.0.24 | none |
+  | `github.com/mfridman/interpolate` | indirect | v0.2.0 | v0.2.0 | v0.2.0 | none |
+  | `github.com/ncruces/go-strftime` | indirect | v1.1.0 | v1.1.0 | v1.1.0 | none |
+  | `github.com/olekukonko/errors` | indirect | v1.3.0 | v1.3.0 | v1.3.0 | none |
+  | `github.com/pkg/errors` | indirect | v0.9.1 | v0.9.1 | v0.9.1 | none |
+  | `go.uber.org/multierr` | indirect | v1.11.0 | v1.11.0 | v1.11.0 | none |
+  | `github.com/cention-sany/utf7`, `github.com/gogs/chardet`, `github.com/olekukonko/cat`, `github.com/remyoudompheng/bigfft`, `github.com/ssor/bom` | indirect | pseudo-versions | no tagged releases | - | none |
+  | Go toolchain | tool | go1.27.4 | go1.27.4 | go1.27.4 | none |
+  | `sqlc` / `golangci-lint` / GoReleaser / `govulncheck` | tools | v1.31.1 / v2.15.0 / v2.20.3 / v1.10.0 | same | same | none |
+
+  Web (`web/package.json`; latest major in brackets when newer):
+
+  | Package | Kind | Current | Latest patch | Latest minor | Recommendation |
+  |---|---|---|---|---|---|
+  | `@tanstack/react-query` | runtime | 5.108.3 | 5.108.4 | 5.108.4 | safe patch |
+  | `react-resizable-panels` | runtime | 4.24.1 | 4.24.3 | 4.24.3 | safe patch |
+  | `lucide-react` | runtime | 1.78.0 | 1.78.0 | 1.81.0 | skip (minor, icons only) |
+  | `@fontsource-variable/inter` | runtime | 5.3.0 | 5.3.0 | 5.3.0 | none |
+  | `@tanstack/react-router` | runtime | 1.170.46 | 1.170.46 | 1.170.46 | none |
+  | `@tanstack/react-virtual` | runtime | 3.14.28 | 3.14.28 | 3.14.28 | none |
+  | `clsx` | runtime | 2.1.1 | 2.1.1 | 2.1.1 | none |
+  | `openapi-fetch` | runtime | 0.17.0 | 0.17.0 | 0.17.0 | none |
+  | `react` / `react-dom` | runtime | 19.3.1 | 19.3.1 | 19.3.1 | none |
+  | `shiki` | runtime | 4.6.0 | 4.6.0 | 4.6.0 | none |
+  | `sonner` | runtime | 2.0.8 | 2.0.8 | 2.0.8 | none |
+  | `tailwind-merge` | runtime | 3.7.1 | 3.7.1 | 3.7.1 | none |
+  | `@axe-core/playwright` | dev | 4.14.0 | 4.14.1 | 4.14.1 | safe patch |
+  | `@biomejs/biome` | dev | 2.6.8 | 2.6.9 | 2.6.9 | safe patch (may add lint findings; run `make lint`) |
+  | `vitest` | dev | 5.1.1 | 5.1.2 | 5.1.2 | safe patch |
+  | `@types/node` | dev | 26.6.6 | 26.6.11 | 26.6.11 | safe patch |
+  | `@types/react` | dev | 19.3.0 | 19.3.3 | 19.3.3 | safe patch |
+  | `vite` | dev (build) | 8.3.8 | 8.3.8 | 8.4.0 | skip (minor) |
+  | `typescript` | dev | 6.0.3 | 6.0.3 | 6.0.3 [7.0.2] | skip (TypeScript 7 needs its own ADR, AGENTS.md section 3) |
+  | `@playwright/test` | dev | 1.65.1 | 1.65.1 | 1.65.1 | none |
+  | `@tailwindcss/vite` / `tailwindcss` | dev | 4.3.5 | 4.3.5 | 4.3.5 | none |
+  | `@tanstack/router-plugin` | dev | 1.169.0 | 1.169.0 | 1.169.0 | none |
+  | `@testing-library/react` | dev | 16.3.3 | 16.3.3 | 16.3.3 | none |
+  | `@types/react-dom` | dev | 19.3.0 | 19.3.0 | 19.3.0 | none |
+  | `@vitejs/plugin-react` | dev | 6.3.0 | 6.3.0 | 6.3.0 | none |
+  | `jsdom` | dev | 31.0.1 | 31.0.1 | 31.0.1 | none |
+  | `openapi-typescript` | dev | 7.13.0 | 7.13.0 | 7.13.0 | none |
+  | `pnpm` (`packageManager`, CI) | tool | 12.21.0 | 12.21.0 | 12.24.0 | skip (minor) |
