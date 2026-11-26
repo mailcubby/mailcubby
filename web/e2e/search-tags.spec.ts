@@ -64,6 +64,12 @@ test.describe("Phase 5 search and tags", () => {
     await page.getByRole("button", { name: "Clear search" }).click();
     await expect(page.getByRole("option", { name: /Weekly status report/ })).toBeVisible();
 
+    // A search without results shows the empty state with one "Clear filters" action.
+    await searchInput.fill("zzz-no-such-message");
+    await expect(page.getByRole("heading", { name: "No matching messages" })).toBeVisible();
+    await page.getByRole("button", { name: "Clear filters" }).click();
+    await expect(page.getByRole("option", { name: /Weekly status report/ })).toBeVisible();
+
     // Open Bob's message and add a tag using the `t` shortcut in the message header.
     await page.getByRole("option", { name: /Weekly status report/ }).click();
     await expect(page.getByRole("heading", { name: "Weekly status report" })).toBeVisible();

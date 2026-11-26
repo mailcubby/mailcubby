@@ -70,6 +70,9 @@ test.describe("Phase 4a local-mode inbox and message view (FR-072)", () => {
 
     await page.goto(`/p/${project.slug}`);
     await expect(page.getByRole("heading", { name: "No messages yet" })).toBeVisible();
+    // Audit M6: the title appears once; the list only says it is waiting.
+    await expect(page.getByText("No messages yet")).toHaveCount(1);
+    await expect(page.getByRole("heading", { name: "Waiting for mail" })).toBeVisible();
     await expect(page.getByText("MAIL_MAILER=smtp")).toBeVisible();
 
     await page.getByRole("button", { name: "Send test email" }).click();

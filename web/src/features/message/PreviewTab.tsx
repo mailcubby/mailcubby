@@ -106,11 +106,12 @@ export function PreviewTab({ message }: PreviewTabProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-3 py-1.5 text-xs">
+      {/* The toolbar sits on the canvas, below and quieter than the tabs (UI.md 3.5). */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 text-xs">
         <div className="flex flex-wrap items-center gap-1.5">
           <fieldset
             aria-label="Preview device size"
-            className="inline-flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5"
+            className="inline-flex items-center gap-0.5 rounded-md bg-muted p-0.5"
           >
             <legend className="sr-only">Preview device size</legend>
             {(
@@ -135,7 +136,7 @@ export function PreviewTab({ message }: PreviewTabProps) {
                 className={cn(
                   "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center gap-1 rounded-sm px-2 text-xs transition-colors",
                   device === value
-                    ? "bg-surface font-medium text-foreground shadow-2xs"
+                    ? "bg-surface font-medium text-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -147,7 +148,7 @@ export function PreviewTab({ message }: PreviewTabProps) {
 
           {device !== "desktop" ? (
             <Button
-              variant="outline"
+              variant={rotated ? "secondary" : "ghost"}
               size="xs"
               aria-label="Rotate device"
               aria-pressed={rotated}
@@ -181,7 +182,7 @@ export function PreviewTab({ message }: PreviewTabProps) {
           </label>
 
           <Button
-            variant={emailDarkMode ? "secondary" : "outline"}
+            variant={emailDarkMode ? "secondary" : "ghost"}
             size="xs"
             aria-pressed={emailDarkMode}
             onClick={() => setEmailDarkMode((prev) => !prev)}
@@ -221,10 +222,10 @@ export function PreviewTab({ message }: PreviewTabProps) {
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-3">
+      <div className="min-h-0 flex-1 overflow-auto px-4 pt-2.5 pb-4">
         {device === "desktop" ? (
           <div
-            className="h-full w-full overflow-hidden rounded-md border border-border bg-email-canvas"
+            className="h-full w-full overflow-hidden rounded-lg border border-border bg-email-canvas shadow-xs"
             style={
               scale !== 1
                 ? {

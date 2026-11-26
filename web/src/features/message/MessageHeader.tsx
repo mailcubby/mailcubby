@@ -4,6 +4,7 @@ import {
   Copy,
   Download,
   ExternalLink,
+  KeyRound,
   Link2,
   Mail,
   MailOpen,
@@ -21,6 +22,7 @@ import {
   formatBytes,
   formatExactTimestamp,
   formatRelativeTime,
+  getSenderInitials,
   PROJECT_COLOR_DOT_CLASS,
 } from "@/lib/format";
 import { useClock24hPreference } from "@/lib/preferences";
@@ -59,8 +61,8 @@ function AddressList({ label, addresses }: { label: string; addresses: ReadonlyA
   const hiddenCount = addresses.length - visible.length;
 
   return (
-    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs">
-      <span className="w-10 shrink-0 text-muted-foreground">{label}</span>
+    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[13px]">
+      <span className="w-9 shrink-0 text-xs text-muted-foreground">{label}</span>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
         {visible.map(({ key, addr }) => {
           const text = formatAddress(addr);
@@ -139,16 +141,17 @@ export function MessageHeader({
   const emlHref = `/api/v1/projects/${encodeURIComponent(projectSlug)}/messages/${encodeURIComponent(message.id)}/eml`;
 
   return (
-    <header className="flex shrink-0 flex-col gap-2.5 border-b border-border bg-surface px-4 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+    <header className="flex shrink-0 flex-col gap-3 border-b border-border bg-surface px-4 pt-4 pb-3.5 sm:px-6">
+      {/* In a narrow pane the actions wrap under the subject instead of squeezing it. */}
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+        <div className="min-w-48 flex-1">
           <button
             type="button"
             onClick={() => void copyToClipboard(subject, "subject")}
             title="Click to copy subject"
             className="group inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-left hover:text-accent"
           >
-            <h2 className="truncate text-[15px] font-semibold leading-snug text-foreground group-hover:text-accent">
+            <h2 className="truncate text-lg leading-[26px] font-semibold tracking-[-0.01em] text-foreground group-hover:text-accent">
               {subject}
             </h2>
             <Copy
@@ -158,7 +161,7 @@ export function MessageHeader({
           </button>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-0.5">
           <Button
             variant="ghost"
             size="icon"
@@ -253,10 +256,16 @@ export function MessageHeader({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden="true"
+          className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground select-none"
+        >
+          {getSenderInitials(message.from)}
+        </span>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <div className="flex flex-wrap items-baseline gap-x-1.5 text-xs">
-            <span className="w-10 shrink-0 text-muted-foreground">From</span>
+          <div className="flex flex-wrap items-baseline gap-x-1.5 text-[13px]">
+            <span className="w-9 shrink-0 text-xs text-muted-foreground">From</span>
             <button
               type="button"
               onClick={() =>
@@ -282,7 +291,10 @@ export function MessageHeader({
       {(!isViewer && message.credential_label) || message.tags.length > 0 || canEditTags ? (
         <div className="flex flex-wrap items-center gap-1.5">
           {!isViewer && message.credential_label ? (
-            <Badge variant="outline">via {message.credential_label}</Badge>
+            <Badge variant="neutral" title="SMTP credential that sent this message">
+              <KeyRound className="size-3 shrink-0" aria-hidden="true" />
+              via {message.credential_label}
+            </Badge>
           ) : null}
           {message.tags.map((tag) => {
             const dot = tagColorByLower.get(tag.toLowerCase()) ?? PROJECT_COLOR_DOT_CLASS.slate;
@@ -315,6 +327,7 @@ export function MessageHeader({
               onToggleTag={handleToggleTag}
               triggerLabel={message.tags.length > 0 ? "Edit tags" : "Add tag"}
               triggerTitle="Edit tags (t)"
+              triggerClassName="h-6 rounded-full border-dashed px-2.5"
             />
           ) : null}
         </div>

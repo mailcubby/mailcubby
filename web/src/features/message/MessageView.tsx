@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, MailX } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -232,23 +233,23 @@ export function MessageView() {
   if (error || !message) {
     const isNotFound = error instanceof ApiError && error.status === 404;
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <AlertCircle className="size-7 text-muted-foreground" aria-hidden="true" />
-        <div className="max-w-sm space-y-1">
-          <h2 className="text-sm font-semibold text-foreground">
-            {isNotFound ? "Message not found" : "Failed to load message"}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            {isNotFound
+      <div className="flex h-full items-center justify-center">
+        <EmptyState
+          icon={isNotFound ? MailX : AlertCircle}
+          title={isNotFound ? "Message not found" : "Failed to load message"}
+          description={
+            isNotFound
               ? "This message may have been deleted or removed by retention."
-              : getApiErrorMessage(error)}
-          </p>
-        </div>
-        {!isNotFound ? (
-          <Button variant="outline" size="xs" onClick={() => void refetch()}>
-            Retry
-          </Button>
-        ) : null}
+              : getApiErrorMessage(error)
+          }
+          action={
+            !isNotFound ? (
+              <Button variant="outline" size="xs" onClick={() => void refetch()}>
+                Retry
+              </Button>
+            ) : undefined
+          }
+        />
       </div>
     );
   }
@@ -293,7 +294,7 @@ export function MessageView() {
       <div
         role="tablist"
         aria-label="Message views"
-        className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-surface px-3"
+        className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-surface px-4"
       >
         {availableTabs.map((tab, idx) => {
           const selected = tab.id === activeTab;
@@ -312,7 +313,9 @@ export function MessageView() {
               onClick={() => selectTab(tab.id)}
               onKeyDown={(e) => handleTabKeyDown(e, idx)}
               className={cn(
-                "relative inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 border-b-2 px-2.5 text-xs font-medium transition-colors",
+                // Tabs are the primary navigation of the pane: 13 px with an accent
+                // underline; the preview toolbar below them is 12 px and quieter.
+                "relative inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 border-b-2 px-2.5 text-[13px] font-medium transition-colors focus-visible:-outline-offset-2",
                 selected
                   ? "border-accent text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",

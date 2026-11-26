@@ -5,11 +5,15 @@ import {
   ArrowUp,
   Check,
   CheckSquare,
+  Inbox,
   Mail,
+  MailCheck,
   MailOpen,
   PanelLeftOpen,
   Paperclip,
   RefreshCw,
+  SearchX,
+  Send,
   Trash2,
   X,
 } from "lucide-react";
@@ -23,6 +27,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { EmptyState } from "@/components/EmptyState";
 import { useRealtime } from "@/components/RealtimeProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,6 +100,10 @@ export interface MessageListPaneProps {
   onDeleteAllOpenChange: (open: boolean) => void;
   showSidebarTrigger?: boolean;
   onOpenSidebar?: () => void;
+  /** False below 768 px, where the list is the only pane and owns the empty state. */
+  readingPaneVisible: boolean;
+  onSendTestEmail?: () => void;
+  sendingTestEmail?: boolean;
 }
 
 export function MessageListPane({
@@ -128,6 +137,9 @@ export function MessageListPane({
   onDeleteAllOpenChange,
   showSidebarTrigger = false,
   onOpenSidebar,
+  readingPaneVisible,
+  onSendTestEmail,
+  sendingTestEmail = false,
 }: MessageListPaneProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -582,7 +594,7 @@ export function MessageListPane({
         <div
           role="toolbar"
           aria-label="Bulk message actions"
-          className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-accent/10 px-3"
+          className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-accent-subtle px-3"
         >
           <div className="flex items-center gap-2">
             <Button
@@ -681,7 +693,9 @@ export function MessageListPane({
                 <PanelLeftOpen className="size-4" aria-hidden="true" />
               </Button>
             ) : null}
-            <h1 className="truncate text-[13px] font-semibold text-foreground">{headingLabel}</h1>
+            <h1 className="truncate text-[15px] font-semibold tracking-tight text-foreground">
+              {headingLabel}
+            </h1>
             <span className="text-xs text-muted-foreground tabular-nums">{countDisplay}</span>
           </div>
 
@@ -775,29 +789,61 @@ export function MessageListPane({
             ))}
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 py-12 text-center text-muted-foreground">
-            <Mail className="size-6 opacity-60" aria-hidden="true" />
-            <p className="text-[13px] font-medium text-foreground">
-              {hasActiveFilter
-                ? "No matching messages"
-                : filter === "unread"
-                  ? "No unread messages"
-                  : "No messages yet"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {hasActiveFilter
-                ? "Try broadening or clearing your search filters."
-                : filter === "unread"
-                  ? "All messages in this project have been read."
-                  : isViewer
-                    ? "Messages captured for this project will appear here."
-                    : "Send mail via SMTP or use the setup guide to test."}
-            </p>
-            {hasActiveFilter ? (
-              <Button variant="outline" size="xs" onClick={onClearSearchAll} className="mt-1">
-                Clear filters
-              </Button>
-            ) : null}
+          <div className="flex h-full items-center justify-center">
+            {filter === "unread" ? (
+              <EmptyState
+                icon={MailCheck}
+                size="sm"
+                title="No unread messages"
+                description="All messages in this project have been read."
+              />
+            ) : hasActiveFilter ? (
+              <EmptyState
+                icon={SearchX}
+                size="sm"
+                title="No matching messages"
+                description="Try broadening or clearing your search filters."
+                action={
+                  <Button variant="outline" size="xs" onClick={onClearSearchAll}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : readingPaneVisible ? (
+              // Audit M6: the reading pane carries "No messages yet" and the
+              // setup guide, so the list only says it is listening.
+              <EmptyState
+                icon={Inbox}
+                size="sm"
+                title="Waiting for mail"
+                description="New messages appear here as they arrive."
+              />
+            ) : (
+              // Below 768 px there is no reading pane, so the list is the empty state.
+              <EmptyState
+                icon={Inbox}
+                size="sm"
+                title="No messages yet"
+                description={
+                  isViewer
+                    ? `Emails sent to ${project.name} appear here as they arrive.`
+                    : "Point your app's SMTP client at Mailcubby, or send a sample message now."
+                }
+                action={
+                  !isViewer && onSendTestEmail ? (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={sendingTestEmail}
+                      onClick={onSendTestEmail}
+                    >
+                      <Send className="size-3.5" aria-hidden="true" />
+                      <span>{sendingTestEmail ? "Sending..." : "Send test email"}</span>
+                    </Button>
+                  ) : undefined
+                }
+              />
+            )}
           </div>
         ) : (
           <div
@@ -806,7 +852,7 @@ export function MessageListPane({
             aria-multiselectable="true"
             aria-activedescendant={activeMessageId ? `msg-row-${activeMessageId}` : undefined}
             aria-label={`${project.name} messages`}
-            className="relative w-full"
+            className="relative w-full focus-visible:-outline-offset-2"
             style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
           >
             {virtualItems.map((virtualRow) => {
@@ -859,9 +905,11 @@ export function MessageListPane({
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   className={cn(
-                    "absolute top-0 left-0 flex w-full cursor-pointer items-start gap-2.5 border-b border-border px-3 transition-colors duration-150 focus-visible:z-10",
-                    density === "compact" ? "py-1.5" : "py-3",
-                    isActive ? "bg-accent/10" : isSelected ? "bg-muted/70" : "hover:bg-muted/40",
+                    // The list scrolls, so the focus ring sits inside the row.
+                    "absolute top-0 left-0 flex w-full cursor-pointer items-start gap-2.5 border-b border-border px-3 transition-colors duration-150 focus-visible:z-10 focus-visible:-outline-offset-2",
+                    density === "compact" ? "py-2" : "py-3",
+                    // Open message: accent tint; checked rows: muted.
+                    isActive ? "bg-accent-subtle" : isSelected ? "bg-muted" : "hover:bg-muted",
                     isArrived && "arrival-highlight",
                   )}
                 >
@@ -875,7 +923,7 @@ export function MessageListPane({
                           "flex size-3.5 cursor-pointer items-center justify-center rounded-xs border transition-colors",
                           isSelected
                             ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-background hover:border-foreground/50",
+                            : "border-input bg-surface hover:border-foreground",
                         )}
                       >
                         {isSelected ? <Check className="size-2.5" aria-hidden="true" /> : null}
@@ -910,7 +958,7 @@ export function MessageListPane({
                         title={exactTime}
                         className={cn(
                           "shrink-0 text-[11px] tabular-nums",
-                          isActive ? "text-foreground/80" : "text-muted-foreground",
+                          msg.seen ? "text-muted-foreground" : "font-medium text-foreground",
                         )}
                       >
                         {relTime}
@@ -920,8 +968,8 @@ export function MessageListPane({
                     <div className="flex items-center justify-between gap-2">
                       <span
                         className={cn(
-                          "truncate text-xs",
-                          msg.seen ? "text-foreground/85" : "font-medium text-foreground",
+                          "truncate text-xs text-foreground",
+                          !msg.seen && "font-medium",
                         )}
                       >
                         {subject}
@@ -930,10 +978,7 @@ export function MessageListPane({
                         {msg.attachment_count > 0 ? (
                           <>
                             <Paperclip
-                              className={cn(
-                                "size-3",
-                                isActive ? "text-foreground/80" : "text-muted-foreground",
-                              )}
+                              className="size-3 text-muted-foreground"
                               aria-hidden="true"
                             />
                             <span className="sr-only">
@@ -946,7 +991,11 @@ export function MessageListPane({
                           const dot =
                             tagColorByLower.get(tag.toLowerCase()) ?? PROJECT_COLOR_DOT_CLASS.slate;
                           return (
-                            <Badge key={tag} variant="neutral" className="max-w-24 gap-1 truncate">
+                            <Badge
+                              key={tag}
+                              variant="neutral"
+                              className="max-w-24 min-h-[18px] gap-1 truncate px-1.5"
+                            >
                               <span
                                 className={cn("size-1.5 shrink-0 rounded-full", dot)}
                                 aria-hidden="true"
@@ -955,19 +1004,16 @@ export function MessageListPane({
                             </Badge>
                           );
                         })}
-                        {extraTags > 0 ? <Badge variant="neutral">+{extraTags}</Badge> : null}
+                        {extraTags > 0 ? (
+                          <Badge variant="neutral" className="min-h-[18px] px-1.5">
+                            +{extraTags}
+                          </Badge>
+                        ) : null}
                       </div>
                     </div>
 
                     {msg.snippet ? (
-                      <p
-                        className={cn(
-                          "truncate text-xs",
-                          isActive ? "text-foreground/80" : "text-muted-foreground",
-                        )}
-                      >
-                        {msg.snippet}
-                      </p>
+                      <p className="truncate text-xs text-muted-foreground">{msg.snippet}</p>
                     ) : null}
                   </div>
                 </div>

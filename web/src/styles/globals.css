@@ -343,9 +343,11 @@
   --normal-text: var(--foreground);
 }
 
+/* Realtime arrival (UI.md 4 item 3): starts on the selection tint, whose text
+   pairs are in the contrast table, and fades out. */
 @keyframes mailcubby-arrival {
   0% {
-    background-color: color-mix(in srgb, var(--accent) 18%, transparent);
+    background-color: var(--accent-subtle);
   }
   100% {
     background-color: transparent;

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Copy, Eye, EyeOff, Inbox, KeyRound, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { IntegrationSnippetsPanel } from "@/features/settings/IntegrationSnippetsPanel";
 import {
@@ -67,12 +68,12 @@ export function EmptyInboxGuide({ project, effectiveRole, onSentTest }: EmptyInb
 
   if (isViewer) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground">
-        <Inbox className="size-8 opacity-50" aria-hidden="true" />
-        <h2 className="text-sm font-medium text-foreground">No messages yet</h2>
-        <p className="max-w-sm text-xs text-muted-foreground">
-          Messages captured for {project.name} will appear here.
-        </p>
+      <div className="flex h-full items-center justify-center">
+        <EmptyState
+          icon={Inbox}
+          title="No messages yet"
+          description={`Emails sent to ${project.name} appear here as they arrive.`}
+        />
       </div>
     );
   }
@@ -128,31 +129,33 @@ export function EmptyInboxGuide({ project, effectiveRole, onSentTest }: EmptyInb
         project.settings.recipient_routing_enabled));
 
   return (
-    <div className="h-full overflow-y-auto bg-background p-6">
+    <div className="h-full overflow-y-auto bg-background px-6 pb-8">
       <div className="mx-auto flex max-w-2xl flex-col gap-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-1">
-            <h2 className="text-base font-semibold text-foreground">No messages yet</h2>
-            <p className="text-[13px] text-muted-foreground">
-              Point your application&apos;s SMTP client at Mailcubby, or send a built-in sample
-              message right now.
-            </p>
-          </div>
-          <Button
-            variant="primary"
-            size="sm"
-            disabled={sendTestMutation.isPending}
-            onClick={() => sendTestMutation.mutate()}
-          >
-            <Send className="size-3.5" aria-hidden="true" />
-            <span>{sendTestMutation.isPending ? "Sending..." : "Send test email"}</span>
-          </Button>
-        </div>
+        <EmptyState
+          icon={Inbox}
+          title="No messages yet"
+          description="Point your app's SMTP client at Mailcubby, or send a sample message now."
+          className="pt-10 pb-2"
+          action={
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={sendTestMutation.isPending}
+              onClick={() => sendTestMutation.mutate()}
+            >
+              <Send className="size-3.5" aria-hidden="true" />
+              <span>{sendTestMutation.isPending ? "Sending..." : "Send test email"}</span>
+            </Button>
+          }
+        />
 
         <section className="rounded-lg border border-border bg-surface">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              SMTP Connection ({isServer ? "Server mode" : "Local mode"})
+            <h3 className="text-[13px] font-semibold text-foreground">
+              SMTP connection{" "}
+              <span className="font-normal text-muted-foreground">
+                · {isServer ? "Server mode" : "Local mode"}
+              </span>
             </h3>
             {isServer ? (
               <Link

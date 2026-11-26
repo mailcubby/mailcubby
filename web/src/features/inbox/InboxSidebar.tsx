@@ -38,6 +38,7 @@ import { formatCount, PROJECT_COLOR_DOT_CLASS, PROJECT_COLORS } from "@/lib/form
 import { authMeQueryOptions, metaQueryOptions, projectsQueryOptions } from "@/lib/queries";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
+import { getSingleProjectSlug } from "@/lib/viewerPreview";
 import type { InboxFilter } from "@/routes/p.$project";
 
 export interface InboxSidebarProps {
@@ -188,14 +189,14 @@ export function InboxSidebar({
   const quickCopyCredential = credentials.find((c) => !c.disabled) ?? credentials[0];
   const quickCopyUser = meta?.mode === "local" ? project.slug : quickCopyCredential?.username;
   // Audit V4: with exactly one project there is nowhere to go back to (server
-  // mode, non-admins only; the logo still links to the projects home).
-  const showBackToProjects = !(
-    isServer &&
-    me !== undefined &&
-    !me.user.is_admin &&
-    projects !== undefined &&
-    projects.length === 1
-  );
+  // mode, non-admins only). The link waits for the user and the project list,
+  // so it never flashes before the rule can hide it.
+  const showBackToProjects =
+    meta?.mode === "local" ||
+    (isServer &&
+      me !== undefined &&
+      projects !== undefined &&
+      getSingleProjectSlug("server", me.user, projects) === null);
 
   return (
     <aside
