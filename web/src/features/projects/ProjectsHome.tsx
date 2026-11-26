@@ -51,7 +51,13 @@ export function ProjectsHome() {
 
   const { data: meta } = useQuery(metaQueryOptions());
   const { data: me } = useQuery(authMeQueryOptions());
-  const { data: projects, isPending, error, refetch } = useQuery(projectsQueryOptions());
+  const {
+    data: projects,
+    isPending,
+    isFetching,
+    error,
+    refetch,
+  } = useQuery(projectsQueryOptions());
   const canCreateProjects = canUserCreateProjects(meta?.mode, me?.user);
   // Audit V1 (SPEC FR-035): a non-admin with exactly one project opens that
   // inbox instead of a one-card list. Sign-in without a return URL, instance
@@ -140,12 +146,16 @@ export function ProjectsHome() {
   const smtpPort = meta?.smtp.port ?? 1025;
   const smtpEndpoint = `${smtpHost}:${smtpPort}`;
 
-  if (singleProjectSlug) {
+  // The redirect trusts only settled data: a cached list may still name a
+  // project the user just lost (ProjectLoadError invalidates it on a 404), so
+  // wait for a running refetch instead of bouncing back to that project.
+  if (singleProjectSlug && !isFetching) {
     return <Navigate to="/p/$project" params={{ project: singleProjectSlug }} replace />;
   }
 
   // While the V1 redirect is still possible (a server-mode user without admin
-  // or create rights whose project list is loading), render a neutral pane
+  // or create rights whose project list is loading or refetching a list that
+  // names a single project), render a neutral pane
   // instead of the page skeleton, so the projects page never flashes before
   // the inbox opens. Admins, creators and local mode skip this.
   const redirectPossible =
@@ -153,7 +163,11 @@ export function ProjectsHome() {
     me !== undefined &&
     !me.user.is_admin &&
     !me.user.can_create_projects;
-  if (meta === undefined || (redirectPossible && projects === undefined && !error)) {
+  if (
+    meta === undefined ||
+    singleProjectSlug ||
+    (redirectPossible && projects === undefined && !error)
+  ) {
     return <main aria-busy="true" className="h-full" />;
   }
 

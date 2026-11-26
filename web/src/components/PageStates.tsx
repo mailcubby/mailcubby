@@ -1,9 +1,11 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft, FolderX, SearchX } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Button, buttonClassName } from "@/components/ui/button";
-import { ApiError, getApiErrorMessage } from "@/lib/api";
+import { ApiError, getApiErrorMessage, type ProjectSummary } from "@/lib/api";
+import { queryKeys } from "@/lib/queryKeys";
 
 /** FullPageState centres a page-level EmptyState (not found, no access) in the content area. */
 export function FullPageState({ children }: { children: ReactNode }) {
@@ -33,10 +35,25 @@ export interface ProjectLoadErrorProps {
 /**
  * ProjectLoadError is the inbox and settings state for a project that failed to
  * load: a 404 reads "Project not found or you do not have access" (UI.md 4.15),
- * other errors offer Retry.
+ * other errors offer Retry. A 404 also drops the project from the cached
+ * project list and refetches it, so the projects home does not redirect a
+ * single-project user (audit V1) straight back here.
  */
 export function ProjectLoadError({ projectSlug, error, onRetry }: ProjectLoadErrorProps) {
+  const queryClient = useQueryClient();
   const isNotFound = error instanceof ApiError && error.status === 404;
+
+  useEffect(() => {
+    if (!isNotFound) {
+      return;
+    }
+    queryClient.setQueryData<ProjectSummary[]>(queryKeys.projects(), (prev) =>
+      prev?.filter((p) => p.slug !== projectSlug),
+    );
+    // exact: the failing project query is mounted here and must not refetch.
+    void queryClient.invalidateQueries({ queryKey: queryKeys.projects(), exact: true });
+  }, [isNotFound, projectSlug, queryClient]);
+
   return (
     <FullPageState>
       <EmptyState
