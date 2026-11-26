@@ -4,6 +4,7 @@ import {
   formatBytes,
   formatExactTimestamp,
   formatRelativeTime,
+  getSenderInitials,
   getSenderLabel,
   isRasterImageMime,
 } from "@/lib/format";
@@ -92,5 +93,17 @@ describe("formatBytes and address helpers", () => {
     expect(isRasterImageMime("image/svg+xml")).toBe(false);
     expect(isRasterImageMime("application/pdf")).toBe(false);
     expect(isRasterImageMime("text/html")).toBe(false);
+  });
+});
+
+describe("getSenderInitials", () => {
+  it("uses the first and last word of the name, or the address local part", () => {
+    expect(getSenderInitials({ name: "Brand Team", address: "brand@example.test" })).toBe("BT");
+    expect(getSenderInitials({ name: "João Maria Silva", address: "" })).toBe("JS");
+    expect(getSenderInitials({ name: "Billing", address: "billing@example.test" })).toBe("B");
+    expect(getSenderInitials({ name: "", address: "jane.doe@example.test" })).toBe("JD");
+    expect(getSenderInitials({ name: " ", address: "ops@example.test" })).toBe("O");
+    expect(getSenderInitials({ name: '"Élodie" Durand', address: "" })).toBe("ÉD");
+    expect(getSenderInitials({ name: "", address: "" })).toBe("?");
   });
 });

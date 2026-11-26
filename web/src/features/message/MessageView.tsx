@@ -294,7 +294,7 @@ export function MessageView() {
       <div
         role="tablist"
         aria-label="Message views"
-        className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-surface px-3"
+        className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-surface px-4"
       >
         {availableTabs.map((tab, idx) => {
           const selected = tab.id === activeTab;
@@ -313,7 +313,9 @@ export function MessageView() {
               onClick={() => selectTab(tab.id)}
               onKeyDown={(e) => handleTabKeyDown(e, idx)}
               className={cn(
-                "relative inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 border-b-2 px-2.5 text-xs font-medium transition-colors",
+                // Tabs are the primary navigation of the pane: 13 px with an accent
+                // underline; the preview toolbar below them is 12 px and quieter.
+                "relative inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 border-b-2 px-2.5 text-[13px] font-medium transition-colors focus-visible:-outline-offset-2",
                 selected
                   ? "border-accent text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",

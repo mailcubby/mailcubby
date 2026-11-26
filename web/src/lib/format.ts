@@ -203,6 +203,23 @@ export function getSenderLabel(addr: Address): string {
   return addr.name.trim() || addr.address.trim() || "(no sender)";
 }
 
+/**
+ * getSenderInitials returns up to two initials for the sender avatar: the
+ * first and last word of the display name, or of the address local part.
+ * Splits by code point so accented letters and emoji stay whole; "?" when
+ * there is no sender.
+ */
+export function getSenderInitials(addr: Address): string {
+  const source = addr.name.trim() || addr.address.trim().split("@")[0] || "";
+  const words = source.split(/[\s._+-]+/).filter((w) => /[\p{L}\p{N}]/u.test(w));
+  const first = words[0];
+  const last = words.length > 1 ? words[words.length - 1] : undefined;
+  const initials = [first, last]
+    .map((w) => (w ? (Array.from(w.replace(/^[^\p{L}\p{N}]+/u, ""))[0] ?? "") : ""))
+    .join("");
+  return initials ? initials.toLocaleUpperCase() : "?";
+}
+
 export const PROJECT_COLORS: ReadonlyArray<ProjectColor> = [
   "slate",
   "red",

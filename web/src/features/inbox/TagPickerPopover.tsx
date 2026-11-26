@@ -18,6 +18,7 @@ export interface TagPickerPopoverProps {
   onBulkApply?: (action: "add_tags" | "remove_tags", tagName: string) => void;
   align?: "left" | "right";
   triggerLabel?: string;
+  triggerClassName?: string;
   triggerTitle?: string;
 }
 
@@ -32,6 +33,7 @@ export function TagPickerPopover({
   onBulkApply,
   align = "left",
   triggerLabel = "Add tag",
+  triggerClassName,
   triggerTitle = "Edit tags (t)",
 }: TagPickerPopoverProps) {
   const [filter, setFilter] = useState("");
@@ -132,6 +134,7 @@ export function TagPickerPopover({
         aria-controls={panelId}
         title={triggerTitle}
         onClick={() => onOpenChange(!open)}
+        className={triggerClassName}
       >
         <Tag className="size-3" aria-hidden="true" />
         <span>{triggerLabel}</span>
@@ -191,7 +194,7 @@ export function TagPickerPopover({
                 return (
                   <div
                     key={tag.id}
-                    className="flex items-center justify-between gap-1 rounded-sm px-1.5 py-1 text-xs hover:bg-muted/60"
+                    className="flex items-center justify-between gap-1 rounded-sm px-1.5 py-1 text-xs hover:bg-muted"
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span
@@ -207,7 +210,7 @@ export function TagPickerPopover({
                           onBulkApply("add_tags", tag.name);
                           onOpenChange(false);
                         }}
-                        className="cursor-pointer rounded-xs px-1.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/15"
+                        className="cursor-pointer rounded-xs px-1.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent-subtle"
                       >
                         Add
                       </button>
