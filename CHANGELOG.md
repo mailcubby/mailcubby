@@ -8,7 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 First release of **Mailcubby**, a self-hosted, multi-tenant email testing server shipped as a single static Go binary with an embedded React UI.
 
-This is an early 0.x release: until 1.0.0, configuration, the REST API and the data format may change between minor versions, and each such change will be listed here with its upgrade steps. `v1.0.0-rc.1` was a release rehearsal and is superseded by this release; its data directories work unchanged.
+This is an early 0.x release: until 1.0.0, configuration, the REST API and the data format may change between minor versions, and each such change will be listed here with its upgrade steps. Container images tagged `1.0.0-rc.1` came from a withdrawn release rehearsal; data directories created with them work with 0.1.0 unchanged.
 
 ### Added
 

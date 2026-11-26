@@ -4,8 +4,6 @@
 
 This is an early 0.x release. Until 1.0.0, configuration, the REST API and the data format may still change between minor versions (0.1 to 0.2). Every such change and the steps to upgrade are documented in the [CHANGELOG](https://github.com/mailcubby/mailcubby/blob/v0.1.0/CHANGELOG.md). Back up your data directory before upgrading.
 
-`v1.0.0-rc.1` was a release rehearsal and is superseded by this release. A data directory created by it works with v0.1.0 unchanged (same migrations and configuration).
-
 Mailcubby ships as a single static Go binary (~9 MB compressed container image) with an embedded React UI, SQLite (WAL + FTS5) metadata/search, and zstd-compressed `.eml` blob storage.
 
 Mailcubby is source-available under the [PolyForm Shield License 1.0.0](https://polyformproject.org/licenses/shield/1.0.0): free to use, including commercially, but not to build a competing product.
