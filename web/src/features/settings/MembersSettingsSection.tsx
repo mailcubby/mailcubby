@@ -649,7 +649,12 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
               >
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={createInviteMutation.isPending}>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={createInviteMutation.isPending}
+              >
                 {createInviteMutation.isPending ? "Creating..." : "Create invite link"}
               </Button>
             </div>

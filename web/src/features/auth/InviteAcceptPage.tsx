@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, Inbox, LogIn, LogOut, MailCheck, UserPlus } from "lucide-react";
+import { AlertCircle, LogIn, LogOut, MailCheck, UserPlus } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { BrandMark } from "@/components/BrandMark";
 import { RoleBadge } from "@/components/RoleBadge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PasswordInput } from "@/features/auth/PasswordInput";
@@ -194,19 +195,14 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
     return (
       <main className="flex min-h-full items-center justify-center px-4 py-10">
         <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-lg border border-border bg-surface p-6 text-center shadow-xs">
-          <span className="flex size-9 items-center justify-center rounded-md bg-foreground text-background">
-            <Inbox className="size-4" aria-hidden="true" />
-          </span>
+          <BrandMark />
           <div className="space-y-1">
             <h1 className="text-base font-semibold text-foreground">Invitations unavailable</h1>
             <p className="text-xs text-muted-foreground">
               Invitations are only available when Mailcubby runs in server mode.
             </p>
           </div>
-          <Link
-            to="/"
-            className="inline-flex h-8 w-full items-center justify-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90"
-          >
+          <Link to="/" className={buttonClassName({ variant: "primary", className: "w-full" })}>
             Go to projects
           </Link>
         </div>
@@ -237,17 +233,14 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
           </div>
           <div className="flex w-full flex-col gap-2">
             {currentUser ? (
-              <Link
-                to="/"
-                className="inline-flex h-8 w-full items-center justify-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90"
-              >
+              <Link to="/" className={buttonClassName({ variant: "primary", className: "w-full" })}>
                 Go to projects
               </Link>
             ) : (
               <Link
                 to="/login"
                 search={{ returnTo: undefined }}
-                className="inline-flex h-8 w-full items-center justify-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90"
+                className={buttonClassName({ variant: "primary", className: "w-full" })}
               >
                 Sign in
               </Link>
@@ -265,7 +258,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
     <main className="flex min-h-full items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-6 shadow-xs">
         <div className="mb-5 flex flex-col items-center gap-2 text-center">
-          <span className="flex size-9 items-center justify-center rounded-md bg-foreground text-background">
+          <span className="flex size-9 items-center justify-center rounded-md bg-sidebar text-sidebar-accent">
             {isInstanceInvite ? (
               <UserPlus className="size-4" aria-hidden="true" />
             ) : (
@@ -339,10 +332,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
                 <LogOut className="size-3.5" aria-hidden="true" />
                 <span>{logoutMutation.isPending ? "Signing out..." : "Sign out to accept"}</span>
               </Button>
-              <Link
-                to="/"
-                className="inline-flex h-8 w-full items-center justify-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-muted"
-              >
+              <Link to="/" className={buttonClassName({ variant: "outline", className: "w-full" })}>
                 Back to projects
               </Link>
             </div>
@@ -367,6 +357,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
 
               <Button
                 type="button"
+                variant="primary"
                 className="w-full"
                 disabled={acceptMutation.isPending}
                 onClick={() => acceptMutation.mutate({})}
@@ -466,7 +457,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
                   <Link
                     to="/login"
                     search={{ returnTo: loginReturnTo }}
-                    className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+                    className={buttonClassName({ variant: "primary", size: "xs" })}
                   >
                     <LogIn className="size-3.5" aria-hidden="true" />
                     <span>Sign in to accept</span>
@@ -475,7 +466,12 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
               </div>
             ) : null}
 
-            <Button type="submit" disabled={acceptMutation.isPending} className="w-full">
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={acceptMutation.isPending}
+              className="w-full"
+            >
               {acceptMutation.isPending
                 ? "Setting up account..."
                 : isInstanceInvite

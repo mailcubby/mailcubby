@@ -1,8 +1,9 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { AlertCircle, CheckCircle2, Inbox } from "lucide-react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/BrandMark";
+import { Button, buttonClassName } from "@/components/ui/button";
 import { PasswordInput } from "@/features/auth/PasswordInput";
 import { ApiError, api, unwrapVoid } from "@/lib/api";
 import { metaQueryOptions } from "@/lib/queries";
@@ -75,9 +76,7 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
     <main className="flex min-h-full items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-6 shadow-xs">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
-          <span className="flex size-9 items-center justify-center rounded-md bg-foreground text-background">
-            <Inbox className="size-4" aria-hidden="true" />
-          </span>
+          <BrandMark />
           <div>
             <h1 className="text-base font-semibold tracking-tight text-foreground">
               Set a new password
@@ -95,7 +94,7 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
             <Link
               to="/login"
               search={{ returnTo: undefined }}
-              className="inline-flex h-8 w-full items-center justify-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground transition-colors hover:opacity-90"
+              className={buttonClassName({ variant: "primary", className: "w-full" })}
             >
               Sign in
             </Link>
@@ -141,7 +140,12 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
               </div>
             ) : null}
 
-            <Button type="submit" disabled={resetMutation.isPending} className="w-full">
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={resetMutation.isPending}
+              className="w-full"
+            >
               {resetMutation.isPending ? "Updating password..." : "Reset password"}
             </Button>
           </form>
