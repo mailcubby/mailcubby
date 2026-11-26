@@ -86,7 +86,7 @@ The invite and reset pages use the same centered card. An invite link that is in
 
 ### 3.2 Setup wizard (first run, server mode)
 
-Steps with a progress indicator; each step is a short form. Steps 1 to 3 are collected client-side and submitted together as one `POST /api/v1/setup` at the end of step 3 (a wrong token sends the user back to step 1 with the error).
+Steps with a progress indicator; each step is a short form. The card keeps one width (672 px, wide enough for the step 5 connection details and snippets) on every step, so it never jumps between steps. Steps 1 to 3 are collected client-side and submitted together as one `POST /api/v1/setup` at the end of step 3 (a wrong token sends the user back to step 1 with the error).
 
 The progress indicator uses short labels that never truncate (Token, Admin, Instance, Project, Connect; hidden below 640 px, numbers only): the current step on the accent tint, finished steps with a success check. Each step's main action is the primary button; Back and Skip are outline or ghost. On step 5 "Send test email" is primary until the first message arrives, then "Go to inbox" is.
 
