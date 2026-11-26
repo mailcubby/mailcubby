@@ -431,9 +431,11 @@ test.describe("Phase 7b: Multi-tenant projects, invites, viewer mode, and admin 
         await resetPage.getByLabel("Email").fill("dev@agency.test");
         await resetPage.getByLabel("Password", { exact: true }).fill("dev-reset-pass-456");
         await resetPage.getByRole("button", { name: "Sign in" }).click();
-        // Phase 15c (audit V1): a non-admin with one project lands in its inbox.
-        await expect(resetPage).toHaveURL(`${srv.httpURL}/p/dev-sandbox`);
-        await expect(resetPage.getByText("Dev Sandbox").first()).toBeVisible();
+        // Phase 15e (audit V1, FR-035): dev@agency.test can create projects, so
+        // with one project they keep the projects home and its "New project".
+        await expect(resetPage).toHaveURL(`${srv.httpURL}/`);
+        await expect(resetPage.getByRole("link", { name: /Dev Sandbox/ })).toBeVisible();
+        await expect(resetPage.getByRole("button", { name: "New project" })).toBeVisible();
       } finally {
         await resetContext.close();
       }

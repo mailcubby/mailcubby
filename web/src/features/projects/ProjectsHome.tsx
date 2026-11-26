@@ -1,8 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { Navigate } from "@tanstack/react-router";
-import { Copy, Inbox, LayoutGrid, List, Plus, Search, Terminal } from "lucide-react";
+import {
+  AlertCircle,
+  Copy,
+  Inbox,
+  LayoutGrid,
+  List,
+  Plus,
+  Search,
+  SearchX,
+  Terminal,
+} from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useAppCommands } from "@/components/AppCommandContext";
+import { EmptyState } from "@/components/EmptyState";
 import { useRealtime } from "@/components/RealtimeProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -133,13 +144,28 @@ export function ProjectsHome() {
     return <Navigate to="/p/$project" params={{ project: singleProjectSlug }} replace />;
   }
 
+  // While the V1 redirect is still possible (a server-mode user without admin
+  // or create rights whose project list is loading), render a neutral pane
+  // instead of the page skeleton, so the projects page never flashes before
+  // the inbox opens. Admins, creators and local mode skip this.
+  const redirectPossible =
+    meta?.mode === "server" &&
+    me !== undefined &&
+    !me.user.is_admin &&
+    !me.user.can_create_projects;
+  if (meta === undefined || (redirectPossible && projects === undefined && !error)) {
+    return <main aria-busy="true" className="h-full" />;
+  }
+
   return (
-    <main className="h-full overflow-y-auto px-4 py-6 sm:px-6">
+    <main className="h-full overflow-y-auto px-4 py-6 sm:px-6 lg:py-8">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">Projects</h1>
-            <p className="text-[13px] text-muted-foreground">
+            <h1 className="text-xl leading-7 font-semibold tracking-tight text-foreground">
+              Projects
+            </h1>
+            <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
               Select a project inbox or send mail over SMTP to capture messages.
             </p>
           </div>
@@ -246,16 +272,17 @@ export function ProjectsHome() {
         </div>
 
         {error ? (
-          <div
-            role="alert"
-            className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 bg-surface p-5 text-[13px]"
-          >
-            <p className="font-medium text-destructive">
-              Failed to load projects: {getApiErrorMessage(error)}
-            </p>
-            <Button variant="outline" size="xs" onClick={() => void refetch()}>
-              Retry
-            </Button>
+          <div role="alert" className="rounded-lg border border-border bg-surface">
+            <EmptyState
+              icon={AlertCircle}
+              title="Could not load projects"
+              description={getApiErrorMessage(error)}
+              action={
+                <Button variant="outline" size="sm" onClick={() => void refetch()}>
+                  Retry
+                </Button>
+              }
+            />
           </div>
         ) : isPending ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -271,30 +298,37 @@ export function ProjectsHome() {
             ))}
           </div>
         ) : filteredProjects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
-            <Inbox className="size-8 text-muted-foreground" aria-hidden="true" />
-            <div className="max-w-md space-y-1">
-              <h2 className="text-sm font-medium text-foreground">
-                {projects && projects.length > 0 ? "No matching projects" : "No projects yet"}
-              </h2>
-              <p className="text-[13px] text-muted-foreground">
-                {projects && projects.length > 0
-                  ? `No projects match "${filter}". Try a different filter.`
-                  : canCreateProjects
-                    ? "Projects isolate captured emails per app or environment. Create one below or send mail via SMTP."
-                    : "You do not belong to any projects yet. Ask an admin to add you to a project."}
-              </p>
-            </div>
+          <div className="rounded-lg border border-dashed border-border bg-surface">
             {projects && projects.length > 0 ? (
-              <Button variant="outline" size="sm" onClick={() => setFilter("")}>
-                Clear filter
-              </Button>
-            ) : canCreateProjects ? (
-              <Button variant="primary" size="sm" onClick={openCreateProject}>
-                <Plus className="size-3.5" aria-hidden="true" />
-                <span>New project</span>
-              </Button>
-            ) : null}
+              <EmptyState
+                icon={SearchX}
+                title="No matching projects"
+                description={`No projects match "${filter}". Try a different filter.`}
+                action={
+                  <Button variant="outline" size="sm" onClick={() => setFilter("")}>
+                    Clear filter
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={Inbox}
+                title="No projects yet"
+                description={
+                  canCreateProjects
+                    ? "Projects isolate captured emails per app or environment. Create one or send mail via SMTP."
+                    : "You do not belong to any projects yet. Ask an admin to add you to a project."
+                }
+                action={
+                  canCreateProjects ? (
+                    <Button variant="primary" size="sm" onClick={openCreateProject}>
+                      <Plus className="size-3.5" aria-hidden="true" />
+                      <span>New project</span>
+                    </Button>
+                  ) : undefined
+                }
+              />
+            )}
           </div>
         ) : viewMode === "list" ? (
           <div className="flex flex-col gap-1.5">
