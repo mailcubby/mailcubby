@@ -167,6 +167,8 @@ Elsewhere (audit V7), page-level states are centred in the content area under th
 | Project audit log, not an owner or local mode | Audit log unavailable | none |
 | Invite page | Invitation unavailable, Too many requests, Invitations unavailable (local mode) | Sign in or Go to projects |
 
+"Back to projects" (in these states and in the account pages) reads "Back to inbox" and opens that inbox for the users that 3.3 sends straight to their only project; it never points at the project that just failed to load.
+
 ### 3.5 Message view
 
 **Header** (on `--surface`, 16/24 px padding): the subject (18 px semibold, selectable, copy on click) with the action icon group on the same row: previous/next, mark unread, download `.eml`, copy link to message, open preview in new window (opens `/render/...` directly, still sandboxed by CSP), delete. Below it a 36 px sender avatar (up to two initials on the neutral `--secondary` tint; decorative, `aria-hidden`, "?" without a sender) beside from (name + address; click copies address) and to/cc/bcc (collapsed after 3 with "+N"), with the received time (relative, exact on hover) and size on the right. The last row holds the credential chip ("via <label>" with a key icon, neutral pill; hidden for viewers) and the tags (soft pills with the tag colour dot, editable inline for members with autocomplete; "Add tag" is a dashed pill).

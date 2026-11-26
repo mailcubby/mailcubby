@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ProjectLoadError } from "@/components/PageStates";
+import { NotFoundPage, ProjectLoadError } from "@/components/PageStates";
 import { ProjectsHome } from "@/features/projects/ProjectsHome";
 import { ApiError, type ProjectSummary } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
@@ -170,5 +170,40 @@ describe("single-project redirect after losing the project (audit V1, FR-035)", 
     renderWith(client, <ProjectsHome />);
 
     await waitFor(() => expect(mockNavigateTo).toHaveBeenCalledWith("/p/client-portal"));
+  });
+});
+
+describe("back links of page states for a single-project user (audit V1)", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("reads Back to inbox and opens the only project", async () => {
+    const client = newClient();
+    client.setQueryData(queryKeys.projects(), [CLIENT_PORTAL]);
+
+    renderWith(client, <NotFoundPage />);
+
+    const link = await screen.findByRole("link", { name: "Back to inbox" });
+    expect(link.getAttribute("href")).toBe("/p/client-portal");
+  });
+
+  it("never points back at the project that failed to load", () => {
+    const client = newClient();
+    const internal: ProjectSummary = { ...CLIENT_PORTAL, id: 2, slug: "internal", name: "Ops" };
+    client.setQueryData(queryKeys.projects(), [CLIENT_PORTAL, internal]);
+
+    renderWith(
+      client,
+      <ProjectLoadError
+        projectSlug="internal"
+        error={new ApiError(404, "not_found", "project not found")}
+        onRetry={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Back to inbox" }).getAttribute("href")).toBe(
+      "/p/client-portal",
+    );
   });
 });

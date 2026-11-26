@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { ApiError, getApiErrorMessage, type ProjectSummary } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSingleProjectSlug } from "@/lib/useSingleProjectSlug";
 
 /** FullPageState centres a page-level EmptyState (not found, no access) in the content area. */
 export function FullPageState({ children }: { children: ReactNode }) {
@@ -16,8 +17,22 @@ export function FullPageState({ children }: { children: ReactNode }) {
   );
 }
 
-/** BackToProjectsLink is the outline "Back to projects" action of page-level states. */
-export function BackToProjectsLink() {
+/**
+ * BackToProjectsLink is the outline "Back to projects" action of page-level
+ * states. For a user whom the projects home sends to their only project (audit
+ * V1) it reads "Back to inbox" and opens that inbox. excludeSlug names a
+ * project that failed to load, which the link never points back at.
+ */
+export function BackToProjectsLink({ excludeSlug }: { excludeSlug?: string }) {
+  const singleProjectSlug = useSingleProjectSlug(excludeSlug);
+  if (singleProjectSlug) {
+    return (
+      <Link to="/p/$project" params={{ project: singleProjectSlug }} className={buttonClassName()}>
+        <ArrowLeft className="size-3.5" aria-hidden="true" />
+        <span>Back to inbox</span>
+      </Link>
+    );
+  }
   return (
     <Link to="/" className={buttonClassName()}>
       <ArrowLeft className="size-3.5" aria-hidden="true" />
@@ -69,7 +84,7 @@ export function ProjectLoadError({ projectSlug, error, onRetry }: ProjectLoadErr
         }
         action={
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <BackToProjectsLink />
+            <BackToProjectsLink excludeSlug={projectSlug} />
             {!isNotFound ? (
               <Button variant="primary" onClick={onRetry}>
                 Retry
