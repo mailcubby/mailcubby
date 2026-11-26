@@ -28,6 +28,7 @@ Required: 4.5 for text, 3 for UI components, icons and focus rings (WCAG 1.4.3 a
 | `--ring` #087683 | `--background` #f3f6f7 | 4.92 | 3 | PASS | focus ring on the canvas |
 | `--ring` #087683 | `--surface` #ffffff | 5.34 | 3 | PASS | focus ring on panes |
 | `--ring` #087683 | `--muted` #edf1f3 | 4.70 | 3 | PASS | focus ring on muted fills |
+| `--ring` #087683 | `--accent-subtle` #e1f3f4 | 4.66 | 3 | PASS | focus ring on the open message row |
 | `--input` #7c8c94 | `--surface` #ffffff | 3.48 | 3 | PASS | input and select border |
 | `--input` #7c8c94 | `--background` #f3f6f7 | 3.20 | 3 | PASS | input border on the canvas |
 | `--success-foreground` #2c5a0a | `--success-subtle` #eaf5dc | 7.22 | 4.5 | PASS | success badge and alert text |
@@ -90,6 +91,7 @@ Required: 4.5 for text, 3 for UI components, icons and focus rings (WCAG 1.4.3 a
 | `--ring` #3cc4c8 | `--background` #0c1214 | 8.92 | 3 | PASS | focus ring on the canvas |
 | `--ring` #3cc4c8 | `--surface` #131b1e | 8.25 | 3 | PASS | focus ring on panes |
 | `--ring` #3cc4c8 | `--muted` #192226 | 7.64 | 3 | PASS | focus ring on muted fills |
+| `--ring` #3cc4c8 | `--accent-subtle` #11353a | 6.22 | 3 | PASS | focus ring on the open message row |
 | `--input` #627480 | `--surface` #131b1e | 3.60 | 3 | PASS | input and select border |
 | `--input` #627480 | `--background` #0c1214 | 3.89 | 3 | PASS | input border on the canvas |
 | `--success-foreground` #b5e68b | `--success-subtle` #1c2d15 | 10.21 | 4.5 | PASS | success badge and alert text |

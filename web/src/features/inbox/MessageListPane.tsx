@@ -594,7 +594,7 @@ export function MessageListPane({
         <div
           role="toolbar"
           aria-label="Bulk message actions"
-          className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-accent/10 px-3"
+          className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-accent-subtle px-3"
         >
           <div className="flex items-center gap-2">
             <Button
@@ -693,7 +693,9 @@ export function MessageListPane({
                 <PanelLeftOpen className="size-4" aria-hidden="true" />
               </Button>
             ) : null}
-            <h1 className="truncate text-[13px] font-semibold text-foreground">{headingLabel}</h1>
+            <h1 className="truncate text-[15px] font-semibold tracking-tight text-foreground">
+              {headingLabel}
+            </h1>
             <span className="text-xs text-muted-foreground tabular-nums">{countDisplay}</span>
           </div>
 
@@ -850,7 +852,7 @@ export function MessageListPane({
             aria-multiselectable="true"
             aria-activedescendant={activeMessageId ? `msg-row-${activeMessageId}` : undefined}
             aria-label={`${project.name} messages`}
-            className="relative w-full"
+            className="relative w-full focus-visible:-outline-offset-2"
             style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
           >
             {virtualItems.map((virtualRow) => {
@@ -903,9 +905,15 @@ export function MessageListPane({
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   className={cn(
-                    "absolute top-0 left-0 flex w-full cursor-pointer items-start gap-2.5 border-b border-border px-3 transition-colors duration-150 focus-visible:z-10",
-                    density === "compact" ? "py-1.5" : "py-3",
-                    isActive ? "bg-accent/10" : isSelected ? "bg-muted/70" : "hover:bg-muted/40",
+                    // The list scrolls, so the focus ring sits inside the row.
+                    "absolute top-0 left-0 flex w-full cursor-pointer items-start gap-2.5 border-b border-border px-3 transition-colors duration-150 focus-visible:z-10 focus-visible:-outline-offset-2",
+                    density === "compact" ? "py-2" : "py-3",
+                    // Open message: accent tint and a 2 px accent bar; checked rows: muted.
+                    isActive
+                      ? "bg-accent-subtle shadow-[inset_2px_0_0_var(--accent)]"
+                      : isSelected
+                        ? "bg-muted"
+                        : "hover:bg-muted",
                     isArrived && "arrival-highlight",
                   )}
                 >
@@ -919,7 +927,7 @@ export function MessageListPane({
                           "flex size-3.5 cursor-pointer items-center justify-center rounded-xs border transition-colors",
                           isSelected
                             ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-background hover:border-foreground/50",
+                            : "border-input bg-surface hover:border-foreground",
                         )}
                       >
                         {isSelected ? <Check className="size-2.5" aria-hidden="true" /> : null}
@@ -954,7 +962,7 @@ export function MessageListPane({
                         title={exactTime}
                         className={cn(
                           "shrink-0 text-[11px] tabular-nums",
-                          isActive ? "text-foreground/80" : "text-muted-foreground",
+                          msg.seen ? "text-muted-foreground" : "font-medium text-foreground",
                         )}
                       >
                         {relTime}
@@ -964,8 +972,8 @@ export function MessageListPane({
                     <div className="flex items-center justify-between gap-2">
                       <span
                         className={cn(
-                          "truncate text-xs",
-                          msg.seen ? "text-foreground/85" : "font-medium text-foreground",
+                          "truncate text-xs text-foreground",
+                          !msg.seen && "font-medium",
                         )}
                       >
                         {subject}
@@ -974,10 +982,7 @@ export function MessageListPane({
                         {msg.attachment_count > 0 ? (
                           <>
                             <Paperclip
-                              className={cn(
-                                "size-3",
-                                isActive ? "text-foreground/80" : "text-muted-foreground",
-                              )}
+                              className="size-3 text-muted-foreground"
                               aria-hidden="true"
                             />
                             <span className="sr-only">
@@ -990,7 +995,11 @@ export function MessageListPane({
                           const dot =
                             tagColorByLower.get(tag.toLowerCase()) ?? PROJECT_COLOR_DOT_CLASS.slate;
                           return (
-                            <Badge key={tag} variant="neutral" className="max-w-24 gap-1 truncate">
+                            <Badge
+                              key={tag}
+                              variant="neutral"
+                              className="max-w-24 min-h-[18px] gap-1 truncate px-1.5"
+                            >
                               <span
                                 className={cn("size-1.5 shrink-0 rounded-full", dot)}
                                 aria-hidden="true"
@@ -999,19 +1008,16 @@ export function MessageListPane({
                             </Badge>
                           );
                         })}
-                        {extraTags > 0 ? <Badge variant="neutral">+{extraTags}</Badge> : null}
+                        {extraTags > 0 ? (
+                          <Badge variant="neutral" className="min-h-[18px] px-1.5">
+                            +{extraTags}
+                          </Badge>
+                        ) : null}
                       </div>
                     </div>
 
                     {msg.snippet ? (
-                      <p
-                        className={cn(
-                          "truncate text-xs",
-                          isActive ? "text-foreground/80" : "text-muted-foreground",
-                        )}
-                      >
-                        {msg.snippet}
-                      </p>
+                      <p className="truncate text-xs text-muted-foreground">{msg.snippet}</p>
                     ) : null}
                   </div>
                 </div>

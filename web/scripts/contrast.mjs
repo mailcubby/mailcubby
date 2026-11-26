@@ -48,6 +48,7 @@ const PAIRS = [
   ["--ring", "--background", 3, "focus ring on the canvas"],
   ["--ring", "--surface", 3, "focus ring on panes"],
   ["--ring", "--muted", 3, "focus ring on muted fills"],
+  ["--ring", "--accent-subtle", 3, "focus ring on the open message row"],
   ["--input", "--surface", 3, "input and select border"],
   ["--input", "--background", 3, "input border on the canvas"],
   ["--success-foreground", "--success-subtle", 4.5, "success badge and alert text"],
