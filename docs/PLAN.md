@@ -566,6 +566,20 @@ Acceptance:
 - Axe shows no serious or critical violations on changed screens (e2e).
 - Local mode needs no new step compared to v1.0.0.
 
+### Phase 15 follow-ups
+
+Small leftovers from the Phase 15 final review (frontend only).
+
+Tasks:
+- [x] Invite accept page: the signed-in links out ("Back to projects" on an instance invite, "Go to projects" on an unavailable invite) follow the single-project rule and open `/p/<slug>` as "Back to inbox" / "Go to inbox".
+- [ ] Project switcher: "All projects" is hidden for the users who have no "Back to all projects" (audit V4 rule).
+- [ ] A non-404 load error on a single-project user's only project offers "Try again" as the primary action instead of a back link to `/`.
+- [ ] Setup wizard card keeps one width across all steps without clipping the step 5 snippets.
+- [ ] Projects home while the V1 redirect decides: skeleton or documented empty pane (UI.md 4.6).
+
+Acceptance:
+- Vitest or Playwright covers each item; `make check` and `make e2e` green.
+
 ---
 
 ## Backlog (after v1.0.0)

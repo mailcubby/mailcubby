@@ -82,7 +82,7 @@ Inbox search state lives in URL search params (`?q=from:alice is:unread&tag=invo
 
 Centered card: the brand mark, the instance name as the title (from `GET /api/v1/meta`, audit V6) with "Sign in to your account" under it, email, password, "Sign in" (primary button). When the instance name is not "Mailcubby", a muted "Powered by Mailcubby" line sits under the card, so the product name stays visible without competing with the instance. Errors inline under the form on the `--destructive-subtle` alert (generic "Email or password is incorrect"). Rate limit shows "Too many attempts, try again in N minutes". No sign-up link (invites only). Local mode never shows this screen.
 
-The invite and reset pages use the same centered card. An invite link that is invalid, used or expired (and invites in local mode) shows the `EmptyState` (3.4.2) inside the card: "Invitation unavailable" with one primary action (Sign in, or Go to projects when signed in).
+The invite and reset pages use the same centered card. An invite link that is invalid, used or expired (and invites in local mode) shows the `EmptyState` (3.4.2) inside the card: "Invitation unavailable" with one primary action (Sign in, or Go to projects when signed in). For a signed-in user whom 3.3 sends straight to their only inbox, the links out of the invite page open that inbox instead of `/`: "Go to inbox" on the unavailable card and "Back to inbox" under "Sign out to accept".
 
 ### 3.2 Setup wizard (first run, server mode)
 

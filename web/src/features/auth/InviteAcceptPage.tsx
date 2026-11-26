@@ -21,6 +21,7 @@ import {
 import { formatExactTimestamp } from "@/lib/format";
 import { authMeQueryOptions, invitePreviewQueryOptions, metaQueryOptions } from "@/lib/queries";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSingleProjectSlug } from "@/lib/useSingleProjectSlug";
 
 export interface InviteAcceptPageProps {
   token: string;
@@ -60,6 +61,9 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
   const instanceName = meta?.instance_name || "Mailcubby";
   const preview = previewQuery.data;
   const currentUser = authQuery.data?.user;
+  // Audit V1: `/` sends a single-project user straight to that inbox, so the
+  // links out of this page name the inbox and open it directly.
+  const singleProjectSlug = useSingleProjectSlug();
 
   useEffect(() => {
     document.title = preview?.project
@@ -228,9 +232,19 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
             description={<span role="alert">{errText}</span>}
             action={
               currentUser ? (
-                <Link to="/" className={buttonClassName({ variant: "primary" })}>
-                  Go to projects
-                </Link>
+                singleProjectSlug ? (
+                  <Link
+                    to="/p/$project"
+                    params={{ project: singleProjectSlug }}
+                    className={buttonClassName({ variant: "primary" })}
+                  >
+                    Go to inbox
+                  </Link>
+                ) : (
+                  <Link to="/" className={buttonClassName({ variant: "primary" })}>
+                    Go to projects
+                  </Link>
+                )
               ) : (
                 <Link
                   to="/login"
@@ -328,9 +342,22 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
                 <LogOut className="size-3.5" aria-hidden="true" />
                 <span>{logoutMutation.isPending ? "Signing out..." : "Sign out to accept"}</span>
               </Button>
-              <Link to="/" className={buttonClassName({ variant: "outline", className: "w-full" })}>
-                Back to projects
-              </Link>
+              {singleProjectSlug ? (
+                <Link
+                  to="/p/$project"
+                  params={{ project: singleProjectSlug }}
+                  className={buttonClassName({ variant: "outline", className: "w-full" })}
+                >
+                  Back to inbox
+                </Link>
+              ) : (
+                <Link
+                  to="/"
+                  className={buttonClassName({ variant: "outline", className: "w-full" })}
+                >
+                  Back to projects
+                </Link>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-3">

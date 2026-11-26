@@ -10,11 +10,13 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({
     children,
     to,
+    params,
     search,
     className,
   }: {
     children: ReactNode;
     to: string;
+    params?: Record<string, string>;
     search?: Record<string, unknown>;
     className?: string;
   }) => {
@@ -22,8 +24,9 @@ vi.mock("@tanstack/react-router", () => ({
       search && typeof search.returnTo === "string"
         ? `?returnTo=${encodeURIComponent(search.returnTo)}`
         : "";
+    const path = params?.project ? to.replace("$project", params.project) : to;
     return (
-      <a href={`${to}${qs}`} className={className}>
+      <a href={`${path}${qs}`} className={className}>
         {children}
       </a>
     );
@@ -65,6 +68,31 @@ const SERVER_META = {
   features: { remote_images: "opt-in" as const, recipient_routing: false },
   inbox_domain: "",
   smtp: { host: "localhost", port: 587, tls_mode: "starttls" as const },
+};
+
+const SINGLE_PROJECT_MEMBER = {
+  user: {
+    id: 2,
+    email: "client@portal.test",
+    name: "Client Viewer",
+    is_admin: false,
+    can_create_projects: false,
+  },
+  csrf_token: "csrf-1",
+  memberships: [],
+};
+
+const SINGLE_PROJECT = {
+  id: 1,
+  slug: "client-portal",
+  name: "Client Portal Staging",
+  color: "teal",
+  role: "viewer",
+  message_count: 0,
+  unread_count: 0,
+  size_bytes: 0,
+  last_message_at: null,
+  sparkline: [],
 };
 
 function renderWithQuery(ui: ReactNode) {
@@ -333,6 +361,55 @@ describe("InviteAcceptPage (FR-056)", () => {
     expect(await screen.findByRole("button", { name: "Sign out to accept" })).toBeTruthy();
   });
 
+  it("links a signed-in single-project user back to their inbox (audit V1)", async () => {
+    mockGet.mockImplementation(async (path: string) => {
+      if (path === "/api/v1/meta") {
+        return ok(SERVER_META);
+      }
+      if (path === "/api/v1/invites/{token}") {
+        return ok({
+          role: null,
+          email: "other@agency.test",
+          invited_by: "Admin",
+          expires_at: "2026-12-01T00:00:00.000Z",
+        });
+      }
+      if (path === "/api/v1/projects") {
+        return ok([SINGLE_PROJECT]);
+      }
+      return ok(SINGLE_PROJECT_MEMBER);
+    });
+
+    renderWithQuery(<InviteAcceptPage token="tok-inst-single" />);
+    const link = await screen.findByRole("link", { name: "Back to inbox" });
+    expect(link.getAttribute("href")).toBe("/p/client-portal");
+    expect(screen.queryByRole("link", { name: "Back to projects" })).toBeNull();
+  });
+
+  it("keeps Back to projects for a signed-in user who sees the projects home", async () => {
+    mockGet.mockImplementation(async (path: string) => {
+      if (path === "/api/v1/meta") {
+        return ok(SERVER_META);
+      }
+      if (path === "/api/v1/invites/{token}") {
+        return ok({
+          role: null,
+          email: "other@agency.test",
+          invited_by: "Admin",
+          expires_at: "2026-12-01T00:00:00.000Z",
+        });
+      }
+      if (path === "/api/v1/projects") {
+        return ok([SINGLE_PROJECT, { ...SINGLE_PROJECT, id: 2, slug: "internal", name: "Ops" }]);
+      }
+      return ok(SINGLE_PROJECT_MEMBER);
+    });
+
+    renderWithQuery(<InviteAcceptPage token="tok-inst-two" />);
+    const link = await screen.findByRole("link", { name: "Back to projects" });
+    expect(link.getAttribute("href")).toBe("/");
+  });
+
   it("clears all cached tenant queries when signing out from an invite page", async () => {
     let signedIn = true;
     mockGet.mockImplementation(async (path: string) => {
@@ -399,5 +476,24 @@ describe("InviteAcceptPage (FR-056)", () => {
     expect(screen.getByRole("alert").textContent).toContain(
       "invalid, already used, or has expired",
     );
+  });
+
+  it("sends a signed-in single-project user from an unavailable invite to their inbox", async () => {
+    mockGet.mockImplementation(async (path: string) => {
+      if (path === "/api/v1/meta") {
+        return ok(SERVER_META);
+      }
+      if (path === "/api/v1/invites/{token}") {
+        return err(410, "gone", "invite link is invalid or has expired");
+      }
+      if (path === "/api/v1/projects") {
+        return ok([SINGLE_PROJECT]);
+      }
+      return ok(SINGLE_PROJECT_MEMBER);
+    });
+
+    renderWithQuery(<InviteAcceptPage token="expired-single" />);
+    const link = await screen.findByRole("link", { name: "Go to inbox" });
+    expect(link.getAttribute("href")).toBe("/p/client-portal");
   });
 });
