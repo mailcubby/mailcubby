@@ -196,7 +196,7 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
       title="API tokens"
       description="Personal bearer tokens for CI pipelines, Playwright tests, and REST API scripts."
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         <Card aria-labelledby="api-tokens-heading">
           <CardHeader
             title="Personal API tokens"

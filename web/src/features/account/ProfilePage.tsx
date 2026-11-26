@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AccountLayout } from "@/features/account/AccountLayout";
 import { ApiError, api, handleApiError, unwrap } from "@/lib/api";
@@ -76,61 +76,67 @@ export function ProfilePage() {
       title="Profile"
       description="Manage your display name and view your account details."
     >
-      <Card aria-label="Profile" className="p-5">
-        <form onSubmit={handleSubmit} method="post" className="flex flex-col gap-4" noValidate>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="profile-email" className="text-xs font-medium text-foreground">
-              Email
-            </label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="profile-email"
-                type="email"
-                value={me?.user.email ?? ""}
-                readOnly
-                disabled
-                className="bg-muted/40 text-muted-foreground"
-              />
-              {me?.user.is_admin ? <Badge variant="accent">Admin</Badge> : null}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Email addresses are managed by an instance administrator.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="profile-name" className="text-xs font-medium text-foreground">
-              Display name
-            </label>
-            <Input
-              id="profile-name"
-              name="name"
-              type="text"
-              autoComplete="name"
-              maxLength={80}
-              required
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (nameError) {
-                  setNameError(null);
-                }
-              }}
-              aria-invalid={nameError ? "true" : undefined}
-              aria-describedby={nameError ? "profile-name-error" : undefined}
-            />
-            {nameError ? (
-              <p id="profile-name-error" className="text-xs text-destructive">
-                {nameError}
+      <Card aria-labelledby="profile-heading">
+        <CardHeader
+          title="Account details"
+          titleId="profile-heading"
+          description="Your display name is shown to teammates in member lists."
+        />
+        <form onSubmit={handleSubmit} method="post" noValidate>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="profile-email" className="text-xs font-medium text-foreground">
+                Email
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="profile-email"
+                  type="email"
+                  value={me?.user.email ?? ""}
+                  readOnly
+                  disabled
+                  className="bg-muted/40 text-muted-foreground"
+                />
+                {me?.user.is_admin ? <Badge variant="accent">Admin</Badge> : null}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Email addresses are managed by an instance administrator.
               </p>
-            ) : null}
-          </div>
+            </div>
 
-          <div className="flex justify-end pt-1">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="profile-name" className="text-xs font-medium text-foreground">
+                Display name
+              </label>
+              <Input
+                id="profile-name"
+                name="name"
+                type="text"
+                autoComplete="name"
+                maxLength={80}
+                required
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (nameError) {
+                    setNameError(null);
+                  }
+                }}
+                aria-invalid={nameError ? "true" : undefined}
+                aria-describedby={nameError ? "profile-name-error" : undefined}
+              />
+              {nameError ? (
+                <p id="profile-name-error" className="text-xs text-destructive">
+                  {nameError}
+                </p>
+              ) : null}
+            </div>
+          </CardContent>
+          <CardFooter>
             <Button type="submit" variant="primary" size="sm" disabled={updateMutation.isPending}>
               {updateMutation.isPending ? "Saving..." : "Save profile"}
             </Button>
-          </div>
+          </CardFooter>
         </form>
       </Card>
     </AccountLayout>

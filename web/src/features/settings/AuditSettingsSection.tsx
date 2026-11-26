@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lock, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { AuditLogTable, PROJECT_AUDIT_ACTIONS } from "@/components/AuditLogTable";
@@ -16,15 +16,41 @@ export interface AuditSettingsSectionProps {
 }
 
 export function AuditSettingsSection({ projectSlug }: AuditSettingsSectionProps) {
+  const { data: meta } = useQuery(metaQueryOptions());
   return (
     <ProjectSettingsLayout
       projectSlug={projectSlug}
       section="audit"
       title="Audit log"
       description="Security and management events recorded for this project."
+      actions={(project) =>
+        meta?.mode === "server" && project.role === "owner" ? (
+          <AuditRefreshButton projectSlug={project.slug} />
+        ) : null
+      }
     >
       {(project) => <AuditSettingsContent project={project} />}
     </ProjectSettingsLayout>
+  );
+}
+
+/** AuditRefreshButton sits in the page header, like Refresh on Admin > Audit log and Stats. */
+function AuditRefreshButton({ projectSlug }: { projectSlug: string }) {
+  const queryClient = useQueryClient();
+  // Every action filter of this project's audit log shares this key prefix.
+  const auditKey = queryKeys.projectAudit(projectSlug).slice(0, 3);
+  const fetching = useIsFetching({ queryKey: auditKey }) > 0;
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      disabled={fetching}
+      onClick={() => void queryClient.refetchQueries({ queryKey: auditKey, type: "active" })}
+    >
+      <RefreshCw className="size-3.5" aria-hidden="true" />
+      <span>Refresh</span>
+    </Button>
   );
 }
 
@@ -77,46 +103,33 @@ function AuditSettingsContent({ project }: { project: ProjectDetail }) {
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-border bg-surface px-5 py-4 shadow-xs">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <label
-              htmlFor="project-audit-action"
-              className="block text-xs font-medium text-muted-foreground"
-            >
-              Action
-            </label>
-            <NativeSelect
-              id="project-audit-action"
-              value={actionFilter}
-              onChange={(e) => setActionFilter(e.target.value)}
-            >
-              <option value="">All actions</option>
-              {PROJECT_AUDIT_ACTIONS.map((action) => (
-                <option key={action} value={action}>
-                  {action}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-
-          {actionFilter ? (
-            <Button type="button" variant="ghost" size="sm" onClick={() => setActionFilter("")}>
-              Clear filter
-            </Button>
-          ) : null}
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface px-5 py-4 shadow-xs">
+        <div className="space-y-1">
+          <label
+            htmlFor="project-audit-action"
+            className="block text-xs font-medium text-muted-foreground"
+          >
+            Action
+          </label>
+          <NativeSelect
+            id="project-audit-action"
+            value={actionFilter}
+            onChange={(e) => setActionFilter(e.target.value)}
+          >
+            <option value="">All actions</option>
+            {PROJECT_AUDIT_ACTIONS.map((action) => (
+              <option key={action} value={action}>
+                {action}
+              </option>
+            ))}
+          </NativeSelect>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={auditQuery.isFetching}
-          onClick={() => void auditQuery.refetch()}
-        >
-          <RefreshCw className="size-3.5" aria-hidden="true" />
-          <span>Refresh</span>
-        </Button>
+        {actionFilter ? (
+          <Button type="button" variant="ghost" size="sm" onClick={() => setActionFilter("")}>
+            Clear filter
+          </Button>
+        ) : null}
       </div>
 
       {auditQuery.error ? (

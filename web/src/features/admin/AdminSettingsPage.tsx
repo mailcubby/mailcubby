@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -155,7 +155,7 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <Card className="p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -381,7 +381,7 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
           </p>
         ) : null}
 
-        <div className="mt-5 flex items-center justify-end gap-2 border-t border-border pt-4">
+        <CardFooter className="-mx-5 mt-5 -mb-5">
           <Button
             type="button"
             variant="outline"
@@ -399,7 +399,7 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
               setFormError(null);
             }}
           >
-            Discard
+            Reset
           </Button>
           <Button
             type="submit"
@@ -409,7 +409,7 @@ function AdminSettingsForm({ data }: { data: AdminSettingsResponse }) {
           >
             {updateMutation.isPending ? "Saving..." : "Save settings"}
           </Button>
-        </div>
+        </CardFooter>
       </Card>
     </form>
   );
