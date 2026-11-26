@@ -189,8 +189,9 @@ export function InboxSidebar({
   const quickCopyCredential = credentials.find((c) => !c.disabled) ?? credentials[0];
   const quickCopyUser = meta?.mode === "local" ? project.slug : quickCopyCredential?.username;
   // Audit V4: with exactly one project there is nowhere to go back to (server
-  // mode, non-admins only). The link waits for the user and the project list,
-  // so it never flashes before the rule can hide it.
+  // mode, non-admins only); the same rule hides the switcher's "All projects".
+  // The link waits for the user and the project list, so it never flashes
+  // before the rule can hide it.
   const showBackToProjects =
     meta?.mode === "local" ||
     (isServer &&
@@ -312,19 +313,21 @@ export function InboxSidebar({
                 ) : null}
               </div>
 
-              <div className="mt-1.5 border-t border-border pt-1.5">
-                <Link
-                  to="/"
-                  onClick={() => {
-                    setSwitcherOpen(false);
-                    onCloseDrawer?.();
-                  }}
-                  className="flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                  <ArrowLeft className="size-3" aria-hidden="true" />
-                  <span>All projects</span>
-                </Link>
-              </div>
+              {showBackToProjects ? (
+                <div className="mt-1.5 border-t border-border pt-1.5">
+                  <Link
+                    to="/"
+                    onClick={() => {
+                      setSwitcherOpen(false);
+                      onCloseDrawer?.();
+                    }}
+                    className="flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <ArrowLeft className="size-3" aria-hidden="true" />
+                    <span>All projects</span>
+                  </Link>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>

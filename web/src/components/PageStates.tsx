@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { AlertCircle, ArrowLeft, FolderX, SearchX } from "lucide-react";
+import { AlertCircle, ArrowLeft, FolderX, RefreshCw, SearchX } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Button, buttonClassName } from "@/components/ui/button";
@@ -52,11 +52,14 @@ export interface ProjectLoadErrorProps {
  * load: a 404 reads "Project not found or you do not have access" (UI.md 4.15),
  * other errors offer Retry. A 404 also drops the project from the cached
  * project list and refetches it, so the projects home does not redirect a
- * single-project user (audit V1) straight back here.
+ * single-project user (audit V1) straight back here. When any other error hits
+ * that user's only project, every way back leads here again, so the state
+ * offers only "Try again".
  */
 export function ProjectLoadError({ projectSlug, error, onRetry }: ProjectLoadErrorProps) {
   const queryClient = useQueryClient();
   const isNotFound = error instanceof ApiError && error.status === 404;
+  const onlyProject = useSingleProjectSlug() === projectSlug;
 
   useEffect(() => {
     if (!isNotFound) {
@@ -83,14 +86,21 @@ export function ProjectLoadError({ projectSlug, error, onRetry }: ProjectLoadErr
             : getApiErrorMessage(error)
         }
         action={
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <BackToProjectsLink excludeSlug={projectSlug} />
-            {!isNotFound ? (
-              <Button variant="primary" onClick={onRetry}>
-                Retry
-              </Button>
-            ) : null}
-          </div>
+          !isNotFound && onlyProject ? (
+            <Button variant="primary" onClick={onRetry}>
+              <RefreshCw className="size-3.5" aria-hidden="true" />
+              <span>Try again</span>
+            </Button>
+          ) : (
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <BackToProjectsLink excludeSlug={projectSlug} />
+              {!isNotFound ? (
+                <Button variant="primary" onClick={onRetry}>
+                  Retry
+                </Button>
+              ) : null}
+            </div>
+          )
         }
       />
     </FullPageState>
