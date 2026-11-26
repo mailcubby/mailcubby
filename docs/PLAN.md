@@ -573,7 +573,7 @@ Small leftovers from the Phase 15 final review (frontend only).
 Tasks:
 - [x] Invite accept page: the signed-in links out ("Back to projects" on an instance invite, "Go to projects" on an unavailable invite) follow the single-project rule and open `/p/<slug>` as "Back to inbox" / "Go to inbox".
 - [x] Project switcher: "All projects" is hidden for the users who have no "Back to all projects" (audit V4 rule).
-- [ ] A non-404 load error on a single-project user's only project offers "Try again" as the primary action instead of a back link to `/`.
+- [x] A non-404 load error on a single-project user's only project offers "Try again" as the primary action instead of a back link to `/`.
 - [ ] Setup wizard card keeps one width across all steps without clipping the step 5 snippets.
 - [ ] Projects home while the V1 redirect decides: skeleton or documented empty pane (UI.md 4.6).
 

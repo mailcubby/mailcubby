@@ -278,7 +278,7 @@ Viewers get a simplified UI: no delete or tag actions, no SMTP or settings secti
 12. **Client view mode** (3.8).
 13. **Remembered layout**: pane widths, sidebar collapsed state, selected tab, device, density, theme (localStorage, namespaced `mailcubby:`).
 14. **Connection state**: a small indicator in the sidebar footer shows realtime status (connected, reconnecting); on reconnect the app invalidates queries.
-15. **Error handling**: API errors show toasts with the server message; `401` redirects to login preserving the return URL; `404` on a project shows "Project not found or you do not have access"; an unknown address shows "Page not found" inside the app shell (3.4.2).
+15. **Error handling**: API errors show toasts with the server message; `401` redirects to login preserving the return URL; `404` on a project shows "Project not found or you do not have access"; any other failure to load a project shows "Could not load project" with a way back and Retry, except on the only project of a user whom 3.3 sends straight to their inbox, where every way back leads to the same project, so "Try again" (refetch) is the one, primary action; an unknown address shows "Page not found" inside the app shell (3.4.2).
 
 ## 5. Accessibility (WCAG 2.1 AA)
 

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NotFoundPage, ProjectLoadError } from "@/components/PageStates";
@@ -205,5 +205,47 @@ describe("back links of page states for a single-project user (audit V1)", () =>
     expect(screen.getByRole("link", { name: "Back to inbox" }).getAttribute("href")).toBe(
       "/p/client-portal",
     );
+  });
+
+  it("offers only Try again when the only project fails to load", () => {
+    const client = newClient();
+    client.setQueryData(queryKeys.projects(), [CLIENT_PORTAL]);
+    const onRetry = vi.fn();
+
+    renderWith(
+      client,
+      <ProjectLoadError
+        projectSlug="client-portal"
+        error={new ApiError(500, "internal", "database is locked")}
+        onRetry={onRetry}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Could not load project" })).toBeTruthy();
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a way back and Retry when another project is left", () => {
+    const client = newClient();
+    const internal: ProjectSummary = { ...CLIENT_PORTAL, id: 2, slug: "internal", name: "Ops" };
+    client.setQueryData(queryKeys.projects(), [CLIENT_PORTAL, internal]);
+
+    renderWith(
+      client,
+      <ProjectLoadError
+        projectSlug="internal"
+        error={new ApiError(500, "internal", "database is locked")}
+        onRetry={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Back to inbox" }).getAttribute("href")).toBe(
+      "/p/client-portal",
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
   });
 });
