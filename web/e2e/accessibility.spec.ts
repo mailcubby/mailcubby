@@ -16,6 +16,12 @@ import {
 } from "./helpers";
 
 const DEV_APP_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+const ADMIN_EMAIL = "admin@a11y.test";
+const ADMIN_PASSWORD = "a11y-admin-password-1";
+const VIEWER_EMAIL = "viewer@a11y.test";
+const VIEWER_PASSWORD = "a11y-viewer-password-1";
+const THEMES = ["Light", "Dark"] as const;
+type Theme = (typeof THEMES)[number];
 
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -71,11 +77,13 @@ async function waitForReadyAndToken(
   throw new Error(`server-mode mailcubby did not become ready (${lastError}):\n${logs.join("")}`);
 }
 
-async function startFreshServerInstance(): Promise<{
+interface FreshServer {
   httpURL: string;
   setupToken: string;
   stop: () => Promise<void>;
-}> {
+}
+
+async function startFreshServerInstance(): Promise<FreshServer> {
   const { binaryPath, repoRoot } = getE2EConfig();
   const httpPort = await getFreePort();
   const smtpPort = await getFreePort();
@@ -135,6 +143,70 @@ async function startFreshServerInstance(): Promise<{
 }
 
 /**
+ * ApiClient seeds data through the REST API (session cookie and CSRF header in
+ * server mode; plain requests in local mode, which has no accounts).
+ */
+class ApiClient {
+  private cookie = "";
+  private csrf = "";
+
+  constructor(
+    private readonly base: string,
+    private readonly sendOrigin = true,
+  ) {}
+
+  static async login(base: string, email: string, password: string): Promise<ApiClient> {
+    const client = new ApiClient(base);
+    await client.request("POST", "/api/v1/auth/login", { email, password });
+    const me = await client.request<{ csrf_token: string }>("GET", "/api/v1/auth/me");
+    client.csrf = me.csrf_token;
+    return client;
+  }
+
+  async request<T = unknown>(method: string, apiPath: string, body?: unknown): Promise<T> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.sendOrigin) {
+      headers.Origin = this.base;
+    }
+    if (this.cookie) {
+      headers.Cookie = this.cookie;
+    }
+    if (this.csrf) {
+      headers["X-CSRF-Token"] = this.csrf;
+    }
+    const res = await fetch(`${this.base}${apiPath}`, {
+      method,
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    for (const setCookie of res.headers.getSetCookie()) {
+      const pair = setCookie.split(";")[0] ?? "";
+      if (!pair.endsWith("=")) {
+        this.cookie = pair;
+      }
+    }
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`${method} ${apiPath}: HTTP ${res.status} ${text}`);
+    }
+    return (text ? JSON.parse(text) : null) as T;
+  }
+}
+
+/** markAllSeen marks every message of a project as read, so the Unread filter is empty. */
+async function markAllSeen(client: ApiClient, projectSlug: string): Promise<void> {
+  const list = await client.request<{ items: Array<{ id: string }> }>(
+    "GET",
+    `/api/v1/projects/${projectSlug}/messages`,
+  );
+  for (const item of list.items) {
+    await client.request("PATCH", `/api/v1/projects/${projectSlug}/messages/${item.id}`, {
+      seen: true,
+    });
+  }
+}
+
+/**
  * Runs axe-core WCAG 2.1 AA checks on the current page and asserts zero
  * serious or critical violations (SPEC NFR-010, docs/UI.md section 5).
  */
@@ -164,239 +236,377 @@ async function assertAccessible(page: Page, screenName: string): Promise<void> {
   }
 }
 
-test.describe("Phase 13: WCAG 2.1 AA accessibility audit (NFR-010)", () => {
-  test("local mode screens have zero serious or critical axe violations in light and dark themes", async ({
+/**
+ * setAuthPageTheme uses the small Light / Dark toggle in the top bar of the
+ * sign-in, setup, invite and reset pages (they have no account menu).
+ */
+async function setAuthPageTheme(page: Page, theme: Theme): Promise<void> {
+  await page.getByRole("banner").getByRole("button", { name: theme, exact: true }).click();
+  if (theme === "Dark") {
+    await expect(page.locator("html")).toHaveClass(/(^|\s)dark(\s|$)/);
+  } else {
+    await expect(page.locator("html")).not.toHaveClass(/(^|\s)dark(\s|$)/);
+  }
+}
+
+/** assertAuthPageBothThemes audits a public page in light, then dark, and leaves it light. */
+async function assertAuthPageBothThemes(page: Page, screenName: string): Promise<void> {
+  for (const theme of THEMES) {
+    await setAuthPageTheme(page, theme);
+    await assertAccessible(page, `${screenName} (${theme})`);
+  }
+  await setAuthPageTheme(page, "Light");
+}
+
+test.describe("WCAG 2.1 AA accessibility audit (NFR-010, Phase 13 and 15e)", () => {
+  test("local mode screens have zero serious or critical axe violations in light and dark", async ({
     page,
   }) => {
+    test.setTimeout(180_000);
     await page.emulateMedia({ reducedMotion: "reduce" });
+    const { httpURL } = getE2EConfig();
     const slug = uniqueSlug("a11y-local");
+    const emptySlug = uniqueSlug("a11y-empty");
     await createProjectViaAPI("A11y Local", slug);
-
-    // Projects home (light theme).
-    await page.goto("/");
-    await expect(page.getByRole("link", { name: new RegExp(slug) })).toBeVisible();
-    await chooseTheme(page, "Light");
-    await assertAccessible(page, "local / (light)");
-
-    // Header menu open (theme radios inside role=menu).
-    await page.getByRole("button", { name: "Preferences menu" }).click();
-    await expect(page.getByRole("menuitemradio", { name: "Light" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    await assertAccessible(page, "local header menu");
-    await page.keyboard.press("Escape");
-
-    // Projects home (dark theme).
-    await chooseTheme(page, "Dark");
-    await assertAccessible(page, "local / (dark)");
-    await chooseTheme(page, "Light");
-
-    // Empty project inbox (setup guide).
-    await page.goto(`/p/${slug}`);
-    await expect(page.getByRole("heading", { name: "No messages yet" })).toBeVisible();
-    await assertAccessible(page, "local empty inbox");
-    await chooseTheme(page, "Dark");
-    await assertAccessible(page, "local empty inbox (dark)");
-    await chooseTheme(page, "Light");
-
-    // Send a rich fixture and inspect inbox + message view tabs + dialogs.
+    await createProjectViaAPI("A11y Empty", emptySlug);
     await sendFixture("04_multipart_related_cid.eml", { user: slug });
-    const row = page.getByRole("option", { name: /Inline CID logo preview/i }).first();
-    await expect(row).toBeVisible();
-    await row.click();
-    await expect(page.locator('iframe[title^="Email preview:"]')).toBeVisible();
-    await assertAccessible(page, "local inbox with message preview");
+    // Phase 15e: with every message read, the Unread filter shows "No unread messages".
+    await markAllSeen(new ApiClient(httpURL, false), slug);
 
-    // Dark theme on inbox with message open.
-    await chooseTheme(page, "Dark");
-    await assertAccessible(page, "local inbox with message preview (dark)");
+    for (const theme of THEMES) {
+      // Projects home and the header "Preferences menu" (theme radios).
+      await page.goto("/");
+      await expect(page.getByRole("link", { name: new RegExp(slug) })).toBeVisible();
+      await chooseTheme(page, theme);
+      await assertAccessible(page, `local projects home (${theme})`);
+      await page.getByRole("button", { name: "Preferences menu" }).click();
+      await expect(page.getByRole("menuitemradio", { name: theme })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      await assertAccessible(page, `local header menu (${theme})`);
+      await page.keyboard.press("Escape");
 
-    // Phase 15c: reading pane with nothing selected and a search without
-    // results, in dark (still selected) and then light.
-    for (const theme of ["Dark", "Light"] as const) {
+      // Empty project inbox (setup guide).
+      await page.goto(`/p/${emptySlug}`);
+      await expect(page.getByRole("heading", { name: "No messages yet" })).toBeVisible();
+      await assertAccessible(page, `local empty inbox (${theme})`);
+
+      // Inbox list with nothing selected, then the message view.
       await page.goto(`/p/${slug}`);
       await expect(
         page.getByRole("heading", { name: "Select a message to inspect" }),
       ).toBeVisible();
-      await chooseTheme(page, theme);
       await assertAccessible(page, `local inbox, nothing selected (${theme})`);
+      await page
+        .getByRole("option", { name: /Inline CID logo preview/i })
+        .first()
+        .click();
+      await expect(page.locator('iframe[title^="Email preview:"]')).toBeVisible();
+      await assertAccessible(page, `local message view (${theme})`);
+
+      // Search without results and the Unread filter with nothing unread.
       await page.goto(`/p/${slug}?q=zzz-no-such-message`);
       await expect(page.getByRole("heading", { name: "No matching messages" })).toBeVisible();
       await assertAccessible(page, `local search without results (${theme})`);
-    }
+      await page.goto(`/p/${slug}?q=is%3Aunread`);
+      await expect(page.getByRole("heading", { name: "No unread messages" })).toBeVisible();
+      await assertAccessible(page, `local no unread messages (${theme})`);
 
-    // Command palette and shortcuts help dialogs.
-    await page.keyboard.press("?");
-    await expect(page.getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
-    await assertAccessible(page, "shortcuts help dialog");
-    await page.keyboard.press("Escape");
-
-    await page.keyboard.press("Control+k");
-    await expect(page.getByPlaceholder(/Jump to a project, message, or action/i)).toBeVisible();
-    await assertAccessible(page, "command palette dialog");
-    await page.keyboard.press("Escape");
-
-    // Local project settings sections.
-    for (const section of ["general", "smtp", "retention", "routing", "api"]) {
-      await page.goto(`/p/${slug}/settings/${section}`);
-      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-      await assertAccessible(page, `local project settings /${section}`);
-    }
-
-    // Account preferences.
-    await page.goto("/account/preferences");
-    await expect(page.getByRole("heading", { name: "Preferences" })).toBeVisible();
-    await assertAccessible(page, "local account preferences");
-  });
-
-  test("server mode screens have zero serious or critical axe violations", async ({
-    browser,
-    page,
-  }) => {
-    test.setTimeout(90_000);
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    const srv = await startFreshServerInstance();
-
-    try {
-      // Setup wizard step 1..5.
-      await page.goto(srv.httpURL);
-      await expect(page).toHaveURL(`${srv.httpURL}/setup`);
-      await expect(page.getByRole("heading", { name: "Step 1: Setup token" })).toBeVisible();
-      await assertAccessible(page, "setup wizard step 1");
-
-      await page.getByLabel("Setup token").fill(srv.setupToken);
-      await page.getByRole("button", { name: "Continue to admin account" }).click();
-      await expect(page.getByRole("heading", { name: "Step 2: Admin account" })).toBeVisible();
-      await assertAccessible(page, "setup wizard step 2");
-
-      await page.getByLabel("Full name").fill("A11y Admin");
-      await page.getByLabel("Email").fill("admin@a11y.test");
-      await page.getByLabel("Password", { exact: true }).fill("a11y-admin-password-1");
-      await page.getByRole("button", { name: "Continue to instance" }).click();
-      await expect(page.getByRole("heading", { name: "Step 3: Instance" })).toBeVisible();
-      await assertAccessible(page, "setup wizard step 3");
-
-      await page.getByLabel("Instance name").fill("A11y Mail");
-      await page.getByRole("button", { name: "Complete setup" }).click();
-      await expect(page.getByRole("heading", { name: "Step 4: First project" })).toBeVisible();
-      await assertAccessible(page, "setup wizard step 4");
-
-      await page.getByLabel("Project name").fill("Client Portal");
-      await page.getByRole("button", { name: "Create project & continue" }).click();
-      await expect(page.getByRole("heading", { name: "Step 5: Connect your app" })).toBeVisible();
-      await assertAccessible(page, "setup wizard step 5");
-
-      // Send a test message so inbox and audit views have content.
-      await page.getByRole("button", { name: "Send test email" }).click();
-      await expect(page.getByText("First message received!")).toBeVisible();
-      await page.getByRole("button", { name: "Go to inbox" }).click();
-      await expect(page).toHaveURL(`${srv.httpURL}/p/client-portal`);
-      await assertAccessible(page, "server inbox");
-
-      // Phase 15c: inbox and message view in both themes.
-      await page.getByRole("option").first().click();
-      await expect(page.locator('iframe[title^="Email preview:"]')).toBeVisible();
-      await assertAccessible(page, "server message view");
-      await chooseTheme(page, "Dark");
-      await assertAccessible(page, "server message view (dark)");
-      await page.goto(`${srv.httpURL}/p/client-portal`);
-      await expect(
-        page.getByRole("heading", { name: "Select a message to inspect" }),
-      ).toBeVisible();
-      await assertAccessible(page, "server inbox (dark)");
-      await chooseTheme(page, "Light");
-
-      // Server projects home.
-      await page.goto(`${srv.httpURL}/`);
-      await expect(page.getByRole("link", { name: /Client Portal/i })).toBeVisible();
-      await assertAccessible(page, "server projects home");
-
-      // All project settings sections (including members & audit).
-      for (const section of [
-        "general",
-        "smtp",
-        "members",
-        "retention",
-        "routing",
-        "api",
-        "audit",
-      ]) {
-        await page.goto(`${srv.httpURL}/p/client-portal/settings/${section}`);
-        await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-        await assertAccessible(page, `server project settings /${section}`);
-      }
-
-      // Create a project invite so we can audit /invite/$token. Phase 15d: the
-      // invite action is "Invite people" in the page header (audit M7), and the
-      // dialog is audited open in light and dark.
-      await page.goto(`${srv.httpURL}/p/client-portal/settings/members`);
-      await page.getByRole("button", { name: "Invite people" }).click();
-      await expect(page.getByLabel("Email address")).toBeVisible();
-      await assertAccessible(page, "server invite dialog (light)");
-      await page.getByLabel("Email address").fill("client@a11y.test");
-      await page.getByRole("button", { name: "Create invite link" }).click();
-      const inviteURL = await page.locator("#created-invite-url").inputValue();
-      expect(inviteURL).toContain("/invite/");
-      await assertAccessible(page, "server invite link dialog (light)");
-      await page.getByRole("button", { name: "Done" }).click();
-
-      // Phase 15d acceptance: SMTP, members (with the invite dialog) and admin
-      // users are axe clean in dark too.
-      await chooseTheme(page, "Dark");
-      await assertAccessible(page, "server project settings /members (dark)");
-      await page.getByRole("button", { name: "Invite people" }).click();
-      await expect(page.getByLabel("Email address")).toBeVisible();
-      await assertAccessible(page, "server invite dialog (dark)");
+      // Shortcuts help and command palette dialogs.
+      await page.keyboard.press("?");
+      await expect(page.getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
+      await assertAccessible(page, `shortcuts help dialog (${theme})`);
       await page.keyboard.press("Escape");
-      await page.goto(`${srv.httpURL}/p/client-portal/settings/smtp`);
-      await expect(page.getByRole("region", { name: "SMTP credentials" })).toBeVisible();
-      await assertAccessible(page, "server project settings /smtp (dark)");
-      await page.goto(`${srv.httpURL}/admin/users`);
-      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-      await assertAccessible(page, "server admin /users (dark)");
-      await chooseTheme(page, "Light");
+      await page.keyboard.press("Control+k");
+      await expect(page.getByPlaceholder(/Jump to a project, message, or action/i)).toBeVisible();
+      await assertAccessible(page, `command palette dialog (${theme})`);
+      await page.keyboard.press("Escape");
 
-      // All account sections.
-      for (const section of ["profile", "security", "tokens", "preferences"]) {
-        await page.goto(`${srv.httpURL}/account/${section}`);
+      // Local project settings sections.
+      for (const section of ["general", "smtp", "retention", "routing", "api"]) {
+        await page.goto(`/p/${slug}/settings/${section}`);
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-        await assertAccessible(page, `server account /${section}`);
+        await assertAccessible(page, `local project settings /${section} (${theme})`);
       }
 
-      // All admin sections.
-      for (const section of ["users", "projects", "settings", "audit", "stats"]) {
-        await page.goto(`${srv.httpURL}/admin/${section}`);
-        await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-        await assertAccessible(page, `server admin /${section}`);
-      }
+      // Account preferences (the only account page in local mode).
+      await page.goto("/account/preferences");
+      await expect(page.getByRole("heading", { name: "Preferences" })).toBeVisible();
+      await assertAccessible(page, `local account preferences (${theme})`);
 
-      // Generate a password reset link so we can audit /reset/$token.
-      await page.goto(`${srv.httpURL}/admin/users`);
-      await page.getByRole("button", { name: "Reset password for admin@a11y.test" }).click();
-      const resetURL = await page.locator("#reset-link-url").inputValue();
-      expect(resetURL).toContain("/reset/");
-
-      // Audit unauthenticated screens (/login, /invite/$token, /reset/$token) in a fresh context.
-      const anonContext = await browser.newContext();
-      const anonPage = await anonContext.newPage();
-      try {
-        await anonPage.goto(`${srv.httpURL}/login`);
-        await expect(anonPage.getByRole("button", { name: "Sign in" })).toBeVisible();
-        await assertAccessible(anonPage, "server /login");
-
-        await anonPage.goto(inviteURL);
-        await expect(anonPage.getByRole("heading", { name: /Join Client Portal/i })).toBeVisible();
-        await assertAccessible(anonPage, "server /invite/$token");
-
-        await anonPage.goto(resetURL);
-        await expect(anonPage.getByRole("heading", { name: /Set a new password/i })).toBeVisible();
-        await assertAccessible(anonPage, "server /reset/$token");
-      } finally {
-        await anonContext.close();
-      }
-    } finally {
-      await srv.stop();
+      // Phase 15e: unknown addresses show the not-found page.
+      await page.goto("/no-such-page");
+      await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+      await assertAccessible(page, `local page not found (${theme})`);
     }
+
+    // Phase 15e: below 768 px an open message replaces the list, so the skip
+    // link is not rendered there (no control without a target).
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.goto(`/p/${slug}`);
+    const skipLink = page.getByRole("button", { name: "Skip to message list" });
+    await expect(skipLink).toHaveCount(1);
+    await page
+      .getByRole("option", { name: /Inline CID logo preview/i })
+      .first()
+      .click();
+    await expect(page.getByRole("link", { name: "Back to A11y Local" })).toBeVisible();
+    await expect(skipLink).toHaveCount(0);
   });
+
+  test.describe
+    .serial("server mode screens in light and dark", () => {
+      let srv: FreshServer | undefined;
+      let pendingInviteURL = "";
+      let resetURL = "";
+
+      test.beforeAll(async () => {
+        srv = await startFreshServerInstance();
+      });
+
+      test.afterAll(async () => {
+        await srv?.stop();
+      });
+
+      function server(): FreshServer {
+        if (!srv) {
+          throw new Error("server-mode instance not started");
+        }
+        return srv;
+      }
+
+      async function signIn(page: Page, email: string, password: string): Promise<void> {
+        await page.goto(`${server().httpURL}/login`);
+        await page.getByLabel("Email").fill(email);
+        await page.getByLabel("Password", { exact: true }).fill(password);
+        await page.getByRole("button", { name: "Sign in" }).click();
+        await expect(page).not.toHaveURL(/\/login/);
+      }
+
+      test("setup wizard steps 1 to 5", async ({ page }) => {
+        test.setTimeout(120_000);
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        const { httpURL, setupToken } = server();
+
+        await page.goto(httpURL);
+        await expect(page).toHaveURL(`${httpURL}/setup`);
+        await expect(page.getByRole("heading", { name: "Step 1: Setup token" })).toBeVisible();
+        await assertAuthPageBothThemes(page, "setup wizard step 1");
+        await page.getByRole("button", { name: "Continue to admin account" }).click();
+        await expect(page.getByText("Paste the setup token")).toBeVisible();
+        await assertAuthPageBothThemes(page, "setup wizard step 1 error");
+
+        await page.getByLabel("Setup token").fill(setupToken);
+        await page.getByRole("button", { name: "Continue to admin account" }).click();
+        await expect(page.getByRole("heading", { name: "Step 2: Admin account" })).toBeVisible();
+        await assertAuthPageBothThemes(page, "setup wizard step 2");
+
+        await page.getByLabel("Full name").fill("A11y Admin");
+        await page.getByLabel("Email").fill(ADMIN_EMAIL);
+        await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
+        await page.getByRole("button", { name: "Continue to instance" }).click();
+        await expect(page.getByRole("heading", { name: "Step 3: Instance" })).toBeVisible();
+        await assertAuthPageBothThemes(page, "setup wizard step 3");
+
+        await page.getByLabel("Instance name").fill("A11y Mail");
+        await page.getByRole("button", { name: "Complete setup" }).click();
+        await expect(page.getByRole("heading", { name: "Step 4: First project" })).toBeVisible();
+        await assertAuthPageBothThemes(page, "setup wizard step 4");
+
+        await page.getByLabel("Project name").fill("Client Portal");
+        await page.getByRole("button", { name: "Create project & continue" }).click();
+        await expect(page.getByRole("heading", { name: "Step 5: Connect your app" })).toBeVisible();
+        await assertAuthPageBothThemes(page, "setup wizard step 5, waiting");
+
+        // Audit M9: the first message turns the status into the success state.
+        await page.getByRole("button", { name: "Send test email" }).click();
+        await expect(page.getByText("First message received!")).toBeVisible();
+        await assertAuthPageBothThemes(page, "setup wizard step 5, first message");
+        await page.getByRole("button", { name: "Go to inbox" }).click();
+        await expect(page).toHaveURL(`${httpURL}/p/client-portal`);
+      });
+
+      test("owner and admin screens", async ({ page }) => {
+        test.setTimeout(240_000);
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        const { httpURL } = server();
+
+        // Seed: an empty project, a viewer who accepted an invite, a pending
+        // invite and a reset link for the public pages, and no unread mail.
+        const admin = await ApiClient.login(httpURL, ADMIN_EMAIL, ADMIN_PASSWORD);
+        await admin.request("POST", "/api/v1/projects", { name: "Empty Box", slug: "empty-box" });
+        const viewerInvite = await admin.request<{ url: string }>(
+          "POST",
+          "/api/v1/projects/client-portal/invites",
+          { email: VIEWER_EMAIL, role: "viewer" },
+        );
+        const viewerToken = viewerInvite.url.split("/invite/")[1] ?? "";
+        await new ApiClient(httpURL).request("POST", `/api/v1/invites/${viewerToken}/accept`, {
+          name: "A11y Viewer",
+          password: VIEWER_PASSWORD,
+        });
+        const pending = await admin.request<{ url: string }>(
+          "POST",
+          "/api/v1/projects/client-portal/invites",
+          { email: "client@a11y.test", role: "viewer" },
+        );
+        pendingInviteURL = pending.url;
+        const me = await admin.request<{ user: { id: number } }>("GET", "/api/v1/auth/me");
+        const reset = await admin.request<{ url: string }>(
+          "POST",
+          `/api/v1/admin/users/${me.user.id}/password-reset`,
+        );
+        resetURL = reset.url;
+        await markAllSeen(admin, "client-portal");
+
+        await signIn(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+        await expect(page).toHaveURL(`${httpURL}/`);
+
+        for (const theme of THEMES) {
+          // Projects home and account menu.
+          await page.goto(`${httpURL}/`);
+          await expect(page.getByRole("link", { name: /Client Portal/i })).toBeVisible();
+          await chooseTheme(page, theme);
+          await assertAccessible(page, `server projects home (${theme})`);
+          await page.getByRole("button", { name: /Account menu/ }).click();
+          await expect(page.getByRole("menu")).toBeVisible();
+          await assertAccessible(page, `server account menu (${theme})`);
+          await page.keyboard.press("Escape");
+
+          // Inbox: nothing selected, message view, no unread, no results, empty.
+          await page.goto(`${httpURL}/p/client-portal`);
+          await expect(
+            page.getByRole("heading", { name: "Select a message to inspect" }),
+          ).toBeVisible();
+          await assertAccessible(page, `server inbox (${theme})`);
+          await page.getByRole("option").first().click();
+          await expect(page.locator('iframe[title^="Email preview:"]')).toBeVisible();
+          await assertAccessible(page, `server message view (${theme})`);
+          await page.goto(`${httpURL}/p/client-portal?q=is%3Aunread`);
+          await expect(page.getByRole("heading", { name: "No unread messages" })).toBeVisible();
+          await assertAccessible(page, `server no unread messages (${theme})`);
+          await page.goto(`${httpURL}/p/client-portal?q=zzz-no-such-message`);
+          await expect(page.getByRole("heading", { name: "No matching messages" })).toBeVisible();
+          await assertAccessible(page, `server search without results (${theme})`);
+          await page.goto(`${httpURL}/p/empty-box`);
+          await expect(page.getByRole("heading", { name: "No messages yet" })).toBeVisible();
+          await assertAccessible(page, `server empty inbox (${theme})`);
+
+          // Preview as viewer (banner and viewer reading pane).
+          await page.goto(`${httpURL}/p/client-portal`);
+          await page.getByRole("button", { name: "Preview as viewer" }).click();
+          await expect(page.getByTestId("viewer-preview-banner")).toBeVisible();
+          await assertAccessible(page, `server preview as viewer (${theme})`);
+          await page.getByRole("button", { name: "Exit preview" }).click();
+
+          // Every project settings section.
+          for (const section of [
+            "general",
+            "smtp",
+            "members",
+            "retention",
+            "routing",
+            "api",
+            "audit",
+          ]) {
+            await page.goto(`${httpURL}/p/client-portal/settings/${section}`);
+            await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+            await assertAccessible(page, `server project settings /${section} (${theme})`);
+          }
+          await page.goto(`${httpURL}/p/empty-box/settings/smtp`);
+          await expect(
+            page.getByRole("heading", { name: "No SMTP credentials yet" }),
+          ).toBeVisible();
+          await assertAccessible(page, `server SMTP without credentials (${theme})`);
+
+          // Members with the invite dialog, before and after creating a link
+          // (audit M7: "Invite people" in the page header).
+          await page.goto(`${httpURL}/p/client-portal/settings/members`);
+          await page.getByRole("button", { name: "Invite people" }).click();
+          await expect(page.getByLabel("Email address")).toBeVisible();
+          await assertAccessible(page, `server invite dialog (${theme})`);
+          await page.getByLabel("Email address").fill(`link-${theme.toLowerCase()}@a11y.test`);
+          await page.getByRole("button", { name: "Create invite link" }).click();
+          await expect(page.locator("#created-invite-url")).toHaveValue(/\/invite\//);
+          await assertAccessible(page, `server invite link dialog (${theme})`);
+          await page.getByRole("button", { name: "Done" }).click();
+
+          // Every account and admin section.
+          for (const section of ["profile", "security", "tokens", "preferences"]) {
+            await page.goto(`${httpURL}/account/${section}`);
+            await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+            await assertAccessible(page, `server account /${section} (${theme})`);
+          }
+          for (const section of ["users", "projects", "settings", "audit", "stats"]) {
+            await page.goto(`${httpURL}/admin/${section}`);
+            await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+            await assertAccessible(page, `server admin /${section} (${theme})`);
+          }
+
+          // Not-found screens (audit V7).
+          await page.goto(`${httpURL}/no-such-page`);
+          await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+          await assertAccessible(page, `server page not found (${theme})`);
+          await page.goto(`${httpURL}/p/no-such-project`);
+          await expect(
+            page.getByRole("heading", { name: "Project not found or you do not have access" }),
+          ).toBeVisible();
+          await assertAccessible(page, `server project not found (${theme})`);
+        }
+      });
+
+      test("viewer screens", async ({ page }) => {
+        test.setTimeout(120_000);
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        const { httpURL } = server();
+
+        // Audit V1: a viewer with one project lands in its inbox.
+        await signIn(page, VIEWER_EMAIL, VIEWER_PASSWORD);
+        await expect(page).toHaveURL(`${httpURL}/p/client-portal`);
+
+        for (const theme of THEMES) {
+          await page.goto(`${httpURL}/p/client-portal`);
+          await expect(page.getByRole("heading", { name: "No email selected" })).toBeVisible();
+          await chooseTheme(page, theme);
+          await assertAccessible(page, `viewer inbox (${theme})`);
+          await page.getByRole("option").first().click();
+          await expect(page.locator('iframe[title^="Email preview:"]')).toBeVisible();
+          await assertAccessible(page, `viewer message view (${theme})`);
+
+          // Audit V7: settings are unavailable to viewers.
+          await page.goto(`${httpURL}/p/client-portal/settings/general`);
+          await expect(page.getByRole("heading", { name: "Settings unavailable" })).toBeVisible();
+          await assertAccessible(page, `viewer settings unavailable (${theme})`);
+        }
+      });
+
+      test("sign-in, invite and reset pages", async ({ page }) => {
+        test.setTimeout(120_000);
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        const { httpURL } = server();
+
+        // Audit V6: the instance name is the sign-in title.
+        await page.goto(`${httpURL}/login`);
+        await expect(page.getByRole("heading", { level: 1, name: "A11y Mail" })).toBeVisible();
+        await expect(page.getByText("Powered by Mailcubby")).toBeVisible();
+        await assertAuthPageBothThemes(page, "server /login");
+        await page.getByLabel("Email").fill(ADMIN_EMAIL);
+        await page.getByLabel("Password", { exact: true }).fill("not-the-password-1");
+        await page.getByRole("button", { name: "Sign in" }).click();
+        await expect(page.getByText("Email or password is incorrect")).toBeVisible();
+        await assertAuthPageBothThemes(page, "server /login error");
+
+        await page.goto(pendingInviteURL);
+        await expect(page.getByRole("heading", { name: /Join Client Portal/i })).toBeVisible();
+        await assertAuthPageBothThemes(page, "server /invite/$token");
+        await page.goto(`${httpURL}/invite/not-a-real-invite-token`);
+        await expect(page.getByRole("heading", { name: "Invitation unavailable" })).toBeVisible();
+        await assertAuthPageBothThemes(page, "server invalid invite");
+
+        await page.goto(resetURL);
+        await expect(page.getByRole("heading", { name: /Set a new password/i })).toBeVisible();
+        await assertAuthPageBothThemes(page, "server /reset/$token");
+      });
+    });
 });
