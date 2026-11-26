@@ -482,6 +482,10 @@ make e2e        # Playwright end-to-end tests against the built binary
 - `docs/PLAN.md`: phased implementation plan.
 - `docs/decisions/`: architecture decision records.
 
+## Credits
+
+Mailcubby is designed and developed by [Fábio Ferreira](https://x.com/fabiomlferreira) at [NOOP](https://noop.pt).
+
 ## License
 
 PolyForm Shield 1.0.0. Copyright (c) 2026 NOOP. See `LICENSE`.

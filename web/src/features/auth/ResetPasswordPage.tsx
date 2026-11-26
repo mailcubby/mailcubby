@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { BrandMark } from "@/components/BrandMark";
+import { PublicFooter } from "@/components/MadeBy";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { PasswordInput } from "@/features/auth/PasswordInput";
 import { ApiError, api, unwrapVoid } from "@/lib/api";
@@ -73,7 +74,7 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
   };
 
   return (
-    <main className="flex min-h-full items-center justify-center px-4 py-10">
+    <main className="flex min-h-full flex-col items-center justify-center gap-4 px-4 py-10">
       <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-6 shadow-xs">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <BrandMark />
@@ -151,6 +152,7 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
           </form>
         )}
       </div>
+      <PublicFooter />
     </main>
   );
 }

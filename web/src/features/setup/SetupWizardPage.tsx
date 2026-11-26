@@ -16,6 +16,7 @@ import {
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BrandMark } from "@/components/BrandMark";
+import { PublicFooter } from "@/components/MadeBy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/features/auth/PasswordInput";
@@ -426,7 +427,7 @@ export function SetupWizardPage() {
   const strength = passwordStrengthHint(adminPassword);
 
   return (
-    <main className="flex min-h-full items-center justify-center px-4 py-10">
+    <main className="flex min-h-full flex-col items-center justify-center gap-4 px-4 py-10">
       {/* One width for every step (wide enough for the step 5 snippets), so the
           card does not jump when the wizard reaches step 5. */}
       <div className="w-full max-w-2xl rounded-lg border border-border bg-surface p-6 shadow-xs">
@@ -1108,6 +1109,7 @@ export function SetupWizardPage() {
           </div>
         ) : null}
       </div>
+      <PublicFooter />
     </main>
   );
 }
