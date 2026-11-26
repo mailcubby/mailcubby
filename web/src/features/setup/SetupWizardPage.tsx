@@ -10,12 +10,12 @@ import {
   Copy,
   Eye,
   EyeOff,
-  Inbox,
   Loader2,
   Send,
 } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/features/auth/PasswordInput";
@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils";
 type WizardStep = 1 | 2 | 3 | 4 | 5;
 
 const STEPS: ReadonlyArray<{ num: WizardStep; label: string }> = [
-  { num: 1, label: "Setup token" },
+  { num: 1, label: "Token" },
   { num: 2, label: "Admin" },
   { num: 3, label: "Instance" },
   { num: 4, label: "Project" },
@@ -434,9 +434,7 @@ export function SetupWizardPage() {
         )}
       >
         <div className="mb-5 flex items-center gap-2.5">
-          <span className="flex size-8 items-center justify-center rounded-md bg-foreground text-background">
-            <Inbox className="size-4" aria-hidden="true" />
-          </span>
+          <BrandMark />
           <div>
             <h1 className="text-base font-semibold tracking-tight text-foreground">
               Set up {meta?.instance_name || "Mailcubby"}
@@ -455,33 +453,29 @@ export function SetupWizardPage() {
                   key={item.num}
                   aria-current={current ? "step" : undefined}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[11px] font-medium",
+                    "flex min-w-0 items-center justify-center gap-1.5 rounded-md border px-1.5 py-1.5 text-xs font-medium sm:justify-start",
                     current
-                      ? "border-accent bg-accent/10 text-foreground"
+                      ? "border-accent bg-accent-subtle text-accent-subtle-foreground"
                       : done
-                        ? "border-border bg-background text-foreground"
-                        : "border-border/70 bg-background/50 text-muted-foreground",
+                        ? "border-border bg-surface text-foreground"
+                        : "border-border bg-background text-muted-foreground",
                   )}
                 >
                   <span
                     className={cn(
-                      "flex size-4.5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums",
+                      "flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums",
                       current
                         ? "bg-primary text-primary-foreground"
                         : done
-                          ? "bg-foreground text-background"
-                          : "border border-border text-muted-foreground",
+                          ? "bg-success-subtle text-success"
+                          : "border border-input text-muted-foreground",
                     )}
                   >
-                    {done ? <Check className="size-2.5" aria-hidden="true" /> : item.num}
+                    {done ? <Check className="size-3" aria-hidden="true" /> : item.num}
                   </span>
-                  <span
-                    className={cn(
-                      "hidden truncate sm:inline",
-                      current || done ? "text-foreground" : "text-muted-foreground",
-                    )}
-                  >
+                  <span className="hidden whitespace-nowrap sm:inline">
                     {item.label}
+                    {done ? <span className="sr-only"> (done)</span> : null}
                   </span>
                 </li>
               );
@@ -583,7 +577,7 @@ export function SetupWizardPage() {
             ) : null}
 
             <div className="flex justify-end pt-1">
-              <Button type="submit">
+              <Button type="submit" variant="primary">
                 <span>Continue to admin account</span>
                 <ArrowRight className="size-3.5" aria-hidden="true" />
               </Button>
@@ -724,7 +718,7 @@ export function SetupWizardPage() {
                 <ArrowLeft className="size-3.5" aria-hidden="true" />
                 <span>Back</span>
               </Button>
-              <Button type="submit">
+              <Button type="submit" variant="primary">
                 <span>Continue to instance</span>
                 <ArrowRight className="size-3.5" aria-hidden="true" />
               </Button>
@@ -843,7 +837,7 @@ export function SetupWizardPage() {
                 <ArrowLeft className="size-3.5" aria-hidden="true" />
                 <span>Back</span>
               </Button>
-              <Button type="submit" disabled={setupMutation.isPending}>
+              <Button type="submit" variant="primary" disabled={setupMutation.isPending}>
                 {setupMutation.isPending ? "Completing setup..." : "Complete setup"}
               </Button>
             </div>
@@ -932,7 +926,7 @@ export function SetupWizardPage() {
               >
                 Skip for now
               </Button>
-              <Button type="submit" disabled={createProjectMutation.isPending}>
+              <Button type="submit" variant="primary" disabled={createProjectMutation.isPending}>
                 <span>
                   {createProjectMutation.isPending
                     ? "Creating project..."
@@ -1096,6 +1090,7 @@ export function SetupWizardPage() {
             <div className="flex items-center justify-end pt-1">
               <Button
                 type="button"
+                variant={firstMessage ? "primary" : "outline"}
                 onClick={() =>
                   void navigate({
                     to: "/p/$project",

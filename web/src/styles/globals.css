@@ -56,10 +56,11 @@
   --destructive-foreground: #ffffff;
   --destructive-subtle: #fcebea;
 
-  /* chrome layer: ink-green top bar and sidebar (applied in Phase 15b) */
+  /* chrome layer: ink-green top bar and project sidebar (data-chrome) */
   --sidebar: #15292b;
   --sidebar-foreground: #e3eeed;
   --sidebar-muted: #a3b9b7;
+  --sidebar-hover: #1d3638;
   --sidebar-active: #24423f;
   --sidebar-active-foreground: #ffffff;
   --sidebar-border: #2b4644;
@@ -68,6 +69,7 @@
   --sidebar-accent-foreground: #06302d;
   --sidebar-ring: #7fe3db;
   --sidebar-success: #8fdc62;
+  --sidebar-warning: #f0b44c;
 
   /* scrim behind dialogs and the mobile sidebar drawer */
   --overlay: rgb(8 18 20 / 0.45);
@@ -146,6 +148,7 @@
     --sidebar: #1c3538;
     --sidebar-foreground: #e3eeed;
     --sidebar-muted: #abc2c0;
+    --sidebar-hover: #234143;
     --sidebar-active: #2a4d4f;
     --sidebar-active-foreground: #ffffff;
     --sidebar-border: #31504f;
@@ -154,6 +157,7 @@
     --sidebar-accent-foreground: #06302d;
     --sidebar-ring: #7fe3db;
     --sidebar-success: #8fdc62;
+    --sidebar-warning: #f0b44c;
 
     --overlay: rgb(0 0 0 / 0.6);
   }
@@ -197,6 +201,7 @@
   --sidebar: #1c3538;
   --sidebar-foreground: #e3eeed;
   --sidebar-muted: #abc2c0;
+  --sidebar-hover: #234143;
   --sidebar-active: #2a4d4f;
   --sidebar-active-foreground: #ffffff;
   --sidebar-border: #31504f;
@@ -205,6 +210,7 @@
   --sidebar-accent-foreground: #06302d;
   --sidebar-ring: #7fe3db;
   --sidebar-success: #8fdc62;
+  --sidebar-warning: #f0b44c;
 
   --overlay: rgb(0 0 0 / 0.6);
 }
@@ -250,6 +256,7 @@
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-active: var(--sidebar-active);
   --color-sidebar-active-foreground: var(--sidebar-active-foreground);
   --color-sidebar-border: var(--sidebar-border);
@@ -258,6 +265,7 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-success: var(--sidebar-success);
+  --color-sidebar-warning: var(--sidebar-warning);
 
   --color-overlay: var(--overlay);
   --color-email-canvas: var(--email-canvas);
@@ -303,6 +311,17 @@
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+  }
+
+  /* The chrome layer uses its own ring (3:1 on the ink green). Menus,
+     popovers and dialogs opened from it sit on --surface and keep --ring. */
+  [data-chrome]:focus-visible,
+  [data-chrome] :focus-visible {
+    outline-color: var(--sidebar-ring);
+  }
+
+  [data-chrome] :is(dialog, [data-surface]) :focus-visible {
+    outline-color: var(--ring);
   }
 
   dialog:modal {

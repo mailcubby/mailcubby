@@ -3,7 +3,6 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ChevronDown,
   Eye,
-  Inbox,
   Keyboard,
   KeyRound,
   LogOut,
@@ -18,10 +17,10 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAppCommands } from "@/components/AppCommandContext";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/BrandMark";
+import { Button, buttonClassName } from "@/components/ui/button";
 import { api, handleApiError, setCsrfToken, unwrapVoid } from "@/lib/api";
-import { authMeQueryOptions, metaQueryOptions } from "@/lib/queries";
+import { authMeQueryOptions, metaQueryOptions, projectsQueryOptions } from "@/lib/queries";
 import { type ThemePreference, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +34,11 @@ const THEME_OPTIONS: ReadonlyArray<{
   { value: "system", label: "System", Icon: Monitor },
 ];
 
+/**
+ * ThemeToggle is the segmented theme control on the sign-in, setup, invite and
+ * reset pages, which have no account menu. Inside the app the theme lives in
+ * the header menu (ThemeMenuGroup), the command palette and Preferences.
+ */
 export function ThemeToggle() {
   const { theme, systemTheme, setTheme } = useTheme();
 
@@ -71,12 +75,61 @@ export function ThemeToggle() {
   );
 }
 
-function AccountMenu() {
+const MENU_ITEM_CLASS =
+  "flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs text-foreground hover:bg-muted";
+
+/** ThemeMenuGroup is the theme choice inside the header menu (UI.md 3.7). */
+function ThemeMenuGroup({ onSelect }: { onSelect: () => void }) {
+  const { theme, systemTheme, setTheme } = useTheme();
+
+  return (
+    <fieldset className="m-0 min-w-0 border-0 border-t border-border px-1.5 pt-2 pb-1.5">
+      <legend className="float-left mb-1.5 w-full px-1 text-[11px] font-medium text-muted-foreground">
+        Theme
+      </legend>
+      <div className="clear-left grid grid-cols-3 gap-0.5 rounded-md bg-muted p-0.5">
+        {THEME_OPTIONS.map(({ value, label, Icon }) => {
+          const active = theme === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              role="menuitemradio"
+              aria-checked={active}
+              title={value === "system" ? `${label} (currently ${systemTheme})` : label}
+              onClick={() => {
+                setTheme(value);
+                onSelect();
+              }}
+              className={cn(
+                "inline-flex h-7 cursor-pointer items-center justify-center gap-1 rounded-sm text-xs font-medium transition-colors duration-150",
+                active
+                  ? "bg-surface text-foreground shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon className="size-3.5" aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+/**
+ * HeaderMenu is the account menu in server mode and the preferences menu in
+ * local mode (which has no accounts). Both hold the theme choice.
+ */
+function HeaderMenu({ mode }: { mode: "server" | "local" }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: me } = useQuery(authMeQueryOptions());
+  const isServer = mode === "server";
+  const { data: me } = useQuery({ ...authMeQueryOptions(), enabled: isServer });
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) {
@@ -90,6 +143,7 @@ function AccountMenu() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setOpen(false);
+        triggerRef.current?.focus();
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -115,105 +169,150 @@ function AccountMenu() {
     },
   });
 
+  const close = () => setOpen(false);
   const displayName = me?.user.name || me?.user.email || "Account";
+  const initial = displayName.trim().charAt(0).toUpperCase() || "A";
 
   return (
     <div ref={containerRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`${displayName} — Account menu`}
+        aria-label={isServer ? undefined : "Preferences menu"}
+        title={isServer ? undefined : "Theme and preferences"}
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex h-7 max-w-44 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+        className="inline-flex h-8 max-w-48 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-[13px] font-medium text-sidebar-foreground transition-colors duration-150 hover:bg-sidebar-hover"
       >
-        <User className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="hidden truncate sm:inline">{displayName}</span>
-        <ChevronDown className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+        {isServer ? (
+          <span
+            aria-hidden="true"
+            className="flex size-6 shrink-0 items-center justify-center rounded-full bg-sidebar-active text-[11px] font-semibold text-sidebar-active-foreground"
+          >
+            {initial}
+          </span>
+        ) : (
+          <SlidersHorizontal className="size-4 shrink-0 text-sidebar-muted" aria-hidden="true" />
+        )}
+        {isServer ? (
+          <span className="truncate max-sm:sr-only">
+            {displayName}
+            <span className="sr-only"> — Account menu</span>
+          </span>
+        ) : null}
+        <ChevronDown className="size-3.5 shrink-0 text-sidebar-muted" aria-hidden="true" />
       </button>
 
       {open ? (
         <div
           role="menu"
-          aria-label="Account"
-          className="absolute right-0 z-50 mt-1.5 w-56 rounded-md border border-border bg-surface p-1 shadow-md"
+          aria-label={isServer ? "Account" : "Preferences"}
+          data-surface
+          className="absolute right-0 z-50 mt-1.5 w-60 rounded-md border border-border bg-surface p-1 text-foreground shadow-md"
         >
-          <div className="border-b border-border px-2.5 py-2">
-            <div className="truncate text-xs font-medium text-foreground">{displayName}</div>
-            {me?.user.email ? (
-              <div className="truncate text-[11px] text-muted-foreground">{me.user.email}</div>
-            ) : null}
-          </div>
+          {isServer ? (
+            <div className="border-b border-border px-2.5 py-2">
+              <div className="truncate text-xs font-medium text-foreground">{displayName}</div>
+              {me?.user.email ? (
+                <div className="truncate text-[11px] text-muted-foreground">{me.user.email}</div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="flex flex-col py-1">
-            <Link
-              to="/account/profile"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs text-foreground hover:bg-muted"
-            >
-              <User className="size-3.5 text-muted-foreground" aria-hidden="true" />
-              <span>Profile</span>
-            </Link>
-            <Link
-              to="/account/security"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs text-foreground hover:bg-muted"
-            >
-              <Shield className="size-3.5 text-muted-foreground" aria-hidden="true" />
-              <span>Security &amp; sessions</span>
-            </Link>
-            <Link
-              to="/account/tokens"
-              search={{}}
-              role="menuitem"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs text-foreground hover:bg-muted"
-            >
-              <KeyRound className="size-3.5 text-muted-foreground" aria-hidden="true" />
-              <span>API tokens</span>
-            </Link>
+            {isServer ? (
+              <>
+                <Link
+                  to="/account/profile"
+                  role="menuitem"
+                  onClick={close}
+                  className={MENU_ITEM_CLASS}
+                >
+                  <User className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                  <span>Profile</span>
+                </Link>
+                <Link
+                  to="/account/security"
+                  role="menuitem"
+                  onClick={close}
+                  className={MENU_ITEM_CLASS}
+                >
+                  <Shield className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                  <span>Security &amp; sessions</span>
+                </Link>
+                <Link
+                  to="/account/tokens"
+                  search={{}}
+                  role="menuitem"
+                  onClick={close}
+                  className={MENU_ITEM_CLASS}
+                >
+                  <KeyRound className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                  <span>API tokens</span>
+                </Link>
+              </>
+            ) : null}
             <Link
               to="/account/preferences"
               role="menuitem"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs text-foreground hover:bg-muted"
+              onClick={close}
+              className={MENU_ITEM_CLASS}
             >
               <SlidersHorizontal className="size-3.5 text-muted-foreground" aria-hidden="true" />
               <span>Preferences</span>
             </Link>
-            {me?.user.is_admin ? (
-              <Link
-                to="/admin/users"
-                role="menuitem"
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-xs text-foreground hover:bg-muted"
-              >
+            {isServer && me?.user.is_admin ? (
+              <Link to="/admin/users" role="menuitem" onClick={close} className={MENU_ITEM_CLASS}>
                 <ShieldCheck className="size-3.5 text-muted-foreground" aria-hidden="true" />
                 <span>Admin</span>
               </Link>
             ) : null}
           </div>
 
-          <div className="border-t border-border pt-1">
-            <button
-              type="button"
-              role="menuitem"
-              disabled={logoutMutation.isPending}
-              onClick={() => logoutMutation.mutate()}
-              className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
-            >
-              <LogOut className="size-3.5" aria-hidden="true" />
-              <span>{logoutMutation.isPending ? "Signing out..." : "Sign out"}</span>
-            </button>
-          </div>
+          <ThemeMenuGroup onSelect={close} />
+
+          {isServer ? (
+            <div className="border-t border-border pt-1">
+              <button
+                type="button"
+                role="menuitem"
+                disabled={logoutMutation.isPending}
+                onClick={() => logoutMutation.mutate()}
+                className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-xs text-destructive hover:bg-destructive-subtle disabled:opacity-50"
+              >
+                <LogOut className="size-3.5" aria-hidden="true" />
+                <span>{logoutMutation.isPending ? "Signing out..." : "Sign out"}</span>
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
   );
 }
 
+/**
+ * useIsViewerContext reports whether the header is shown to a viewer: the
+ * effective role in a project (so "Preview as viewer" counts), or, outside a
+ * project in server mode, a non-admin whose every project role is viewer.
+ */
+function useIsViewerContext(isServer: boolean, isAdmin: boolean): boolean {
+  const { activeInbox } = useAppCommands();
+  const { data: projects } = useQuery({ ...projectsQueryOptions(), enabled: isServer });
+  if (activeInbox) {
+    return activeInbox.effectiveRole === "viewer";
+  }
+  if (!isServer || isAdmin || !projects || projects.length === 0) {
+    return false;
+  }
+  return projects.every((p) => p.role === "viewer");
+}
+
+/**
+ * AppHeader is the top bar on the chrome layer (UI.md 3.3). A viewer sees at
+ * most the logo, search and the account menu.
+ */
 export function AppHeader() {
   const { data: meta } = useQuery(metaQueryOptions());
   const { data: me } = useQuery(authMeQueryOptions());
@@ -222,48 +321,57 @@ export function AppHeader() {
   const instanceName = meta?.instance_name || "Mailcubby";
   const isServer = meta?.mode === "server";
   const canPreviewAsViewer = activeInbox?.actualRole === "owner";
+  const isViewer = useIsViewerContext(isServer, Boolean(me?.user.is_admin));
 
   return (
-    <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4">
+    <header
+      data-chrome
+      className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-sidebar-border bg-sidebar px-3 text-sidebar-foreground sm:px-4"
+    >
       <div className="flex min-w-0 items-center gap-3">
         <Link
           to="/"
-          className="inline-flex items-center gap-2 rounded-sm text-[13px] font-semibold tracking-tight text-foreground hover:opacity-80"
+          className="inline-flex min-w-0 items-center gap-2.5 rounded-md text-sm font-semibold tracking-tight text-sidebar-foreground"
         >
-          <span className="flex size-6 items-center justify-center rounded-md bg-foreground text-background">
-            <Inbox className="size-3.5" aria-hidden="true" />
-          </span>
+          <BrandMark tone="chrome" size="sm" />
           <span className="truncate">{instanceName}</span>
         </Link>
         {meta?.mode === "local" ? (
-          <Badge variant="outline" className="hidden sm:inline-flex">
+          <span className="hidden h-5 shrink-0 items-center rounded-full border border-sidebar-border px-2 text-[11.5px] font-medium text-sidebar-muted sm:inline-flex">
             Local mode
-          </Badge>
+          </span>
         ) : null}
         {isServer && me?.user.is_admin ? (
           <Link
             to="/admin/users"
-            className="hidden h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:inline-flex"
+            className={buttonClassName({
+              variant: "chrome",
+              size: "sm",
+              className: "hidden sm:inline-flex",
+            })}
           >
-            <ShieldCheck className="size-3.5" aria-hidden="true" />
+            <ShieldCheck className="size-4" aria-hidden="true" />
             <span>Admin</span>
           </Link>
         ) : null}
       </div>
 
-      <nav aria-label="Application utilities" className="flex items-center gap-1.5 sm:gap-2">
+      <nav aria-label="Application utilities" className="flex items-center gap-1 sm:gap-1.5">
         {canPreviewAsViewer ? (
           <Button
-            variant={previewAsViewer ? "primary" : "ghost"}
-            size="xs"
+            variant="chrome"
+            size="sm"
             aria-pressed={previewAsViewer}
             aria-label={previewAsViewer ? "Exit viewer preview" : "Preview as viewer"}
             title={previewAsViewer ? "Exit viewer preview" : "Preview as viewer"}
             onClick={togglePreviewAsViewer}
-            className="h-7"
+            className={cn(
+              previewAsViewer &&
+                "bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            )}
           >
-            <Eye className="size-3.5" aria-hidden="true" />
-            <span className="hidden md:inline">
+            <Eye className="size-4" aria-hidden="true" />
+            <span className="hidden lg:inline">
               {previewAsViewer ? "Viewer preview" : "Preview as viewer"}
             </span>
           </Button>
@@ -273,41 +381,31 @@ export function AppHeader() {
           type="button"
           title="Search and open command palette (Cmd/Ctrl+K)"
           onClick={openPalette}
-          className="inline-flex h-7 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="inline-flex h-8 min-w-8 cursor-pointer items-center justify-center gap-2 rounded-md border border-sidebar-border bg-sidebar-input px-2 text-[13px] text-sidebar-muted transition-colors duration-150 hover:bg-sidebar-hover hover:text-sidebar-foreground sm:w-44 sm:justify-start sm:px-2.5 xl:w-64"
         >
-          <Search className="size-3.5" aria-hidden="true" />
+          <Search className="size-4 shrink-0" aria-hidden="true" />
           <span className="hidden sm:inline">Search</span>
           <span className="sr-only sm:hidden">Search</span>
-          <kbd className="rounded-xs border border-border bg-surface px-1 py-0.25 font-mono text-[10px] text-muted-foreground">
+          <kbd className="ml-auto hidden rounded-sm border border-sidebar-border px-1 font-mono text-[10px] text-sidebar-muted sm:inline">
             ⌘K
           </kbd>
         </button>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Keyboard shortcuts"
-          title="Keyboard shortcuts (?)"
-          onClick={openShortcuts}
-          className="size-7"
-        >
-          <Keyboard className="size-3.5" aria-hidden="true" />
-        </Button>
-
-        {isServer ? (
-          <AccountMenu />
-        ) : (
-          <Link
-            to="/account/preferences"
-            aria-label="Preferences"
-            title="Preferences (g a)"
-            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        {!isViewer ? (
+          <Button
+            variant="chrome"
+            size="icon"
+            aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
+            onClick={openShortcuts}
           >
-            <SlidersHorizontal className="size-3.5" aria-hidden="true" />
-          </Link>
-        )}
+            <Keyboard className="size-4" aria-hidden="true" />
+          </Button>
+        ) : null}
 
-        <ThemeToggle />
+        <span aria-hidden="true" className="mx-1 hidden h-5 w-px bg-sidebar-border sm:block" />
+
+        <HeaderMenu mode={isServer ? "server" : "local"} />
       </nav>
     </header>
   );

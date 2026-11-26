@@ -6,6 +6,7 @@ import path from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import {
+  chooseTheme,
   createProjectViaAPI,
   expect,
   getE2EConfig,
@@ -174,13 +175,22 @@ test.describe("Phase 13: WCAG 2.1 AA accessibility audit (NFR-010)", () => {
     // Projects home (light theme).
     await page.goto("/");
     await expect(page.getByRole("link", { name: new RegExp(slug) })).toBeVisible();
-    await page.getByRole("button", { name: "Light" }).click();
+    await chooseTheme(page, "Light");
     await assertAccessible(page, "local / (light)");
 
+    // Header menu open (theme radios inside role=menu).
+    await page.getByRole("button", { name: "Preferences menu" }).click();
+    await expect(page.getByRole("menuitemradio", { name: "Light" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await assertAccessible(page, "local header menu");
+    await page.keyboard.press("Escape");
+
     // Projects home (dark theme).
-    await page.getByRole("button", { name: "Dark" }).click();
+    await chooseTheme(page, "Dark");
     await assertAccessible(page, "local / (dark)");
-    await page.getByRole("button", { name: "Light" }).click();
+    await chooseTheme(page, "Light");
 
     // Empty project inbox (setup guide).
     await page.goto(`/p/${slug}`);
@@ -196,9 +206,9 @@ test.describe("Phase 13: WCAG 2.1 AA accessibility audit (NFR-010)", () => {
     await assertAccessible(page, "local inbox with message preview");
 
     // Dark theme on inbox with message open.
-    await page.getByRole("button", { name: "Dark", exact: true }).click();
+    await chooseTheme(page, "Dark");
     await assertAccessible(page, "local inbox with message preview (dark)");
-    await page.getByRole("button", { name: "Light", exact: true }).click();
+    await chooseTheme(page, "Light");
 
     // Command palette and shortcuts help dialogs.
     await page.keyboard.press("?");

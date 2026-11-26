@@ -94,6 +94,7 @@ function RootShell() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+      {activeInbox ? <SkipToMessageList /> : null}
       <AppHeader />
       <div className="min-h-0 flex-1 overflow-hidden">
         <Outlet />
@@ -103,6 +104,28 @@ function RootShell() {
       <CreateProjectDialog open={createProjectOpen} onOpenChange={setCreateProjectOpen} />
       <Toaster />
     </div>
+  );
+}
+
+/**
+ * SkipToMessageList is the first focus stop on the inbox route (UI.md 5,
+ * audit A4): visually hidden until focused, it moves focus to the message
+ * list (the listbox, or the list section when the list is empty).
+ */
+function SkipToMessageList() {
+  return (
+    <button
+      type="button"
+      data-chrome
+      onClick={() => {
+        const section = document.getElementById("message-list");
+        const listbox = section?.querySelector<HTMLElement>('[role="listbox"]');
+        (listbox ?? section)?.focus();
+      }}
+      className="sr-only cursor-pointer rounded-md bg-sidebar-accent text-[13px] font-medium text-sidebar-accent-foreground focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-60 focus:px-3 focus:py-1.5"
+    >
+      Skip to message list
+    </button>
   );
 }
 
@@ -150,8 +173,8 @@ function ServerProtectedGate({ pathname, searchStr }: { pathname: string; search
   if (authQuery.isPending || isUnauthorized) {
     return (
       <div className="flex h-dvh flex-col bg-background text-foreground">
-        <div className="flex h-11 items-center border-b border-border bg-surface px-4">
-          <Skeleton className="h-5 w-28" />
+        <div className="flex h-12 shrink-0 items-center border-b border-sidebar-border bg-sidebar px-4">
+          <Skeleton className="h-5 w-28 bg-sidebar-active" />
         </div>
         <div className="flex flex-1 items-center justify-center p-6">
           <Skeleton className="h-32 w-full max-w-md" />
@@ -199,8 +222,8 @@ function RootLayout() {
   if (metaQuery.isPending) {
     return (
       <div className="flex h-dvh flex-col bg-background text-foreground">
-        <div className="flex h-11 items-center border-b border-border bg-surface px-4">
-          <Skeleton className="h-5 w-28" />
+        <div className="flex h-12 shrink-0 items-center border-b border-sidebar-border bg-sidebar px-4">
+          <Skeleton className="h-5 w-28 bg-sidebar-active" />
         </div>
         <Toaster />
       </div>

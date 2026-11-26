@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { AlertCircle, Inbox } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/features/auth/PasswordInput";
@@ -91,9 +92,7 @@ export function LoginPage({ returnTo }: LoginPageProps) {
     <main className="flex min-h-full items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-6 shadow-xs">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
-          <span className="flex size-9 items-center justify-center rounded-md bg-foreground text-background">
-            <Inbox className="size-4" aria-hidden="true" />
-          </span>
+          <BrandMark />
           <div>
             <h1 className="text-base font-semibold tracking-tight text-foreground">
               {instanceName}
@@ -161,7 +160,12 @@ export function LoginPage({ returnTo }: LoginPageProps) {
             </div>
           ) : null}
 
-          <Button type="submit" disabled={loginMutation.isPending} className="mt-1 w-full">
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={loginMutation.isPending}
+            className="mt-1 w-full"
+          >
             {loginMutation.isPending ? "Signing in..." : "Sign in"}
           </Button>
         </form>

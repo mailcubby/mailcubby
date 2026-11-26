@@ -196,6 +196,33 @@ test.describe("Phase 7b: Multi-tenant projects, invites, viewer mode, and admin 
         // Lands in the invited project inbox.
         await expect(viewerPage).toHaveURL(`${srv.httpURL}/p/client-portal`);
 
+        // Phase 15b (audit A4): from page load, the skip link is the first focus
+        // stop and reaches the message list in two stops.
+        await viewerPage.reload();
+        await expect(viewerPage.getByRole("listbox")).toBeVisible();
+        await viewerPage.keyboard.press("Tab");
+        const skipLink = viewerPage.getByRole("button", { name: "Skip to message list" });
+        await expect(skipLink).toBeFocused();
+        await expect(skipLink).toBeVisible();
+        await viewerPage.keyboard.press("Enter");
+        await expect(viewerPage.getByRole("listbox")).toBeFocused();
+
+        // Viewer header (audit V3): logo, search and account menu only; no
+        // shortcuts icon and no theme buttons. Shortcuts stay on "?".
+        const viewerHeader = viewerPage.getByRole("banner");
+        await expect(viewerHeader.getByRole("button", { name: "Search" })).toBeVisible();
+        await expect(viewerHeader.getByRole("button", { name: /Account menu/ })).toBeVisible();
+        await expect(viewerHeader.getByRole("button", { name: "Keyboard shortcuts" })).toHaveCount(
+          0,
+        );
+        expect(await viewerHeader.locator("a[href], button").count()).toBeLessThanOrEqual(3);
+        await viewerPage.keyboard.press("?");
+        await expect(viewerPage.getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
+        await viewerPage.keyboard.press("Escape");
+
+        // Audit V4: with a single project there is no "Back to all projects".
+        await expect(viewerPage.getByRole("link", { name: "Back to all projects" })).toHaveCount(0);
+
         // Open the test message.
         await viewerPage.getByRole("option").first().click();
         await expect(viewerPage).toHaveURL(/\/p\/client-portal\/m\//);
@@ -243,8 +270,11 @@ test.describe("Phase 7b: Multi-tenant projects, invites, viewer mode, and admin 
       await expect(adminPage.getByRole("link", { name: "Settings" })).toBeVisible();
 
       // Toggle Preview as viewer.
+      await expect(adminPage.getByRole("button", { name: "Keyboard shortcuts" })).toBeVisible();
+      await expect(adminPage.getByRole("link", { name: "Back to all projects" })).toBeVisible();
       await adminPage.getByRole("button", { name: "Preview as viewer" }).click();
       await expect(adminPage.getByTestId("viewer-preview-banner")).toBeVisible();
+      await expect(adminPage.getByRole("button", { name: "Keyboard shortcuts" })).toHaveCount(0);
 
       // Same controls and technical tabs are now hidden.
       await expect(adminPage.getByRole("tab", { name: "Preview" })).toBeVisible();

@@ -1,7 +1,13 @@
 import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive";
+export type ButtonVariant =
+  | "primary"
+  | "secondary"
+  | "outline"
+  | "ghost"
+  | "destructive"
+  | "chrome";
 export type ButtonSize = "xs" | "sm" | "md" | "icon";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -18,6 +24,9 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
     "bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent",
   destructive:
     "bg-destructive text-destructive-foreground hover:bg-destructive-hover border border-transparent shadow-xs",
+  // Ghost button on the chrome layer (top bar, project sidebar).
+  chrome:
+    "bg-transparent text-sidebar-muted hover:bg-sidebar-active hover:text-sidebar-active-foreground border border-transparent",
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
@@ -27,6 +36,24 @@ const SIZE_CLASSES: Record<ButtonSize, string> = {
   icon: "size-8 p-0",
 };
 
+/** Returns the button classes, for links and anchors that look like buttons. */
+export function buttonClassName({
+  variant = "outline",
+  size = "sm",
+  className,
+}: {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  className?: string | undefined;
+} = {}): string {
+  return cn(
+    "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md font-medium transition-colors duration-150 disabled:pointer-events-none disabled:opacity-50",
+    VARIANT_CLASSES[variant],
+    SIZE_CLASSES[size],
+    className,
+  );
+}
+
 export function Button({
   variant = "outline",
   size = "sm",
@@ -35,15 +62,6 @@ export function Button({
   ...props
 }: ButtonProps) {
   return (
-    <button
-      type={type}
-      className={cn(
-        "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md font-medium transition-colors duration-150 disabled:pointer-events-none disabled:opacity-50",
-        VARIANT_CLASSES[variant],
-        SIZE_CLASSES[size],
-        className,
-      )}
-      {...props}
-    />
+    <button type={type} className={buttonClassName({ variant, size, className })} {...props} />
   );
 }

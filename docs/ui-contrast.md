@@ -49,12 +49,20 @@ Required: 4.5 for text, 3 for UI components, icons and focus rings (WCAG 1.4.3 a
 | `--sidebar-foreground` #e3eeed | `--sidebar-active` #24423f | 9.20 | 4.5 | PASS | chrome text on the active item |
 | `--sidebar-active-foreground` #ffffff | `--sidebar-active` #24423f | 10.90 | 4.5 | PASS | active chrome item |
 | `--sidebar-muted` #a3b9b7 | `--sidebar-active` #24423f | 5.29 | 4.5 | PASS | chrome count on the active item |
+| `--sidebar-foreground` #e3eeed | `--sidebar-hover` #1d3638 | 10.82 | 4.5 | PASS | chrome text on a hovered item |
+| `--sidebar-active-foreground` #ffffff | `--sidebar-hover` #1d3638 | 12.83 | 4.5 | PASS | chrome ghost button, hover |
+| `--sidebar-muted` #a3b9b7 | `--sidebar-hover` #1d3638 | 6.22 | 4.5 | PASS | chrome count on a hovered item |
 | `--sidebar-muted` #a3b9b7 | `--sidebar-input` #1d3537 | 6.30 | 4.5 | PASS | chrome field placeholder |
+| `--sidebar-foreground` #e3eeed | `--sidebar-input` #1d3537 | 10.96 | 4.5 | PASS | chrome field text (search, project switcher) |
 | `--sidebar-accent-foreground` #06302d | `--sidebar-accent` #5fd4cb | 8.01 | 4.5 | PASS | chrome unread pill |
 | `--sidebar-accent` #5fd4cb | `--sidebar` #15292b | 8.50 | 3 | PASS | chrome unread pill against the rail |
 | `--sidebar-ring` #7fe3db | `--sidebar` #15292b | 10.05 | 3 | PASS | focus ring on the chrome |
 | `--sidebar-ring` #7fe3db | `--sidebar-active` #24423f | 7.22 | 3 | PASS | focus ring on the active chrome item |
+| `--sidebar-ring` #7fe3db | `--sidebar-hover` #1d3638 | 8.50 | 3 | PASS | focus ring on a hovered chrome item |
+| `--sidebar-ring` #7fe3db | `--sidebar-input` #1d3537 | 8.61 | 3 | PASS | focus ring on a chrome field |
+| `--sidebar-accent` #5fd4cb | `--sidebar-active` #24423f | 6.11 | 3 | PASS | chrome unread pill on the active item |
 | `--sidebar-success` #8fdc62 | `--sidebar` #15292b | 9.09 | 3 | PASS | chrome Live dot |
+| `--sidebar-warning` #f0b44c | `--sidebar` #15292b | 8.19 | 3 | PASS | chrome Reconnecting dot |
 | `--border` #dbe2e5 | `--surface` #ffffff | 1.31 | - | info | decorative divider (not required) |
 | `--sidebar-border` #2b4644 | `--sidebar` #15292b | 1.49 | - | info | decorative chrome divider (not required) |
 
@@ -103,12 +111,20 @@ Required: 4.5 for text, 3 for UI components, icons and focus rings (WCAG 1.4.3 a
 | `--sidebar-foreground` #e3eeed | `--sidebar-active` #2a4d4f | 7.80 | 4.5 | PASS | chrome text on the active item |
 | `--sidebar-active-foreground` #ffffff | `--sidebar-active` #2a4d4f | 9.24 | 4.5 | PASS | active chrome item |
 | `--sidebar-muted` #abc2c0 | `--sidebar-active` #2a4d4f | 4.93 | 4.5 | PASS | chrome count on the active item |
+| `--sidebar-foreground` #e3eeed | `--sidebar-hover` #234143 | 9.28 | 4.5 | PASS | chrome text on a hovered item |
+| `--sidebar-active-foreground` #ffffff | `--sidebar-hover` #234143 | 11.00 | 4.5 | PASS | chrome ghost button, hover |
+| `--sidebar-muted` #abc2c0 | `--sidebar-hover` #234143 | 5.87 | 4.5 | PASS | chrome count on a hovered item |
 | `--sidebar-muted` #abc2c0 | `--sidebar-input` #23403f | 5.97 | 4.5 | PASS | chrome field placeholder |
+| `--sidebar-foreground` #e3eeed | `--sidebar-input` #23403f | 9.44 | 4.5 | PASS | chrome field text (search, project switcher) |
 | `--sidebar-accent-foreground` #06302d | `--sidebar-accent` #5fd4cb | 8.01 | 4.5 | PASS | chrome unread pill |
 | `--sidebar-accent` #5fd4cb | `--sidebar` #1c3538 | 7.28 | 3 | PASS | chrome unread pill against the rail |
 | `--sidebar-ring` #7fe3db | `--sidebar` #1c3538 | 8.61 | 3 | PASS | focus ring on the chrome |
 | `--sidebar-ring` #7fe3db | `--sidebar-active` #2a4d4f | 6.12 | 3 | PASS | focus ring on the active chrome item |
+| `--sidebar-ring` #7fe3db | `--sidebar-hover` #234143 | 7.29 | 3 | PASS | focus ring on a hovered chrome item |
+| `--sidebar-ring` #7fe3db | `--sidebar-input` #23403f | 7.41 | 3 | PASS | focus ring on a chrome field |
+| `--sidebar-accent` #5fd4cb | `--sidebar-active` #2a4d4f | 5.18 | 3 | PASS | chrome unread pill on the active item |
 | `--sidebar-success` #8fdc62 | `--sidebar` #1c3538 | 7.79 | 3 | PASS | chrome Live dot |
+| `--sidebar-warning` #f0b44c | `--sidebar` #1c3538 | 7.02 | 3 | PASS | chrome Reconnecting dot |
 | `--border` #253136 | `--surface` #131b1e | 1.31 | - | info | decorative divider (not required) |
 | `--sidebar-border` #31504f | `--sidebar` #1c3538 | 1.48 | - | info | decorative chrome divider (not required) |
 

@@ -41,12 +41,12 @@ All colours are CSS custom properties in `:root` (light), repeated identically i
 | `--warning` / `-foreground` / `-subtle` | `#9a5300` / `#794100` / `#fcf0d8` | `#f0b44c` / `#f6c978` / `#33260f` | warning; same pattern |
 | `--info` / `-foreground` / `-subtle` | `#3a55c2` / `#2c42a0` / `#e9eefc` | `#8ea6ff` / `#adbfff` / `#1a2443` | info (member role badge); same pattern |
 | `--destructive` / `-hover` / `-foreground` / `-subtle` | `#b82b26` / `#a92622` / `#ffffff` / `#fcebea` | `#f2736d` / `#f58f8a` / `#2b0605` / `#3a1a19` | delete and errors; `-foreground` is the label on the solid fill, text on `-subtle` uses `--destructive` |
-| `--sidebar`, `--sidebar-foreground`, `-muted`, `-active`, `-active-foreground`, `-border`, `-input`, `-accent`, `-accent-foreground`, `-ring`, `-success` | rail `#15292b` | rail `#1c3538` | chrome layer (top bar and sidebar); values in `globals.css` |
+| `--sidebar`, `--sidebar-foreground`, `-muted`, `-hover`, `-active`, `-active-foreground`, `-border`, `-input`, `-accent`, `-accent-foreground`, `-ring`, `-success`, `-warning` | rail `#15292b` | rail `#1c3538` | chrome layer (top bar and sidebar); values in `globals.css`. Text, icons, hover (`-hover`), active item (`-active`), fields (`-input`), unread pill (`-accent`), Live and Reconnecting dots (`-success`, `-warning`) and the focus ring (`-ring`) on the chrome come only from these tokens |
 | `--overlay` | `rgb(8 18 20 / 0.45)` | `rgb(0 0 0 / 0.6)` | scrim behind dialogs and the mobile sidebar drawer |
 | `--email-canvas` / `--email-canvas-dark` | `#ffffff` / `#09090b` | same | email preview backdrop (light and email dark mode); never themed |
 | `--radius` / `--radius-card` | 8 px / 12 px | same | controls (`rounded-md`) / cards and dialogs (`rounded-lg`); `rounded-sm` is 6 px for inner segments |
 
-Components (`web/src/components/ui/`): `Button` variants `primary`, `secondary`, `outline` (default), `ghost`, `destructive`. `Badge` is a pill with variants `neutral` (default), `outline`, `accent`, `primary` (solid, unread counts only), `success`, `warning`, `info`, `destructive`, and an optional leading `dot` for status badges. Status mapping: pending = warning, accepted and active = success, expired, revoked and disabled = neutral, errors = destructive. `RoleBadge` (`web/src/components/RoleBadge.tsx`) renders a project role with its icon: owner = accent, member = info, viewer = neutral.
+Components (`web/src/components/ui/`): `Button` variants `primary`, `secondary`, `outline` (default), `ghost`, `destructive`, and `chrome` (ghost button on the chrome layer); `buttonClassName()` gives links the same look. The main action of each screen or dialog is the one `primary` button (sign in, accept invite, set password, each setup step, create invite link). The chrome containers carry `data-chrome`, which switches the focus ring to `--sidebar-ring` (3:1 or more on the chrome); menus and popovers opened from the chrome carry `data-surface` (and dialogs are native `<dialog>`), which keep `--ring`. `Badge` is a pill with variants `neutral` (default), `outline`, `accent`, `primary` (solid, unread counts only), `success`, `warning`, `info`, `destructive`, and an optional leading `dot` for status badges. Status mapping: pending = warning, accepted and active = success, expired, revoked and disabled = neutral, errors = destructive. `RoleBadge` (`web/src/components/RoleBadge.tsx`) renders a project role with its icon: owner = accent, member = info, viewer = neutral.
 
 Project colour tokens: `slate, red, orange, amber, lime, green, teal, cyan, blue, violet, fuchsia, pink` (12, matching SPEC FR-030).
 
@@ -80,11 +80,13 @@ Inbox search state lives in URL search params (`?q=from:alice is:unread&tag=invo
 
 ### 3.1 Login
 
-Centered card: instance name, email, password, "Sign in". Errors inline under the form (generic "Email or password is incorrect"). Rate limit shows "Too many attempts, try again in N minutes". No sign-up link (invites only). Local mode never shows this screen.
+Centered card: instance name, email, password, "Sign in" (primary button). Errors inline under the form (generic "Email or password is incorrect"). Rate limit shows "Too many attempts, try again in N minutes". No sign-up link (invites only). Local mode never shows this screen.
 
 ### 3.2 Setup wizard (first run, server mode)
 
 Steps with a progress indicator; each step is a short form. Steps 1 to 3 are collected client-side and submitted together as one `POST /api/v1/setup` at the end of step 3 (a wrong token sends the user back to step 1 with the error).
+
+The progress indicator uses short labels that never truncate (Token, Admin, Instance, Project, Connect; hidden below 640 px, numbers only): the current step on the accent tint, finished steps with a success check. Each step's main action is the primary button; Back and Skip are outline or ghost. On step 5 "Send test email" is primary until the first message arrives, then "Go to inbox" is.
 
 1. **Setup token**: paste the token from the server log. The step lists where to find it, each command with a copy button: Docker Compose (`docker compose -f deploy/compose.server.yml logs mailcubby | grep "setup token" | tail -1`), Docker (`docker logs <container> 2>&1 | grep "setup token" | tail -1`) and the binary (the `setup token:` line in the terminal or log of `mailcubby serve`). A restart prints a new token, so the latest one wins. The "Paste the setup token" error shows only after a submit attempt and clears when the user types.
 2. **Admin account**: name, email, password (strength hint, minimum 10 characters).
@@ -94,7 +96,9 @@ Steps with a progress indicator; each step is a short form. Steps 1 to 3 are col
 
 ### 3.3 Projects home
 
-- Header: instance name, command palette hint (`Cmd K`), account menu, "New project" (if allowed).
+- App header (every authenticated screen, 48 px, on the chrome layer): logo and instance name (links to this page), "Local mode" pill in local mode, "Admin" link (instance admins), then on the right "Preview as viewer" (project owners, inbox only), the search field that opens the command palette (`Cmd K`), the keyboard-shortcuts button (hidden for viewers: the effective role in a project, or outside a project a non-admin whose every project role is viewer; `?` and the palette still open the shortcuts), and the header menu. A viewer's header has at most three controls: logo, search and account menu.
+- Header menu: in server mode the account menu (avatar initial and name; Profile, Security and sessions, API tokens, Preferences, Admin for admins, Theme, Sign out); in local mode a "Preferences menu" with Preferences and Theme. Theme is a Light / Dark / System radio group (`menuitemradio`); choosing one applies it and closes the menu. The theme is also in the command palette and in Account > Preferences. The sign-in, setup, invite and reset pages have no account menu and keep a small Light / Dark / System toggle in their own top bar.
+- Page: "New project" (if allowed).
 - Filter input ("Filter projects", `/` focuses it).
 - Project list as cards in a responsive grid (or compact list, toggle remembered). Each card: colour dot, name, slug (mono, muted), role badge (owner/member/viewer), unread count (accent badge), total messages, size, "last message 3m ago", 24 h sparkline (inline SVG, 24 bars, muted colour; accent for the latest hour if non-zero).
 - Realtime: counts and sparklines update via SSE; a card briefly highlights when mail arrives.
@@ -119,8 +123,9 @@ Steps with a progress indicator; each step is a short form. Steps 1 to 3 are col
 +------------+-------------------------------+----------------------------------+
 ```
 
-- **Sidebar** (collapsible with `[`): project switcher (popover with search, also `Cmd+K`), Inbox (count), Unread (count), tags with counts (click filters; `+` creates tag for members), credentials (filter by credential, owner/member only), Settings link, connection quick-copy (SMTP host/port/username) for members.
-- **Message list** (virtualised): search bar with operator autocomplete (typing `from:` suggests recent senders; `tag:` suggests tags; `is:` suggests `unread`/`read`; `has:` suggests `attachment`) and parsed operators shown as removable chips. Row content: unread dot, sender name (bold if unread), subject, snippet (muted, single line), attachment icon, tag pills (max 2 + "+N"), relative time. Multi-select with `x` or checkbox/shift-click; bulk bar shows delete, mark read/unread, tag. Infinite scroll with cursor pagination. Header shows total and "Delete all" (member) with confirmation that states the count and active filter.
+- **Sidebar** (collapsible with `[`, on the chrome layer like the header): project switcher (project colour dot, name, popover with search, also `Cmd+K`), Inbox (count), Unread (count in an accent pill), tags with counts (click filters; `+` creates tag for members), credentials (filter by credential, owner/member only), Settings link, "Back to all projects", connection quick-copy (SMTP host/port/username) for members, and the Live indicator. Group labels are sentence case ("Tags", "Credentials", "SMTP quick copy"). "Back to all projects" is hidden in server mode for a non-admin with exactly one project (the logo still links to the projects home). Below 1024 px the sidebar opens as a drawer on the same chrome surface.
+- **Skip link**: the first focus stop on the inbox route is "Skip to message list", visually hidden until focused; it moves focus to the message list (the listbox, or the list pane when it is empty), so Tab, Enter reaches the list in two stops.
+- **Message list** (virtualised): search bar with operator autocomplete (typing `from:` suggests recent senders; `tag:` suggests tags; `is:` suggests `unread`/`read`; `has:` suggests `attachment`) and parsed operators shown as removable chips. Row content: unread dot, sender name (bold if unread), subject, snippet (muted, single line), attachment icon, tag pills (max 2 + "+N"), relative time. Multi-select with `x` or checkbox/shift-click; bulk bar shows delete, mark read/unread, tag. Infinite scroll with cursor pagination. Header shows total and "Delete all" (member) with confirmation that states the count and active filter. A 2 px line in the project colour runs along the top of the list pane.
 - **Reading pane**: message header and tabbed views (3.5). When nothing is selected: keyboard hints, or the setup guide when the project has no messages (3.4.1).
 - Pane widths persist per user (localStorage). Below 1024 px the layout becomes two panes (sidebar collapses into a drawer); below 768 px it becomes a single stacked view with back navigation.
 
@@ -191,12 +196,12 @@ Explains API tokens (created in Account > API tokens, optionally restricted to t
 
 ### 3.7 Account and admin
 
-- **Account**: profile (name, email read-only), security (change password, active sessions with revoke), API tokens (create with name, scope, project, expiry; token shown once), preferences (theme, density, mark-as-read delay 0/1/3 s/never, single-key shortcuts on/off, 24 h clock). Preferences are per browser (`usePersistentState`, localStorage), not stored on the server. In local mode only `/account/preferences` exists (reachable from the header menu and the palette); the other account sections are server-mode only.
+- **Account**: profile (name, email read-only), security (change password, active sessions with revoke), API tokens (create with name, scope, project, expiry; token shown once), preferences (theme, density, mark-as-read delay 0/1/3 s/never, single-key shortcuts on/off, 24 h clock). Preferences are per browser (`usePersistentState`, localStorage), not stored on the server. In local mode only `/account/preferences` exists (reachable from the header "Preferences menu" and the palette); the other account sections are server-mode only. Theme is also switchable from the header menu (3.3).
 - **Admin**: Users (table, search, invite user, toggle admin / can-create-projects, disable, reset link), Projects (all projects with owners, counters, open), Settings (instance name, default retention with "from env" vs "overridden" indicator), Audit log (filterable table: time, actor, action, project, target, IP; JSON metadata on expand), Stats (cards: messages, storage, DB size, ingest rate, version, uptime).
 
 ### 3.8 Client view mode
 
-Viewers get a simplified UI: no delete or tag actions, no SMTP or settings sections, technical tabs hidden when `viewer_hide_technical` is on, and a clean header. Owners can toggle **Preview as viewer** (eye icon in the header, also in the palette) to see exactly what viewers see; a persistent banner shows while active.
+Viewers get a simplified UI: no delete or tag actions, no SMTP or settings sections, technical tabs hidden when `viewer_hide_technical` is on, and a clean header with only the logo, search and the account menu (no shortcuts button; 3.3). Owners can toggle **Preview as viewer** (eye icon in the header, also in the palette) to see exactly what viewers see, header included; a persistent banner shows while active.
 
 ## 4. Premium details (required for v1)
 
@@ -237,7 +242,7 @@ Viewers get a simplified UI: no delete or tag actions, no SMTP or settings secti
 ## 5. Accessibility (WCAG 2.1 AA)
 
 - Contrast: text 4.5:1, large text and UI components 3:1, in both themes (verified with axe in e2e and by the computed token table `docs/ui-contrast.md`).
-- Full keyboard operation; visible focus ring (2 px `--ring` outline with offset) on every interactive element; logical tab order; focus is trapped in dialogs and restored on close.
+- Full keyboard operation; visible focus ring (2 px `--ring` outline with offset, `--sidebar-ring` on the chrome layer) on every interactive element; logical tab order; a "Skip to message list" link is the first focus stop on the inbox (3.4); focus is trapped in dialogs and restored on close.
 - Message list uses `role="listbox"` (or `grid` when bulk selection is active) with `aria-selected`, `aria-activedescendant` and row labels ("Unread. From Alice. Order #123. 2 minutes ago. 1 attachment").
 - The preview iframe has `title="Email preview: <subject>"`.
 - Single-key shortcuts can be turned off (2.1.4); shortcuts never fire inside text inputs.
