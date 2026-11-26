@@ -4,7 +4,7 @@ The web UI is a single-page app in `web/`, built by Vite and embedded in the Go 
 
 ## 1. Design principles
 
-1. **Modern and calm.** Inspired by Resend and Linear: cool-tinted neutral surfaces, thin borders, one coloured chrome layer (direction "Estúdio", Phase 15), generous but dense layout. No decorative gradients and no illustrations; empty states use lucide icons only.
+1. **Modern and calm.** Inspired by Resend and Linear: cool-tinted neutral surfaces, thin borders, one coloured chrome layer (direction "Studio", Phase 15), generous but dense layout. No decorative gradients and no illustrations; empty states use lucide icons only.
 2. **Dense.** Developers scan many messages. Message rows keep three levels (sender, subject, snippet), about 70 px in the compact density (default) and 80 px in the comfortable one; single-line rows are a separate, later decision. Base font 13 px in lists and chrome, 14 px in reading areas.
 3. **Keyboard-first.** Every action reachable by keyboard; the command palette (`Cmd/Ctrl+K`) reaches every screen and action. Mouse use is fully supported but never required.
 4. **Fast.** Instant navigation from cache, prefetching, optimistic updates, skeletons instead of spinners, virtualised lists. Budget: initial JS under 250 KB gzip (SPEC NFR-009).

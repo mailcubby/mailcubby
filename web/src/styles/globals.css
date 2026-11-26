@@ -3,7 +3,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Design tokens, direction "Estúdio" (docs/UI.md section 1, Phase 15).
+ * Design tokens, direction "Studio" (docs/UI.md section 1, Phase 15).
  * Light values live in :root. Dark values are written twice, in the
  * prefers-color-scheme block (system theme) and in .dark (explicit choice);
  * the two blocks must stay identical. `node web/scripts/contrast.mjs`
