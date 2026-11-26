@@ -371,7 +371,7 @@ export function AppHeader() {
             )}
           >
             <Eye className="size-4" aria-hidden="true" />
-            <span className="hidden md:inline">
+            <span className="hidden lg:inline">
               {previewAsViewer ? "Viewer preview" : "Preview as viewer"}
             </span>
           </Button>
@@ -381,7 +381,7 @@ export function AppHeader() {
           type="button"
           title="Search and open command palette (Cmd/Ctrl+K)"
           onClick={openPalette}
-          className="inline-flex h-8 min-w-8 cursor-pointer items-center justify-center gap-2 rounded-md border border-sidebar-border bg-sidebar-input px-2 text-[13px] text-sidebar-muted transition-colors duration-150 hover:bg-sidebar-hover hover:text-sidebar-foreground sm:w-52 sm:justify-start sm:px-2.5 lg:w-64"
+          className="inline-flex h-8 min-w-8 cursor-pointer items-center justify-center gap-2 rounded-md border border-sidebar-border bg-sidebar-input px-2 text-[13px] text-sidebar-muted transition-colors duration-150 hover:bg-sidebar-hover hover:text-sidebar-foreground sm:w-44 sm:justify-start sm:px-2.5 xl:w-64"
         >
           <Search className="size-4 shrink-0" aria-hidden="true" />
           <span className="hidden sm:inline">Search</span>
