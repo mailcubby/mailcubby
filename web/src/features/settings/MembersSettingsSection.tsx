@@ -7,9 +7,19 @@ import { useAppCommands } from "@/components/AppCommandContext";
 import { RoleBadge } from "@/components/RoleBadge";
 import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardHeader } from "@/components/ui/card";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ProjectSettingsLayout } from "@/features/settings/ProjectSettingsLayout";
 import {
   ApiError,
@@ -66,7 +76,18 @@ function inviteStatusBadgeVariant(status: InviteStatus): BadgeVariant {
   }
 }
 
-function MembersSettingsContent({ project }: { project: ProjectDetail }) {
+interface MembersSettingsContentProps {
+  project: ProjectDetail;
+  /** The invite dialog is opened from the page header ("Invite people", audit M7). */
+  inviteOpen: boolean;
+  onInviteOpenChange: (open: boolean) => void;
+}
+
+function MembersSettingsContent({
+  project,
+  inviteOpen,
+  onInviteOpenChange,
+}: MembersSettingsContentProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { setPreviewAsViewer } = useAppCommands();
@@ -98,7 +119,6 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
     enabled: isServer && isOwner,
   });
 
-  const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<ProjectRole>("viewer");
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -107,6 +127,7 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
   const [removingMember, setRemovingMember] = useState<ProjectMember | null>(null);
   const [revokingInvite, setRevokingInvite] = useState<ProjectInvite | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
+  const [showAccepted, setShowAccepted] = useState(false);
   const [pendingRoleChange, setPendingRoleChange] = useState<{
     member: ProjectMember;
     role: ProjectRole;
@@ -114,6 +135,7 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
 
   const emailId = useId();
   const roleId = useId();
+  const showAcceptedId = useId();
 
   const updateRoleMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: number; role: ProjectRole }) =>
@@ -249,8 +271,25 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
 
   const members = membersQuery.data ?? [];
   const invites = invitesQuery.data ?? [];
+  // Audit M4: accepted invites duplicate the members table, so only pending
+  // invites show by default; "Show accepted" reveals the full history.
+  const hasInviteHistory = invites.some((inv) => inv.status !== "pending");
+  const visibleInvites = showAccepted ? invites : invites.filter((inv) => inv.status === "pending");
   const isExplicitMember = members.some((m) => m.user.id === me?.user.id);
   const now = new Date();
+
+  const closeInvite = () => onInviteOpenChange(false);
+
+  const handleInviteOpenChange = (open: boolean) => {
+    onInviteOpenChange(open);
+    if (!open) {
+      // Reset on close so the next "Invite people" starts from a clean form.
+      setInviteEmail("");
+      setInviteRole("viewer");
+      setInviteError(null);
+      setCreatedInvite(null);
+    }
+  };
 
   const handleInviteSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -264,84 +303,58 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <section className="rounded-lg border border-border bg-surface">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">Members</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              People with explicit access to {project.name}. Instance admins always have owner
-              access.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {isExplicitMember ? (
-              <Button variant="outline" size="xs" onClick={() => setLeaveOpen(true)}>
+    <>
+      <Card aria-labelledby="members-heading">
+        <CardHeader
+          titleId="members-heading"
+          title="Members"
+          description={`People with explicit access to ${project.name}. Instance admins always have owner access.`}
+          actions={
+            isExplicitMember ? (
+              <Button variant="outline" size="sm" onClick={() => setLeaveOpen(true)}>
                 <LogOut className="size-3.5" aria-hidden="true" />
                 <span>Leave project</span>
               </Button>
-            ) : null}
-            {isOwner ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => {
-                  setInviteEmail("");
-                  setInviteRole("viewer");
-                  setInviteError(null);
-                  setCreatedInvite(null);
-                  setInviteOpen(true);
-                }}
-              >
-                <MailPlus className="size-3.5" aria-hidden="true" />
-                <span>Invite member</span>
-              </Button>
-            ) : null}
-          </div>
-        </div>
+            ) : null
+          }
+        />
 
         {membersQuery.isPending ? (
-          <div className="flex flex-col gap-2 p-5">
+          <div className="flex flex-col gap-2 border-t border-border p-5">
             <Skeleton className="h-9 w-full" />
             <Skeleton className="h-9 w-full" />
           </div>
         ) : membersQuery.error ? (
-          <div role="alert" className="p-5 text-xs text-destructive">
+          <div role="alert" className="border-t border-border p-5 text-[13px] text-destructive">
             Failed to load members: {getApiErrorMessage(membersQuery.error)}
           </div>
         ) : members.length === 0 ? (
-          <div className="p-5 text-xs text-muted-foreground">
+          <div className="border-t border-border p-5 text-[13px] text-muted-foreground">
             No explicit members yet. Invite a team member or client viewer to grant access.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-[13px]">
-              <thead>
-                <tr className="border-b border-border bg-background/50 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  <th scope="col" className="px-5 py-2.5">
-                    Member
-                  </th>
-                  <th scope="col" className="px-4 py-2.5">
-                    Role
-                  </th>
-                  <th scope="col" className="px-4 py-2.5">
-                    Joined
-                  </th>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Member</TableHead>
+                  <TableHead className="w-36">Role</TableHead>
+                  <TableHead className="w-28">Joined</TableHead>
                   {isOwner ? (
-                    <th scope="col" className="px-5 py-2.5 text-right">
-                      Actions
-                    </th>
+                    <TableHead className="w-28 text-right">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
                   ) : null}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {members.map((member) => {
                   const isSelf = member.user.id === me?.user.id;
                   const joinedRel = formatRelativeTime(member.created_at, now, clock24h);
                   const joinedExact = formatExactTimestamp(member.created_at, clock24h).combined;
                   return (
-                    <tr key={member.user.id} className="hover:bg-muted/30">
-                      <td className="px-5 py-3">
+                    <TableRow key={member.user.id}>
+                      <TableCell>
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-foreground">{member.user.name}</span>
                           {isSelf ? <Badge variant="neutral">You</Badge> : null}
@@ -349,10 +362,11 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
                         <div className="font-mono text-xs text-muted-foreground">
                           {member.user.email}
                         </div>
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell>
                         {isOwner ? (
-                          <select
+                          <NativeSelect
+                            controlSize="sm"
                             aria-label={`Role for ${member.user.email}`}
                             value={member.role}
                             disabled={updateRoleMutation.isPending}
@@ -369,123 +383,132 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
                                 role: nextRole,
                               });
                             }}
-                            className="h-7 rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+                            wrapperClassName="w-28"
                           >
                             <option value="owner">owner</option>
                             <option value="member">member</option>
                             <option value="viewer">viewer</option>
-                          </select>
+                          </NativeSelect>
                         ) : (
                           <RoleBadge role={member.role} />
                         )}
-                      </td>
-                      <td
-                        className="px-4 py-3 text-xs text-muted-foreground tabular-nums"
+                      </TableCell>
+                      <TableCell
+                        className="text-xs text-muted-foreground tabular-nums"
                         title={joinedExact}
                       >
                         {joinedRel}
-                      </td>
+                      </TableCell>
                       {isOwner ? (
-                        <td className="px-5 py-3 text-right">
+                        <TableCell className="text-right">
                           <Button
                             variant="ghost"
                             size="xs"
                             aria-label={`Remove ${member.user.email}`}
-                            className="text-muted-foreground hover:text-destructive"
+                            className="hover:bg-destructive-subtle hover:text-destructive"
                             onClick={() => setRemovingMember(member)}
                           >
                             <UserMinus className="size-3.5" aria-hidden="true" />
                             <span>Remove</span>
                           </Button>
-                        </td>
+                        </TableCell>
                       ) : null}
-                    </tr>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
-      </section>
+      </Card>
 
       {isOwner ? (
-        <section className="rounded-lg border border-border bg-surface">
-          <div className="border-b border-border px-5 py-4">
-            <h2 className="text-sm font-semibold text-foreground">Invites</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Invite links are single-use and shared manually. Creating a new invite for the same
-              email revokes any pending invite.
-            </p>
-          </div>
+        <Card aria-labelledby="invites-heading">
+          <CardHeader
+            titleId="invites-heading"
+            title="Invites"
+            description="Invite links are single-use and shared manually. Creating a new invite for the same email revokes any pending invite."
+            actions={
+              hasInviteHistory ? (
+                <label
+                  htmlFor={showAcceptedId}
+                  className="inline-flex h-8 cursor-pointer items-center gap-2 text-[13px] font-medium text-foreground"
+                >
+                  <input
+                    id={showAcceptedId}
+                    type="checkbox"
+                    checked={showAccepted}
+                    onChange={(e) => setShowAccepted(e.target.checked)}
+                    className="size-3.5 accent-accent"
+                  />
+                  Show accepted
+                </label>
+              ) : null
+            }
+          />
 
           {invitesQuery.isPending ? (
-            <div className="flex flex-col gap-2 p-5">
+            <div className="flex flex-col gap-2 border-t border-border p-5">
               <Skeleton className="h-8 w-full" />
             </div>
           ) : invitesQuery.error ? (
-            <div role="alert" className="p-5 text-xs text-destructive">
+            <div role="alert" className="border-t border-border p-5 text-[13px] text-destructive">
               Failed to load invites: {getApiErrorMessage(invitesQuery.error)}
             </div>
-          ) : invites.length === 0 ? (
-            <div className="p-5 text-xs text-muted-foreground">
-              No invitations have been created for this project yet.
+          ) : visibleInvites.length === 0 ? (
+            <div className="border-t border-border p-5 text-[13px] text-muted-foreground">
+              {invites.length === 0
+                ? "No invitations have been created for this project yet."
+                : "No pending invites."}
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left text-[13px]">
-                <thead>
-                  <tr className="border-b border-border bg-background/50 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    <th scope="col" className="px-5 py-2.5">
-                      Email
-                    </th>
-                    <th scope="col" className="px-4 py-2.5">
-                      Role
-                    </th>
-                    <th scope="col" className="px-4 py-2.5">
-                      Status
-                    </th>
-                    <th scope="col" className="px-4 py-2.5">
-                      Expires
-                    </th>
-                    <th scope="col" className="px-5 py-2.5 text-right">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {invites.map((inv) => {
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead className="w-28">Role</TableHead>
+                    <TableHead className="w-28">Status</TableHead>
+                    <TableHead className="w-36">Expires</TableHead>
+                    <TableHead className="w-28 text-right">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visibleInvites.map((inv) => {
                     const expExact = formatExactTimestamp(inv.expires_at, clock24h).combined;
                     return (
-                      <tr key={inv.id} className="hover:bg-muted/30">
-                        <td className="px-5 py-3">
+                      <TableRow key={inv.id}>
+                        <TableCell>
                           <div className="font-mono text-xs text-foreground">{inv.email}</div>
                           {inv.created_by ? (
-                            <div className="text-[11px] text-muted-foreground">
+                            <div className="text-xs text-muted-foreground">
                               Invited by {inv.created_by}
                             </div>
                           ) : null}
-                        </td>
-                        <td className="px-4 py-3">
+                        </TableCell>
+                        <TableCell>
                           <RoleBadge role={inv.role} />
-                        </td>
-                        <td className="px-4 py-3">
+                        </TableCell>
+                        <TableCell>
                           <Badge variant={inviteStatusBadgeVariant(inv.status)} dot>
                             {inv.status}
                           </Badge>
-                        </td>
-                        <td
-                          className="px-4 py-3 text-xs text-muted-foreground tabular-nums"
+                        </TableCell>
+                        <TableCell
+                          className="text-xs whitespace-nowrap text-muted-foreground tabular-nums"
                           title={expExact}
                         >
                           {formatExactTimestamp(inv.expires_at, clock24h).local}
-                        </td>
-                        <td className="px-5 py-3 text-right">
+                        </TableCell>
+                        <TableCell className="text-right">
                           {inv.status === "pending" ? (
                             <Button
                               variant="ghost"
                               size="xs"
                               aria-label={`Revoke invite for ${inv.email}`}
-                              className="text-muted-foreground hover:text-destructive"
+                              className="hover:bg-destructive-subtle hover:text-destructive"
                               onClick={() => setRevokingInvite(inv)}
                             >
                               <Trash2 className="size-3.5" aria-hidden="true" />
@@ -494,54 +517,51 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
-        </section>
+        </Card>
       ) : null}
 
-      <section className="rounded-lg border border-border bg-surface p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-lg space-y-1">
-            <h2 className="text-sm font-semibold text-foreground">Client view mode</h2>
-            <p className="text-xs text-muted-foreground">
+      <Card aria-labelledby="client-view-heading">
+        <CardHeader
+          titleId="client-view-heading"
+          title="Client view mode"
+          description={
+            <>
               Project viewers get a simplified, read-only inbox without delete actions, tag editing,
               or settings.{" "}
               {project.settings.viewer_hide_technical
                 ? "Technical tabs (HTML source, Headers, Raw, Tech) and .eml downloads are currently hidden from viewers."
                 : "Technical tabs are currently visible to viewers."}
-            </p>
-          </div>
-          {isOwner ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setPreviewAsViewer(true);
-                void navigate({ to: "/p/$project", params: { project: project.slug } });
-              }}
-            >
-              <Eye className="size-3.5" aria-hidden="true" />
-              <span>Preview as viewer</span>
-            </Button>
-          ) : null}
-        </div>
-      </section>
+            </>
+          }
+          actions={
+            isOwner ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPreviewAsViewer(true);
+                  void navigate({ to: "/p/$project", params: { project: project.slug } });
+                }}
+              >
+                <Eye className="size-3.5" aria-hidden="true" />
+                <span>Preview as viewer</span>
+              </Button>
+            ) : null
+          }
+        />
+      </Card>
 
       <Dialog
         open={inviteOpen}
-        onOpenChange={(open) => {
-          setInviteOpen(open);
-          if (!open) {
-            setCreatedInvite(null);
-            setInviteError(null);
-          }
-        }}
+        onOpenChange={handleInviteOpenChange}
         title={createdInvite ? "Invitation link ready" : `Invite to ${project.name}`}
         description={
           createdInvite
@@ -586,7 +606,7 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
             </div>
 
             <div className="flex justify-end">
-              <Button variant="outline" size="sm" onClick={() => setInviteOpen(false)}>
+              <Button variant="outline" size="sm" onClick={closeInvite}>
                 Done
               </Button>
             </div>
@@ -617,18 +637,18 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
               <label htmlFor={roleId} className="text-xs font-medium text-foreground">
                 Role
               </label>
-              <select
+              <NativeSelect
                 id={roleId}
                 value={inviteRole}
                 onChange={(e) => setInviteRole(e.target.value as ProjectRole)}
-                className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                wrapperClassName="w-full"
               >
                 {ROLE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               <p className="text-xs text-muted-foreground">
                 {ROLE_OPTIONS.find((opt) => opt.value === inviteRole)?.description}
               </p>
@@ -641,12 +661,7 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
             ) : null}
 
             <div className="flex items-center justify-end gap-2 pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setInviteOpen(false)}
-              >
+              <Button type="button" variant="outline" size="sm" onClick={closeInvite}>
                 Cancel
               </Button>
               <Button
@@ -746,19 +761,42 @@ function MembersSettingsContent({ project }: { project: ProjectDetail }) {
         pending={leaveMutation.isPending}
         onConfirm={() => leaveMutation.mutate()}
       />
-    </div>
+    </>
   );
 }
 
 export function MembersSettingsPage({ projectSlug }: { projectSlug: string }) {
+  const { data: meta } = useQuery(metaQueryOptions());
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const isServer = meta?.mode === "server";
+
   return (
     <ProjectSettingsLayout
       projectSlug={projectSlug}
       section="members"
       title="Members & invites"
-      description="Manage who has access to this project and share invite links."
+      // Audit M5: only owners can invite or change roles, so other roles get a plain subtitle.
+      description={(project) =>
+        project.role === "owner"
+          ? "Manage who has access to this project and share invite links."
+          : `People with access to ${project.name}.`
+      }
+      actions={(project) =>
+        isServer && project.role === "owner" ? (
+          <Button variant="primary" size="sm" onClick={() => setInviteOpen(true)}>
+            <MailPlus className="size-3.5" aria-hidden="true" />
+            <span>Invite people</span>
+          </Button>
+        ) : null
+      }
     >
-      {(project) => <MembersSettingsContent project={project} />}
+      {(project) => (
+        <MembersSettingsContent
+          project={project}
+          inviteOpen={inviteOpen}
+          onInviteOpenChange={setInviteOpen}
+        />
+      )}
     </ProjectSettingsLayout>
   );
 }

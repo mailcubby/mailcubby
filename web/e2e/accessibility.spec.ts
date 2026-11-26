@@ -327,13 +327,35 @@ test.describe("Phase 13: WCAG 2.1 AA accessibility audit (NFR-010)", () => {
         await assertAccessible(page, `server project settings /${section}`);
       }
 
-      // Create a project invite so we can audit /invite/$token.
+      // Create a project invite so we can audit /invite/$token. Phase 15d: the
+      // invite action is "Invite people" in the page header (audit M7), and the
+      // dialog is audited open in light and dark.
       await page.goto(`${srv.httpURL}/p/client-portal/settings/members`);
-      await page.getByRole("button", { name: "Invite member" }).click();
+      await page.getByRole("button", { name: "Invite people" }).click();
+      await expect(page.getByLabel("Email address")).toBeVisible();
+      await assertAccessible(page, "server invite dialog (light)");
       await page.getByLabel("Email address").fill("client@a11y.test");
       await page.getByRole("button", { name: "Create invite link" }).click();
       const inviteURL = await page.locator("#created-invite-url").inputValue();
       expect(inviteURL).toContain("/invite/");
+      await assertAccessible(page, "server invite link dialog (light)");
+      await page.getByRole("button", { name: "Done" }).click();
+
+      // Phase 15d acceptance: SMTP, members (with the invite dialog) and admin
+      // users are axe clean in dark too.
+      await chooseTheme(page, "Dark");
+      await assertAccessible(page, "server project settings /members (dark)");
+      await page.getByRole("button", { name: "Invite people" }).click();
+      await expect(page.getByLabel("Email address")).toBeVisible();
+      await assertAccessible(page, "server invite dialog (dark)");
+      await page.keyboard.press("Escape");
+      await page.goto(`${srv.httpURL}/p/client-portal/settings/smtp`);
+      await expect(page.getByRole("region", { name: "SMTP credentials" })).toBeVisible();
+      await assertAccessible(page, "server project settings /smtp (dark)");
+      await page.goto(`${srv.httpURL}/admin/users`);
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await assertAccessible(page, "server admin /users (dark)");
+      await chooseTheme(page, "Light");
 
       // All account sections.
       for (const section of ["profile", "security", "tokens", "preferences"]) {

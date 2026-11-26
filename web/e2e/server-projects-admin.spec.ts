@@ -168,7 +168,8 @@ test.describe("Phase 7b: Multi-tenant projects, invites, viewer mode, and admin 
       await adminPage.getByRole("link", { name: "Members & invites" }).click();
       await expect(adminPage).toHaveURL(`${srv.httpURL}/p/client-portal/settings/members`);
 
-      await adminPage.getByRole("button", { name: "Invite member" }).click();
+      // Phase 15d (audit M7): the invite action moved to the page header as "Invite people".
+      await adminPage.getByRole("button", { name: "Invite people" }).click();
       const inviteDialog = adminPage.getByRole("dialog");
       await inviteDialog.getByLabel("Email address").fill("client@portal.test");
       await inviteDialog.getByLabel("Role", { exact: true }).selectOption("viewer");
@@ -290,6 +291,18 @@ test.describe("Phase 7b: Multi-tenant projects, invites, viewer mode, and admin 
       } finally {
         await viewerContext.close();
       }
+
+      // Audit M4: the accepted invite is hidden from the invites table by default
+      // (the person is in the members table) and shown again with "Show accepted".
+      await adminPage.goto(`${srv.httpURL}/p/client-portal/settings/members`);
+      const invitesCard = adminPage.getByRole("region", { name: "Invites" });
+      const membersCard = adminPage.getByRole("region", { name: "Members" });
+      await expect(membersCard.getByText("client@portal.test", { exact: true })).toBeVisible();
+      await expect(invitesCard.getByText("No pending invites.")).toBeVisible();
+      await expect(invitesCard.getByText("client@portal.test", { exact: true })).toHaveCount(0);
+      await invitesCard.getByLabel("Show accepted").check();
+      await expect(invitesCard.getByText("client@portal.test", { exact: true })).toBeVisible();
+      await expect(invitesCard.getByText("accepted", { exact: true })).toBeVisible();
 
       // 5. As owner on the same message, toggle "Preview as viewer" and verify the same controls hide.
       await adminPage.goto(`${srv.httpURL}/p/client-portal`);
