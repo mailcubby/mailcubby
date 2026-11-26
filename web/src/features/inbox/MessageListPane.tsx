@@ -909,11 +909,7 @@ export function MessageListPane({
                     "absolute top-0 left-0 flex w-full cursor-pointer items-start gap-2.5 border-b border-border px-3 transition-colors duration-150 focus-visible:z-10 focus-visible:-outline-offset-2",
                     density === "compact" ? "py-2" : "py-3",
                     // Open message: accent tint; checked rows: muted.
-                    isActive
-                      ? "bg-accent-subtle"
-                      : isSelected
-                        ? "bg-muted"
-                        : "hover:bg-muted",
+                    isActive ? "bg-accent-subtle" : isSelected ? "bg-muted" : "hover:bg-muted",
                     isArrived && "arrival-highlight",
                   )}
                 >
