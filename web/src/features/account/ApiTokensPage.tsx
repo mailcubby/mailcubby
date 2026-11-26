@@ -5,8 +5,19 @@ import { type FormEvent, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { AccountLayout } from "@/features/account/AccountLayout";
 import {
   type APITokenInfo,
@@ -185,16 +196,23 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
       description="Personal bearer tokens for CI pipelines, Playwright tests, and REST API scripts."
     >
       <div className="flex flex-col gap-5">
-        <section className="rounded-lg border border-border bg-surface">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3.5">
+        <Card aria-labelledby="api-tokens-heading">
+          <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Personal API tokens</h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">
+              <h2
+                id="api-tokens-heading"
+                className="text-[15px] leading-[22px] font-semibold text-foreground"
+              >
+                Personal API tokens
+              </h2>
+              <p className="mt-0.5 text-[13px] text-muted-foreground">
                 Tokens inherit the minimum of their scope and your current project role. Management
                 endpoints are never accessible via tokens.
               </p>
             </div>
             <Button
+              // One primary per screen: the empty state's "Create first token" is primary.
+              variant={tokens && tokens.length === 0 ? "outline" : "primary"}
               size="sm"
               onClick={() => {
                 setFormError(null);
@@ -207,7 +225,10 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
           </div>
 
           {error ? (
-            <div className="p-5 text-xs text-muted-foreground">
+            <div
+              role="alert"
+              className="border-t border-border p-5 text-[13px] text-muted-foreground"
+            >
               <p className="font-medium text-foreground">Could not load API tokens</p>
               <p className="mt-1">{getApiErrorMessage(error)}</p>
               <Button variant="outline" size="xs" className="mt-3" onClick={() => void refetch()}>
@@ -215,19 +236,25 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
               </Button>
             </div>
           ) : isPending ? (
-            <div className="p-5 text-xs text-muted-foreground">Loading API tokens...</div>
+            <div className="flex flex-col gap-2 border-t border-border p-5">
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-9 w-full" />
+            </div>
           ) : !tokens || tokens.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 px-5 py-10 text-center">
-              <KeyRound className="size-6 text-muted-foreground/70" aria-hidden="true" />
-              <p className="text-xs font-medium text-foreground">No API tokens yet</p>
-              <p className="max-w-sm text-xs text-muted-foreground">
+            <div className="flex flex-col items-center justify-center gap-2 border-t border-border px-5 py-10 text-center">
+              <span className="flex size-10 items-center justify-center rounded-full bg-accent-subtle text-accent-subtle-foreground">
+                <KeyRound className="size-5" aria-hidden="true" />
+              </span>
+              <p className="text-[13px] font-medium text-foreground">No API tokens yet</p>
+              <p className="max-w-sm text-[13px] text-muted-foreground">
                 Create a token to authenticate REST API requests with{" "}
                 <code className="font-mono text-foreground">Authorization: Bearer mailcubby_…</code>
                 .
               </p>
               <Button
+                variant="primary"
                 size="sm"
-                className="mt-1"
+                className="mt-2"
                 onClick={() => {
                   setFormError(null);
                   setCreateOpen(true);
@@ -239,25 +266,25 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left text-xs">
-                <thead>
-                  <tr className="border-b border-border bg-background/50 text-[11px] font-medium text-muted-foreground">
-                    <th className="px-4 py-2">Name</th>
-                    <th className="px-4 py-2">Prefix</th>
-                    <th className="px-4 py-2">Scope</th>
-                    <th className="px-4 py-2">Project</th>
-                    <th className="px-4 py-2">Last used</th>
-                    <th className="px-4 py-2">Expires</th>
-                    <th className="px-4 py-2 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Prefix</TableHead>
+                    <TableHead>Scope</TableHead>
+                    <TableHead>Project</TableHead>
+                    <TableHead>Last used</TableHead>
+                    <TableHead>Expires</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {tokens.map((tok) => {
                     const isExpired =
                       tok.expires_at !== null && new Date(tok.expires_at).getTime() <= nowMs;
                     return (
-                      <tr key={tok.id} className="hover:bg-muted/30">
-                        <td className="px-4 py-2.5 align-middle">
+                      <TableRow key={tok.id}>
+                        <TableCell className="align-middle">
                           <div className="font-medium text-foreground">{tok.name}</div>
                           <div
                             className="text-[11px] text-muted-foreground"
@@ -265,16 +292,16 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
                           >
                             Created {formatRelativeTime(tok.created_at, new Date(), clock24h)}
                           </div>
-                        </td>
-                        <td className="px-4 py-2.5 align-middle font-mono text-foreground">
+                        </TableCell>
+                        <TableCell className="align-middle font-mono text-foreground">
                           mailcubby_{tok.prefix}…
-                        </td>
-                        <td className="px-4 py-2.5 align-middle">
+                        </TableCell>
+                        <TableCell className="align-middle">
                           <Badge variant={tok.scope === "write" ? "accent" : "outline"}>
                             {tok.scope}
                           </Badge>
-                        </td>
-                        <td className="px-4 py-2.5 align-middle">
+                        </TableCell>
+                        <TableCell className="align-middle">
                           {tok.project ? (
                             <code className="rounded-xs border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] text-foreground">
                               {tok.project}
@@ -282,9 +309,9 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
                           ) : (
                             <span className="text-muted-foreground">All projects</span>
                           )}
-                        </td>
-                        <td
-                          className="px-4 py-2.5 align-middle tabular-nums text-muted-foreground"
+                        </TableCell>
+                        <TableCell
+                          className="align-middle tabular-nums text-muted-foreground"
                           title={
                             tok.last_used_at
                               ? formatExactTimestamp(tok.last_used_at, clock24h).combined
@@ -294,8 +321,8 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
                           {tok.last_used_at
                             ? formatRelativeTime(tok.last_used_at, new Date(), clock24h)
                             : "Never"}
-                        </td>
-                        <td className="px-4 py-2.5 align-middle tabular-nums">
+                        </TableCell>
+                        <TableCell className="align-middle tabular-nums">
                           {tok.expires_at ? (
                             isExpired ? (
                               <Badge variant="neutral" dot>
@@ -314,8 +341,8 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
                           ) : (
                             <span className="text-muted-foreground">Never</span>
                           )}
-                        </td>
-                        <td className="px-4 py-2.5 align-middle text-right">
+                        </TableCell>
+                        <TableCell className="align-middle text-right">
                           <Button
                             type="button"
                             variant="ghost"
@@ -327,15 +354,15 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
                             <Trash2 className="size-3" aria-hidden="true" />
                             <span>Revoke</span>
                           </Button>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
-        </section>
+        </Card>
       </div>
 
       <Dialog
@@ -367,26 +394,24 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
             <label htmlFor={scopeId} className="text-xs font-medium text-foreground">
               Scope
             </label>
-            <select
+            <NativeSelect
               id={scopeId}
               value={scope}
               onChange={(e) => setScope(e.target.value as APITokenScope)}
-              className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground"
             >
               <option value="read">read — list, search, read, wait, SSE</option>
               <option value="write">write — read plus mark seen, tags, delete, send test</option>
-            </select>
+            </NativeSelect>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <label htmlFor={projectId} className="text-xs font-medium text-foreground">
               Project restriction
             </label>
-            <select
+            <NativeSelect
               id={projectId}
               value={projectSlug}
               onChange={(e) => setProjectSlug(e.target.value)}
-              className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground"
             >
               <option value="">All accessible projects</option>
               {projects?.map((proj) => (
@@ -394,25 +419,24 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
                   {proj.name} ({proj.slug})
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <label htmlFor={expiryId} className="text-xs font-medium text-foreground">
               Expiration
             </label>
-            <select
+            <NativeSelect
               id={expiryId}
               value={expiryPreset}
               onChange={(e) => setExpiryPreset(e.target.value)}
-              className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground"
             >
               {EXPIRY_PRESETS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
 
           {expiryPreset === "custom" ? (
@@ -437,7 +461,7 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
             <Button type="button" variant="outline" size="sm" onClick={() => setCreateOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={createMutation.isPending}>
+            <Button type="submit" variant="primary" size="sm" disabled={createMutation.isPending}>
               {createMutation.isPending ? "Creating..." : "Create token"}
             </Button>
           </div>

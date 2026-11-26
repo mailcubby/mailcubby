@@ -5,6 +5,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AccountLayout } from "@/features/account/AccountLayout";
 import { PasswordInput } from "@/features/auth/PasswordInput";
@@ -120,15 +121,15 @@ export function SecurityPage() {
       description="Update your password and manage active browser sessions."
     >
       <div className="flex flex-col gap-6">
-        <section
-          aria-labelledby="change-password-heading"
-          className="rounded-lg border border-border bg-surface p-5"
-        >
+        <Card aria-labelledby="change-password-heading" className="p-5">
           <div className="mb-4">
-            <h2 id="change-password-heading" className="text-sm font-medium text-foreground">
+            <h2
+              id="change-password-heading"
+              className="text-[15px] leading-[22px] font-semibold text-foreground"
+            >
               Change password
             </h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
               Changing your password signs out all other active sessions.
             </p>
           </div>
@@ -212,22 +213,27 @@ export function SecurityPage() {
             </div>
 
             <div className="flex justify-end pt-1">
-              <Button type="submit" disabled={changePasswordMutation.isPending}>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={changePasswordMutation.isPending}
+              >
                 {changePasswordMutation.isPending ? "Updating..." : "Update password"}
               </Button>
             </div>
           </form>
-        </section>
+        </Card>
 
-        <section
-          aria-labelledby="active-sessions-heading"
-          className="rounded-lg border border-border bg-surface p-5"
-        >
+        <Card aria-labelledby="active-sessions-heading" className="p-5">
           <div className="mb-4">
-            <h2 id="active-sessions-heading" className="text-sm font-medium text-foreground">
+            <h2
+              id="active-sessions-heading"
+              className="text-[15px] leading-[22px] font-semibold text-foreground"
+            >
               Active sessions
             </h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
               Browsers currently signed in to your account. Revoke any session you do not recognise.
             </p>
           </div>
@@ -248,14 +254,17 @@ export function SecurityPage() {
                     key={sess.id}
                     className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-3"
                   >
-                    <div className="flex min-w-0 items-start gap-2.5">
+                    <div className="flex min-w-0 flex-1 basis-64 items-start gap-2.5">
                       <Monitor
                         className="mt-0.5 size-4 shrink-0 text-muted-foreground"
                         aria-hidden="true"
                       />
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="truncate text-[13px] font-medium text-foreground">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span
+                            className="min-w-0 truncate text-[13px] font-medium text-foreground"
+                            title={sess.user_agent || undefined}
+                          >
                             {sess.user_agent || "Unknown browser"}
                           </span>
                           {sess.current ? <Badge variant="accent">Current</Badge> : null}
@@ -287,7 +296,7 @@ export function SecurityPage() {
           ) : (
             <p className="text-xs text-muted-foreground">No active sessions found.</p>
           )}
-        </section>
+        </Card>
       </div>
     </AccountLayout>
   );

@@ -11,6 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AdminLayout } from "@/features/admin/AdminLayout";
 import { getApiErrorMessage } from "@/lib/api";
@@ -82,14 +83,14 @@ export function AdminStatsPage() {
       ) : statsQuery.error ? (
         <div
           role="alert"
-          className="rounded-lg border border-destructive/40 bg-surface p-5 text-xs text-destructive"
+          className="rounded-lg border border-destructive/40 bg-destructive-subtle p-5 text-[13px] text-destructive"
         >
           Failed to load instance statistics: {getApiErrorMessage(statsQuery.error)}
         </div>
       ) : stats ? (
         <div className="flex flex-col gap-6">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg border border-border bg-surface p-4">
+            <div className="rounded-lg border border-border bg-surface p-4 shadow-xs">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Projects</span>
                 <FolderKanban className="size-3.5" aria-hidden="true" />
@@ -99,7 +100,7 @@ export function AdminStatsPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-surface p-4">
+            <div className="rounded-lg border border-border bg-surface p-4 shadow-xs">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Users</span>
                 <Users className="size-3.5" aria-hidden="true" />
@@ -109,7 +110,7 @@ export function AdminStatsPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-surface p-4">
+            <div className="rounded-lg border border-border bg-surface p-4 shadow-xs">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Messages</span>
                 <Mail className="size-3.5" aria-hidden="true" />
@@ -119,7 +120,7 @@ export function AdminStatsPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-surface p-4">
+            <div className="rounded-lg border border-border bg-surface p-4 shadow-xs">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Ingest (last hour)</span>
                 <Activity className="size-3.5" aria-hidden="true" />
@@ -133,9 +134,9 @@ export function AdminStatsPage() {
             </div>
           </div>
 
-          <section className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="text-sm font-semibold text-foreground">Storage</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
+          <Card className="p-5">
+            <h2 className="text-[15px] leading-[22px] font-semibold text-foreground">Storage</h2>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
               Raw message volume vs compressed blob storage and SQLite metadata database size.
             </p>
 
@@ -207,10 +208,10 @@ export function AdminStatsPage() {
                 </div>
               </div>
             </div>
-          </section>
+          </Card>
 
-          <section className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="text-sm font-semibold text-foreground">Runtime</h2>
+          <Card className="p-5">
+            <h2 className="text-[15px] leading-[22px] font-semibold text-foreground">Runtime</h2>
             <dl className="mt-4 grid gap-4 sm:grid-cols-3">
               <div>
                 <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -240,7 +241,7 @@ export function AdminStatsPage() {
                 </dd>
               </div>
             </dl>
-          </section>
+          </Card>
         </div>
       ) : null}
     </AdminLayout>

@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AccountLayout } from "@/features/account/AccountLayout";
 import { ApiError, api, handleApiError, unwrap } from "@/lib/api";
@@ -75,7 +76,7 @@ export function ProfilePage() {
       title="Profile"
       description="Manage your display name and view your account details."
     >
-      <div className="rounded-lg border border-border bg-surface p-5">
+      <Card aria-label="Profile" className="p-5">
         <form onSubmit={handleSubmit} method="post" className="flex flex-col gap-4" noValidate>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="profile-email" className="text-xs font-medium text-foreground">
@@ -126,12 +127,12 @@ export function ProfilePage() {
           </div>
 
           <div className="flex justify-end pt-1">
-            <Button type="submit" disabled={updateMutation.isPending}>
+            <Button type="submit" variant="primary" size="sm" disabled={updateMutation.isPending}>
               {updateMutation.isPending ? "Saving..." : "Save profile"}
             </Button>
           </div>
         </form>
-      </div>
+      </Card>
     </AccountLayout>
   );
 }

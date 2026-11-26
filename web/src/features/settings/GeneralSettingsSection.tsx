@@ -4,6 +4,7 @@ import { AlertTriangle, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ProjectSettingsLayout } from "@/features/settings/ProjectSettingsLayout";
@@ -159,125 +160,130 @@ function GeneralSettingsForm({ project }: { project: ProjectDetail }) {
   const inboxDomain = meta?.inbox_domain;
 
   return (
-    <div className="flex flex-col gap-6">
-      <section className="rounded-lg border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold text-foreground">General</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Update the project name, URL slug, and colour badge.
-        </p>
+    <>
+      <Card aria-labelledby="general-heading">
+        <CardHeader
+          titleId="general-heading"
+          title="General"
+          description="Update the project name, URL slug, and colour badge."
+        />
 
-        <form onSubmit={handleSave} className="mt-4 flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={nameId} className="text-xs font-medium text-foreground">
-              Project name
-            </label>
-            <Input
-              id={nameId}
-              required
-              maxLength={80}
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (formError) {
-                  setFormError(null);
-                }
-              }}
-            />
-          </div>
+        <form onSubmit={handleSave}>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={nameId} className="text-xs font-medium text-foreground">
+                Project name
+              </label>
+              <Input
+                id={nameId}
+                required
+                maxLength={80}
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (formError) {
+                    setFormError(null);
+                  }
+                }}
+              />
+            </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={slugId} className="text-xs font-medium text-foreground">
-              Slug
-            </label>
-            <Input
-              id={slugId}
-              required
-              maxLength={63}
-              className="font-mono"
-              value={slug}
-              onChange={(e) => {
-                setSlug(e.target.value);
-                if (formError) {
-                  setFormError(null);
-                }
-              }}
-            />
-            <p className="text-xs text-muted-foreground">
-              Lowercase letters, numbers, and hyphens (1–63 characters). Used in URLs and routing
-              addresses.
-            </p>
-          </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={slugId} className="text-xs font-medium text-foreground">
+                Slug
+              </label>
+              <Input
+                id={slugId}
+                required
+                maxLength={63}
+                className="font-mono"
+                value={slug}
+                onChange={(e) => {
+                  setSlug(e.target.value);
+                  if (formError) {
+                    setFormError(null);
+                  }
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Lowercase letters, numbers, and hyphens (1–63 characters). Used in URLs and routing
+                addresses.
+              </p>
+            </div>
 
-          {slugChanged ? (
-            <div
-              role="status"
-              className="flex items-start gap-2.5 rounded-md border border-warning/30 bg-warning-subtle p-3 text-xs text-foreground"
-            >
-              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
-              <div className="min-w-0 space-y-1">
-                <p className="font-medium">Renaming the slug changes URLs and routing addresses</p>
-                <p className="text-muted-foreground">
-                  Old slugs are not reserved and existing links to{" "}
-                  <code className="font-mono text-foreground">/p/{project.slug}</code> will stop
-                  working.
-                </p>
-                {inboxDomain ? (
-                  <div className="mt-1.5 space-y-0.5 font-mono text-[11px] text-muted-foreground">
-                    <p>
-                      Old:{" "}
-                      <span className="line-through">
-                        *@{project.slug}.{inboxDomain}
-                      </span>
-                      ,{" "}
-                      <span className="line-through">
-                        {project.slug}@{inboxDomain}
-                      </span>
-                    </p>
-                    <p className="text-foreground">
-                      New: *@{trimmedSlug}.{inboxDomain}, {trimmedSlug}@{inboxDomain}
-                    </p>
-                  </div>
-                ) : null}
+            {slugChanged ? (
+              <div
+                role="status"
+                className="flex items-start gap-2.5 rounded-md border border-warning/30 bg-warning-subtle p-3 text-xs text-foreground"
+              >
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+                <div className="min-w-0 space-y-1">
+                  <p className="font-medium">
+                    Renaming the slug changes URLs and routing addresses
+                  </p>
+                  <p className="text-muted-foreground">
+                    Old slugs are not reserved and existing links to{" "}
+                    <code className="font-mono text-foreground">/p/{project.slug}</code> will stop
+                    working.
+                  </p>
+                  {inboxDomain ? (
+                    <div className="mt-1.5 space-y-0.5 font-mono text-[11px] text-muted-foreground">
+                      <p>
+                        Old:{" "}
+                        <span className="line-through">
+                          *@{project.slug}.{inboxDomain}
+                        </span>
+                        ,{" "}
+                        <span className="line-through">
+                          {project.slug}@{inboxDomain}
+                        </span>
+                      </p>
+                      <p className="text-foreground">
+                        New: *@{trimmedSlug}.{inboxDomain}, {trimmedSlug}@{inboxDomain}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          <fieldset className="flex flex-col gap-2 border-0 p-0">
-            <legend className="text-xs font-medium text-foreground">Color</legend>
-            <div className="flex flex-wrap gap-2">
-              {PROJECT_COLORS.map((token) => {
-                const selected = color === token;
-                return (
-                  <button
-                    key={token}
-                    type="button"
-                    aria-label={token}
-                    aria-pressed={selected}
-                    onClick={() => setColor(token)}
-                    className={cn(
-                      "flex size-6 cursor-pointer items-center justify-center rounded-full border transition-transform",
-                      selected
-                        ? "scale-110 border-foreground ring-2 ring-accent ring-offset-2 ring-offset-surface"
-                        : "border-transparent hover:scale-105",
-                    )}
-                  >
-                    <span
-                      className={cn("size-4 rounded-full", PROJECT_COLOR_DOT_CLASS[token])}
-                      aria-hidden="true"
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
+            <fieldset className="flex flex-col gap-2 border-0 p-0">
+              <legend className="text-xs font-medium text-foreground">Color</legend>
+              <div className="flex flex-wrap gap-2">
+                {PROJECT_COLORS.map((token) => {
+                  const selected = color === token;
+                  return (
+                    <button
+                      key={token}
+                      type="button"
+                      aria-label={token}
+                      aria-pressed={selected}
+                      onClick={() => setColor(token)}
+                      className={cn(
+                        "flex size-6 cursor-pointer items-center justify-center rounded-full border transition-transform",
+                        selected
+                          ? "scale-110 border-foreground ring-2 ring-accent ring-offset-2 ring-offset-surface"
+                          : "border-transparent hover:scale-105",
+                      )}
+                    >
+                      <span
+                        className={cn("size-4 rounded-full", PROJECT_COLOR_DOT_CLASS[token])}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
 
-          {formError ? (
-            <p role="alert" className="text-xs font-medium text-destructive">
-              {formError}
-            </p>
-          ) : null}
+            {formError ? (
+              <p role="alert" className="text-xs font-medium text-destructive">
+                {formError}
+              </p>
+            ) : null}
+          </CardContent>
 
-          <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
+          <CardFooter>
             <Button
               type="button"
               variant="outline"
@@ -292,38 +298,47 @@ function GeneralSettingsForm({ project }: { project: ProjectDetail }) {
             >
               Reset
             </Button>
-            <Button type="submit" size="sm" disabled={!hasChanges || updateMutation.isPending}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              disabled={!hasChanges || updateMutation.isPending}
+            >
               {updateMutation.isPending ? "Saving..." : "Save changes"}
             </Button>
-          </div>
+          </CardFooter>
         </form>
-      </section>
+      </Card>
 
-      <section className="rounded-lg border border-destructive/35 bg-surface p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-lg space-y-1">
-            <h2 className="text-sm font-semibold text-destructive">Danger zone</h2>
-            <p className="text-xs text-muted-foreground">
+      <Card aria-labelledby="danger-zone-heading" className="border-destructive/40">
+        <CardHeader
+          titleId="danger-zone-heading"
+          tone="destructive"
+          title="Danger zone"
+          description={
+            <>
               Permanently delete{" "}
               <strong className="font-medium text-foreground">{project.name}</strong> and all of its
               captured messages, attachments, tags, credentials, and memberships. This action cannot
               be undone.
-            </p>
-          </div>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              setConfirmSlug("");
-              setDeleteError(null);
-              setDeleteOpen(true);
-            }}
-          >
-            <Trash2 className="size-3.5" aria-hidden="true" />
-            <span>Delete project</span>
-          </Button>
-        </div>
-      </section>
+            </>
+          }
+          actions={
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setConfirmSlug("");
+                setDeleteError(null);
+                setDeleteOpen(true);
+              }}
+            >
+              <Trash2 className="size-3.5" aria-hidden="true" />
+              <span>Delete project</span>
+            </Button>
+          }
+        />
+      </Card>
 
       <Dialog
         open={deleteOpen}
@@ -385,7 +400,7 @@ function GeneralSettingsForm({ project }: { project: ProjectDetail }) {
           </div>
         </form>
       </Dialog>
-    </div>
+    </>
   );
 }
 
