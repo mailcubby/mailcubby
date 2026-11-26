@@ -41,7 +41,8 @@ test.describe("Phase 14c: attachment strip in the message view (FR-072)", () => 
 
     // PDF gets an icon only, never an inline rendering.
     await expect(pdf.locator("img")).toHaveCount(0);
-    await expect(pdf.locator("svg")).toHaveCount(1);
+    // Phase 15c: the type icon plus the card's trailing download icon.
+    await expect(pdf.locator("svg")).toHaveCount(2);
     await expect(page.locator("embed, object")).toHaveCount(0);
 
     // Clicking a card downloads the file with the right name.
