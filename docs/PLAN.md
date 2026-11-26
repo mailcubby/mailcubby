@@ -22,7 +22,7 @@ In Google Antigravity, `AGENTS.md` is loaded automatically; type `/next-phase` (
 | M2 Local feature-complete | 5 | Search and tags |
 | M3 Multi-tenant server | 6 to 9 | Login, projects, roles, invites, per-project SMTP credentials, settings UI, API tokens |
 | M4 Production-ready | 10 to 12 | Retention, security hardening, TLS, packaging |
-| M5 v1.0 | 13 to 14 | Release |
+| M5 v0.1.0 | 13 to 14 | Release |
 
 ---
 
@@ -394,9 +394,9 @@ Acceptance:
 
 ---
 
-## Phase 13: v1.0 release checklist
+## Phase 13: v0.1.0 release checklist
 
-**Goal**: ship v1.0.
+**Goal**: ship v0.1.0.
 
 Tasks:
 - [x] Complete the Playwright suite (`make e2e`): local mode inbox flow, server mode setup wizard, login, invite accept as viewer, viewer restrictions, credential reveal, search, delete with undo, keyboard flows; add `@axe-core/playwright` (already pinned in `AGENTS.md`, so adding it is not a stop condition) on every screen with zero serious/critical violations (NFR-010).
@@ -405,7 +405,7 @@ Tasks:
 - [x] Upgrade test: data dir created by the previous tag migrates cleanly (skip with a note if no previous tag exists — skipped: no previous git tag exists yet; `00001+00002 -> 00003` forward migration with populated data verified in `internal/store/migration_projects_autoincrement_test.go`).
 - [x] Security review of the diff since Phase 11; dependency updates to latest patch versions (stop condition: list them for the owner); `govulncheck` clean. Done 2026-11-26: `govulncheck@v1.10.0` clean (vuln DB 2026-11-24), `pnpm audit` clean, security review of the diff since Phase 11 (`b8079de..c6c52d6`, Phases 12 to 15) cleared with no findings; the owner-approved patch upgrades are applied (see Open questions 2026-11-26).
 - [x] `CHANGELOG.md`, GitHub release notes draft.
-- [ ] GitHub org, GHCR namespace and `mailcubby.dev` domain registered and matching the docs; tag `v1.0.0` pushed (owner).
+- [ ] GitHub org, GHCR namespace and `mailcubby.dev` domain registered and matching the docs; tag `v0.1.0` pushed (owner).
 
 Acceptance:
 - All checkboxes in this file are ticked or marked owner/blocked with a reason; `make check` and `make e2e` green; CI and release workflows green, images published, README quick starts work from the published image (owner).
@@ -582,11 +582,11 @@ Acceptance:
 
 ---
 
-## Backlog (after v1.0.0)
+## Backlog (after v0.1.0)
 
 Not scheduled. When an item is picked up it becomes a phase above. Items marked "SPEC 14.n" are in the SPEC roadmap.
 
-### v1.0.x (small, no design change)
+### v0.1.x (small, no design change)
 
 - `mailcubby backup` command for an online SQLite backup that works in the distroless image and compose volumes (audit V6).
 - Docs: password reset does not revoke API tokens; long-poll `/messages/wait` limits; `MAILCUBBY_TRUSTED_PROXIES` scope in compose (audit S5, S6, S7).
@@ -597,7 +597,7 @@ Not scheduled. When an item is picked up it becomes a phase above. Items marked 
 - Framework snippets, a `curl` example for `/messages/wait` and a `host.docker.internal` note in the README; `sendmail` dial timeout; quieter access log (audit L4, L5).
 - OCI labels in `deploy/Dockerfile`, healthcheck `start_period`, pinned Caddy image (audit I7).
 
-### v1.1 (features)
+### v0.2 (features)
 
 1. HTML compatibility check (caniemail data, offline). Most useful for agencies building templates. SPEC 14.2.
 2. Link checker, opt-in per instance, with SSRF protection (no private, loopback or link-local targets, timeouts, size caps) because the server fetches URLs found in untrusted email. SPEC 14.2.
@@ -775,3 +775,4 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
   | `pnpm` (`packageManager`, CI) | tool | 12.21.0 | 12.21.0 | 12.24.0 | skip (minor) |
 - 2026-11-26, Phase 15 follow-ups: the setup wizard card is `max-w-2xl` (672 px) on every step, which supersedes the 15e final-review note that left it widening on step 5. `max-w-xl` (576 px) was measured first and truncated the generated SMTP username on step 5 at 1280 px; `server-onboarding-settings-tokens.spec.ts` now asserts the same card width on steps 1 and 5 and that no connection value is truncated (default and WordPress tabs). Long snippet lines still scroll inside the focusable code block, as before.
 - 2026-11-26, Phase 15 follow-ups: the projects home keeps the empty `aria-busy` pane (no skeleton) while the single-project redirect decides; UI.md 4.6 now names it as the one exception to "skeletons, not spinners". A project card skeleton there is exactly the projects-page flash that 15c recorded and 15e removed, and the pane lasts one request. A Vitest case pins it (no skeleton during the first load, then the redirect). Also in the follow-ups: the invite page's signed-in "Go to projects" on an unavailable invite follows the same rule as "Back to projects" ("Go to inbox"), and a non-404 failure on a single-project user's only project shows only a primary "Try again" (with `RefreshCw`, like the other refresh actions); other load errors keep the back link and "Retry", so no existing selector changed.
+- 2026-11-26, release (owner decision): the first release is **v0.1.0**, not v1.0.0, because the project is pre-alpha with no users. v1.0.0 will be tagged once the REST API, configuration and data format are declared stable; until then a 0.x minor version may change them, with upgrade steps in `CHANGELOG.md`. The `v1.0.0-rc.1` rehearsal (2026-11-25) published a GitHub pre-release with its tag and archives, and (per `.goreleaser.yaml`) only the GHCR tag `1.0.0-rc.1` (pre-releases get no `1.0` or `latest`). The owner deleted the rc.1 GitHub release and its tag on 2026-11-26 (`gh release delete v1.0.0-rc.1 --cleanup-tag`); the GHCR `1.0.0-rc.1` image tags remain and the owner will remove them (needs a token with `delete:packages`). No Homebrew formula was ever published (`skip_upload: auto` skips pre-releases; `mailcubby/homebrew-tap` holds only its README), so nobody needs `brew reinstall`, and v0.1.0 is the first real run of the tap upload and the `HOMEBREW_TAP_GITHUB_TOKEN` check in `release.yml`. `release.yml` derives the notes file from the tag, so `docs/release-notes-v0.1.0.md` is picked up without a workflow change.

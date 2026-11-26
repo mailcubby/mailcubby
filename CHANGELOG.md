@@ -4,9 +4,11 @@ All notable changes to Mailcubby are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and Mailcubby adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-11-25
+## [0.1.0] - 2026-11-26
 
-Initial production release of **Mailcubby**, a self-hosted, multi-tenant email testing server shipped as a single static Go binary with an embedded React UI.
+First release of **Mailcubby**, a self-hosted, multi-tenant email testing server shipped as a single static Go binary with an embedded React UI.
+
+This is an early 0.x release: until 1.0.0, configuration, the REST API and the data format may change between minor versions, and each such change will be listed here with its upgrade steps. Container images tagged `1.0.0-rc.1` came from a withdrawn release rehearsal; data directories created with them work with 0.1.0 unchanged.
 
 ### Added
 
@@ -36,3 +38,5 @@ Initial production release of **Mailcubby**, a self-hosted, multi-tenant email t
 
 #### Web UI
 - **Keyboard-first React 19 UI**: light/dark/system themes, three-pane resizable inbox with virtualised message list, 7 message inspection tabs (Preview with device/rotation/zoom/dark-mode/remote-images, Text, lazy Shiki HTML source, Headers, virtualised Raw, Attachments, Tech), command palette (`Cmd/Ctrl+K`), keyboard shortcuts with help overlay (`?`), optimistic single-message delete with undo, "Preview as viewer" mode, framework integration snippets (Laravel, Symfony, Nodemailer, WordPress WP Mail SMTP, Django, Rails, swaks, PHP `sendmail_path`), and WCAG 2.1 AA accessibility verified via `@axe-core/playwright`.
+- **Visual pass "Estúdio"** (#6 to #10, follow-ups in #12): new design tokens with a deep ink-green chrome layer for the header and sidebar in both themes, semantic `success`/`warning`/`info`/`destructive` colours and a teal-cyan accent, all token pairs checked for WCAG AA in a generated contrast table (`docs/ui-contrast.md`); role badges with icons and status badges with a leading dot; restyled message list, reading pane, attachment strip, empty, error and not-found states; settings, members, invites (pending by default), SMTP credentials and admin screens on shared card and table components; a "Skip to message list" link; theme choice in the account menu; users with exactly one project who are neither admins nor allowed to create projects land in its inbox after sign-in; axe checks on every screen in light and dark.
+- **Credits** (#14): public pages (sign-in, invite, reset, setup) show "Made by Fábio Ferreira at NOOP", and Account > Preferences gains an "About Mailcubby" card with the version, the credit and the licence link.

@@ -1,6 +1,6 @@
 # Mailcubby
 
-> **Pre-release.** Mailcubby is new and still a pre-release: expect rough edges, and back up your data before upgrading. See `docs/SPEC.md` for the complete specification.
+> **Early release (0.x).** Mailcubby is new: expect rough edges. Until 1.0.0, configuration, the REST API and the data format may change between minor versions; the [CHANGELOG](CHANGELOG.md) documents each change and how to upgrade. Back up your data before upgrading. See `docs/SPEC.md` for the complete specification.
 
 Mailcubby is a self-hosted email testing server ("mail catcher") for developers and agencies. Applications send email to Mailcubby over SMTP instead of real recipients; Mailcubby stores the messages and shows them in a fast web UI and REST API.
 
@@ -38,7 +38,7 @@ Typical use case: an agency runs one Mailcubby instance for the staging environm
 - **Retention & quotas**: age, count and size policies per project and globally, instance byte cap, per-project ingest rate limit, automatic orphan blob GC and incremental SQLite vacuum.
 - **Integration snippets**: Laravel, Symfony, Node.js (Nodemailer), WordPress (WP Mail SMTP), Django, Rails, `swaks`, and PHP `sendmail_path`.
 
-Planned after v1 (out of scope for v1): outbound release/relay, HTML compatibility/link checks, spam scoring, webhooks, MCP endpoint, OIDC/SSO, PostgreSQL, S3 blob storage, POP3, chaos mode, Prometheus metrics. See `docs/SPEC.md` section 14.
+Planned for later releases (not in v0.1.0): outbound release/relay, HTML compatibility/link checks, spam scoring, webhooks, MCP endpoint, OIDC/SSO, PostgreSQL, S3 blob storage, POP3, chaos mode, Prometheus metrics. See `docs/SPEC.md` section 14.
 
 ---
 
@@ -146,7 +146,7 @@ docker run --rm \
 Or with Docker Compose:
 
 ```sh
-git clone --depth 1 --branch v1.0.0 https://github.com/mailcubby/mailcubby
+git clone --depth 1 --branch v0.1.0 https://github.com/mailcubby/mailcubby
 cd mailcubby
 docker compose -f deploy/compose.local.yml up -d
 ```
@@ -182,7 +182,7 @@ Server mode requires HTTPS (terminated by a reverse proxy), a 32-byte `MAILCUBBY
 #### 2. Get the compose files and create `deploy/.env`
 
 ```sh
-git clone --depth 1 --branch v1.0.0 https://github.com/mailcubby/mailcubby
+git clone --depth 1 --branch v0.1.0 https://github.com/mailcubby/mailcubby
 cd mailcubby
 ```
 
@@ -200,7 +200,7 @@ MAILCUBBY_APP_KEY=<output-from-keygen>
 # Optional: enables recipient routing (*@<project>.inbox.example.com)
 # MAILCUBBY_INBOX_DOMAIN=inbox.example.com
 # Optional: pin the image version (default: latest)
-# MAILCUBBY_VERSION=1.0.0
+# MAILCUBBY_VERSION=0.1.0
 ```
 
 #### 3. Start Caddy and Mailcubby

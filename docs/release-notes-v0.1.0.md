@@ -1,6 +1,8 @@
-# Mailcubby v1.0.0
+# Mailcubby v0.1.0
 
-We are excited to release **Mailcubby v1.0.0** — a self-hosted, multi-tenant email testing server built for developers and agencies.
+**Mailcubby v0.1.0** is the first public release of a self-hosted, multi-tenant email testing server built for developers and agencies.
+
+This is an early 0.x release. Until 1.0.0, configuration, the REST API and the data format may still change between minor versions (0.1 to 0.2). Every such change and the steps to upgrade are documented in the [CHANGELOG](https://github.com/mailcubby/mailcubby/blob/v0.1.0/CHANGELOG.md). Back up your data directory before upgrading.
 
 Mailcubby ships as a single static Go binary (~9 MB compressed container image) with an embedded React UI, SQLite (WAL + FTS5) metadata/search, and zstd-compressed `.eml` blob storage.
 
@@ -13,7 +15,7 @@ Mailcubby is source-available under the [PolyForm Shield License 1.0.0](https://
 - **Safe untrusted HTML preview**: email HTML is never inserted into the app DOM; it renders exclusively through `/render/{project}/{id}` inside a strict sandboxed `<iframe>` with remote images blocked by default and opt-in per message.
 - **Fast search & realtime UI**: FTS5 search with operators (`from:`, `to:`, `subject:`, `has:`, `is:`, `tag:`, `before:`, `after:`, `credential:`), Server-Sent Events live inbox updates, virtualised lists, keyboard navigation (`j`/`k`, `1`–`7`, `e` with undo, `Cmd/Ctrl+K`), framework integration snippets, and WCAG 2.1 AA accessibility.
 - **Test-friendly API**: OpenAPI 3.1 REST API with cursor pagination, `POST /send-test`, and `GET /messages/wait` for CI and end-to-end test suites.
-- **Production ready**: STARTTLS and implicit TLS (`:1465`) with live 30 s certificate reloading, bounded retention/quotas/GC, rate limiting & brute-force protection, and a ready-to-run Docker Compose + Caddy stack ([`deploy/compose.server.yml`](https://github.com/mailcubby/mailcubby/blob/v1.0.0/deploy/compose.server.yml)).
+- **Self-hosting**: STARTTLS and implicit TLS (`:1465`) with live 30 s certificate reloading, bounded retention/quotas/GC, rate limiting & brute-force protection, and a ready-to-run Docker Compose + Caddy stack ([`deploy/compose.server.yml`](https://github.com/mailcubby/mailcubby/blob/v0.1.0/deploy/compose.server.yml)).
 
 ## Quick Start
 
@@ -26,7 +28,7 @@ docker run --rm \
   -p 127.0.0.1:8025:8025 \
   -p 127.0.0.1:1025:1025 \
   -v mailcubby-data:/data \
-  ghcr.io/mailcubby/mailcubby:1.0.0
+  ghcr.io/mailcubby/mailcubby:0.1.0
 ```
 
 Open `http://localhost:8025` and point your app's SMTP host to `localhost:1025`.
@@ -36,14 +38,14 @@ Open `http://localhost:8025` and point your app's SMTP host to `localhost:1025`.
 Point a DNS record for your hostname (e.g. `mail.example.com`) to the server and open TCP ports `80`, `443` and `587`. Then get the compose files:
 
 ```sh
-git clone --depth 1 --branch v1.0.0 https://github.com/mailcubby/mailcubby
+git clone --depth 1 --branch v0.1.0 https://github.com/mailcubby/mailcubby
 cd mailcubby
 ```
 
 Generate an application encryption key:
 
 ```sh
-docker run --rm ghcr.io/mailcubby/mailcubby:1.0.0 keygen
+docker run --rm ghcr.io/mailcubby/mailcubby:0.1.0 keygen
 ```
 
 Create `deploy/.env`:
@@ -54,7 +56,7 @@ MAILCUBBY_APP_KEY=<output-from-keygen>
 # Optional: enables recipient routing (*@<project>.inbox.example.com)
 # MAILCUBBY_INBOX_DOMAIN=inbox.example.com
 # Optional: pin the image version (default: latest)
-# MAILCUBBY_VERSION=1.0.0
+# MAILCUBBY_VERSION=0.1.0
 ```
 
 Start Caddy and Mailcubby:
@@ -75,18 +77,18 @@ docker compose -f deploy/compose.server.yml logs mailcubby | grep "setup token" 
 
 Open `https://mail.example.com/setup`, paste the setup token, create the first admin account, and create your first project + SMTP credential in the wizard.
 
-See the [README](https://github.com/mailcubby/mailcubby/blob/v1.0.0/README.md#quick-start) for reverse-proxy setup (Caddy, Traefik, nginx), backups, and Mailpit migration notes.
+See the [README](https://github.com/mailcubby/mailcubby/blob/v0.1.0/README.md#quick-start) for reverse-proxy setup (Caddy, Traefik, nginx), backups, and Mailpit migration notes.
 
 ## Downloads & Checksums
 
 - **Homebrew** (macOS and Linux, local mode): `brew install mailcubby/tap/mailcubby && brew services start mailcubby`
-- **Container images**: `ghcr.io/mailcubby/mailcubby:1.0.0`, `:1.0`, `:latest` (`linux/amd64`, `linux/arm64`)
+- **Container images**: `ghcr.io/mailcubby/mailcubby:0.1.0`, `:0.1`, `:latest` (`linux/amd64`, `linux/arm64`)
 - **Binaries**: `linux`, `darwin`, and `windows` (`amd64` and `arm64`) archives plus `checksums.txt` attached to this release.
 
 ## Verification
 
-- 68/68 functional requirements in `docs/SPEC.md` covered by automated Go, Vitest, and Playwright tests ([`docs/SPEC.md`](https://github.com/mailcubby/mailcubby/blob/v1.0.0/docs/SPEC.md)).
+- 68/68 functional requirements in `docs/SPEC.md` covered by automated Go, Vitest, and Playwright tests ([`docs/SPEC.md`](https://github.com/mailcubby/mailcubby/blob/v0.1.0/docs/SPEC.md)).
 - WCAG 2.1 AA accessibility verified across all local-mode and server-mode screens via `@axe-core/playwright` (zero serious or critical violations).
-- Performance benchmark results recorded in [`docs/benchmarks.md`](https://github.com/mailcubby/mailcubby/blob/v1.0.0/docs/benchmarks.md).
+- Performance benchmark results recorded in [`docs/benchmarks.md`](https://github.com/mailcubby/mailcubby/blob/v0.1.0/docs/benchmarks.md).
 
-**Full Changelog**: See [CHANGELOG.md](https://github.com/mailcubby/mailcubby/blob/v1.0.0/CHANGELOG.md).
+**Full Changelog**: See [CHANGELOG.md](https://github.com/mailcubby/mailcubby/blob/v0.1.0/CHANGELOG.md).
