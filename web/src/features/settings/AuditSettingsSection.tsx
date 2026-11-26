@@ -1,8 +1,10 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { Lock, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { AuditLogTable, PROJECT_AUDIT_ACTIONS } from "@/components/AuditLogTable";
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { NativeSelect } from "@/components/ui/select";
 import { ProjectSettingsLayout } from "@/features/settings/ProjectSettingsLayout";
 import { api, getApiErrorMessage, type ProjectDetail, unwrap } from "@/lib/api";
@@ -57,15 +59,17 @@ function AuditSettingsContent({ project }: { project: ProjectDetail }) {
 
   if (!isServer || !isOwner) {
     return (
-      <div className="rounded-md border border-border bg-surface p-6 text-center">
-        <AlertCircle className="mx-auto mb-2 size-6 text-muted-foreground" aria-hidden="true" />
-        <p className="text-[13px] font-medium text-foreground">Audit log unavailable</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {isServer
-            ? "Only project owners and instance administrators can view the project audit log."
-            : "Audit logs are available in server mode."}
-        </p>
-      </div>
+      <Card>
+        <EmptyState
+          icon={Lock}
+          title="Audit log unavailable"
+          description={
+            isServer
+              ? "Only project owners and instance administrators can view the project audit log."
+              : "Audit logs are available in server mode."
+          }
+        />
+      </Card>
     );
   }
 

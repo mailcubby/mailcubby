@@ -1,4 +1,5 @@
 import { Download, Paperclip } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { attachmentUrl, getAttachmentIcon } from "@/features/message/attachments";
 import type { AttachmentSummary } from "@/lib/api";
@@ -13,12 +14,13 @@ export interface AttachmentsTabProps {
 export function AttachmentsTab({ projectSlug, messageId, attachments }: AttachmentsTabProps) {
   if (attachments.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground">
-        <Paperclip className="size-6 opacity-50" aria-hidden="true" />
-        <p className="text-sm font-medium text-foreground">No attachments</p>
-        <p className="text-xs text-muted-foreground">
-          This message has no attached or inline files.
-        </p>
+      <div className="flex h-full items-center justify-center">
+        <EmptyState
+          icon={Paperclip}
+          headingLevel={3}
+          title="No attachments"
+          description="This message has no attached or inline files."
+        />
       </div>
     );
   }

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Eye, EyeOff, KeyRound, Pencil, Plus, Power, RefreshCw, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -461,28 +462,25 @@ function ServerSmtpSettings({ project }: { project: ProjectDetail }) {
             <Skeleton className="h-9 w-full" />
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 border-t border-border px-5 py-10 text-center">
-            <span className="flex size-10 items-center justify-center rounded-full bg-accent-subtle text-accent-subtle-foreground">
-              <KeyRound className="size-5" aria-hidden="true" />
-            </span>
-            <p className="text-[13px] font-medium text-foreground">No SMTP credentials yet</p>
-            <p className="max-w-sm text-[13px] text-muted-foreground">
-              {isOwner
+          <EmptyState
+            icon={KeyRound}
+            headingLevel={3}
+            title="No SMTP credentials yet"
+            description={
+              isOwner
                 ? "Create a credential to send mail to this project over authenticated SMTP."
-                : "Ask a project owner to create an SMTP credential for this project."}
-            </p>
-            {isOwner ? (
-              <Button
-                variant="primary"
-                size="sm"
-                className="mt-2"
-                onClick={() => openCreate("staging")}
-              >
-                <Plus className="size-3.5" aria-hidden="true" />
-                <span>Create first credential</span>
-              </Button>
-            ) : null}
-          </div>
+                : "Ask a project owner to create an SMTP credential for this project."
+            }
+            action={
+              isOwner ? (
+                <Button variant="primary" size="sm" onClick={() => openCreate("staging")}>
+                  <Plus className="size-3.5" aria-hidden="true" />
+                  <span>Create first credential</span>
+                </Button>
+              ) : undefined
+            }
+            className="border-t border-border"
+          />
         ) : (
           <div className="overflow-x-auto">
             <Table className="min-w-[600px] table-fixed">
