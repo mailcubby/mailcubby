@@ -4,6 +4,7 @@ import { AlertCircle, LogIn, LogOut, MailCheck, MailX, UserPlus } from "lucide-r
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/EmptyState";
+import { PublicFooter } from "@/components/MadeBy";
 import { RoleBadge } from "@/components/RoleBadge";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -180,20 +181,21 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
 
   if (metaPending || (isServer && (previewQuery.isPending || authQuery.isPending))) {
     return (
-      <main className="flex min-h-full items-center justify-center px-4 py-10">
+      <main className="flex min-h-full flex-col items-center justify-center gap-4 px-4 py-10">
         <div className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-border bg-surface p-6 shadow-xs">
           <Skeleton className="mx-auto size-9 rounded-md" />
           <Skeleton className="mx-auto h-5 w-44" />
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-9 w-full" />
         </div>
+        <PublicFooter />
       </main>
     );
   }
 
   if (!isServer) {
     return (
-      <main className="flex min-h-full items-center justify-center px-4 py-10">
+      <main className="flex min-h-full flex-col items-center justify-center gap-4 px-4 py-10">
         <div className="w-full max-w-sm rounded-lg border border-border bg-surface shadow-xs">
           <EmptyState
             icon={MailX}
@@ -207,6 +209,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
             }
           />
         </div>
+        <PublicFooter />
       </main>
     );
   }
@@ -219,7 +222,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
       : "This invitation link is invalid, already used, or has expired. Ask an owner or administrator for a new invite.";
 
     return (
-      <main className="flex min-h-full items-center justify-center px-4 py-10">
+      <main className="flex min-h-full flex-col items-center justify-center gap-4 px-4 py-10">
         <div className="w-full max-w-sm rounded-lg border border-border bg-surface shadow-xs">
           <EmptyState
             icon={isRateLimited ? AlertCircle : MailX}
@@ -243,6 +246,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
             }
           />
         </div>
+        <PublicFooter />
       </main>
     );
   }
@@ -251,7 +255,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
   const expiresLocal = formatExactTimestamp(preview.expires_at).local;
 
   return (
-    <main className="flex min-h-full items-center justify-center px-4 py-10">
+    <main className="flex min-h-full flex-col items-center justify-center gap-4 px-4 py-10">
       <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-6 shadow-xs">
         <div className="mb-5 flex flex-col items-center gap-2 text-center">
           <span className="flex size-9 items-center justify-center rounded-md bg-sidebar text-sidebar-accent">
@@ -490,6 +494,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
           </form>
         )}
       </div>
+      <PublicFooter />
     </main>
   );
 }

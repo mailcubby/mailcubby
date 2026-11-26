@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useEffect, useId } from "react";
+import { MadeBy, SOURCE_URL } from "@/components/MadeBy";
 import { Card } from "@/components/ui/card";
 import { NativeSelect } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -59,6 +60,7 @@ export function PreferencesPage() {
   const shortcutsDescId = useId();
   const clockId = useId();
   const clockDescId = useId();
+  const aboutId = useId();
 
   useEffect(() => {
     const instanceName = meta?.instance_name || "Mailcubby";
@@ -225,6 +227,27 @@ export function PreferencesPage() {
               className="mt-1"
             />
           </div>
+        </section>
+      </Card>
+
+      <Card>
+        <section aria-labelledby={aboutId} className="flex flex-col gap-2 p-5">
+          <h2 id={aboutId} className="text-[15px] leading-[22px] font-semibold text-foreground">
+            About Mailcubby
+          </h2>
+          <p className="text-[13px] text-muted-foreground">
+            {meta?.version ? <>Version {meta.version}. </> : null}
+            <MadeBy />. Source-available under the{" "}
+            <a
+              href={`${SOURCE_URL}/blob/main/LICENSE`}
+              target="_blank"
+              rel="noopener"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              PolyForm Shield licence
+            </a>
+            .
+          </p>
         </section>
       </Card>
     </AccountLayout>
