@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@fontsource-variable/inter": "5.3.0",
-    "@tanstack/react-query": "5.108.3",
+    "@tanstack/react-query": "5.108.4",
     "@tanstack/react-router": "1.170.46",
     "@tanstack/react-virtual": "3.14.28",
     "clsx": "2.1.1",
@@ -23,20 +23,20 @@
     "openapi-fetch": "0.17.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "react-resizable-panels": "4.24.1",
+    "react-resizable-panels": "4.24.2",
     "shiki": "4.6.0",
     "sonner": "2.0.8",
     "tailwind-merge": "3.7.1"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.14.0",
-    "@biomejs/biome": "2.6.8",
+    "@axe-core/playwright": "4.14.1",
+    "@biomejs/biome": "2.6.9",
     "@playwright/test": "1.65.1",
     "@tailwindcss/vite": "4.3.5",
     "@tanstack/router-plugin": "1.169.0",
     "@testing-library/react": "16.3.3",
-    "@types/node": "26.6.6",
-    "@types/react": "19.3.0",
+    "@types/node": "26.6.10",
+    "@types/react": "19.3.3",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.3.0",
     "jsdom": "31.0.1",
@@ -44,6 +44,6 @@
     "tailwindcss": "4.3.5",
     "typescript": "6.0.3",
     "vite": "8.3.8",
-    "vitest": "5.1.1"
+    "vitest": "5.1.2"
   }
 }
