@@ -569,7 +569,7 @@ export function SetupWizardPage() {
               <div
                 id="setup-token-error"
                 role="alert"
-                className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-xs text-destructive"
               >
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                 <span>{formError}</span>
@@ -820,7 +820,7 @@ export function SetupWizardPage() {
             {formError ? (
               <div
                 role="alert"
-                className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-xs text-destructive"
               >
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                 <span>{formError}</span>
@@ -910,7 +910,7 @@ export function SetupWizardPage() {
             {projectError ? (
               <div
                 role="alert"
-                className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-xs text-destructive"
               >
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                 <span>{projectError}</span>
@@ -960,34 +960,40 @@ export function SetupWizardPage() {
             <div
               role="status"
               aria-live="polite"
+              // Audit M9: waiting is neutral; the arrival is the one success moment.
               className={cn(
-                "flex flex-wrap items-center justify-between gap-3 rounded-md border px-3.5 py-2.5 text-xs",
+                "flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3",
                 firstMessage
                   ? "border-success/30 bg-success-subtle text-success-foreground"
-                  : "border-accent/30 bg-accent/10 text-foreground",
+                  : "border-border bg-background text-foreground",
               )}
             >
-              <div className="flex min-w-0 items-center gap-2">
-                {firstMessage ? (
-                  <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
-                ) : (
-                  <Loader2
-                    className="size-4 shrink-0 animate-spin text-accent"
-                    aria-hidden="true"
-                  />
-                )}
+              <div className="flex min-w-0 items-center gap-3">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "flex size-9 shrink-0 items-center justify-center rounded-full",
+                    firstMessage ? "bg-surface text-success" : "bg-secondary text-muted-foreground",
+                  )}
+                >
+                  {firstMessage ? (
+                    <CheckCircle2 className="size-5" />
+                  ) : (
+                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                  )}
+                </span>
                 <div className="min-w-0">
                   {firstMessage ? (
                     <>
-                      <div className="font-semibold">First message received!</div>
-                      <div className="truncate text-[11px] opacity-90">
+                      <div className="text-[13px] font-semibold">First message received!</div>
+                      <div className="truncate text-xs">
                         {firstMessage.subject} · from {firstMessage.from}
                       </div>
                     </>
                   ) : (
                     <>
-                      <div className="font-medium">Waiting for first message...</div>
-                      <div className="text-[11px] text-foreground/80">
+                      <div className="text-[13px] font-medium">Waiting for first message...</div>
+                      <div className="text-xs text-muted-foreground">
                         Send an email via SMTP or click &quot;Send test email&quot; to test right
                         now.
                       </div>
@@ -999,11 +1005,11 @@ export function SetupWizardPage() {
               <Button
                 type="button"
                 variant={firstMessage ? "outline" : "primary"}
-                size="xs"
+                size="sm"
                 disabled={sendTestMutation.isPending}
                 onClick={() => sendTestMutation.mutate(createdOnboarding.project.slug)}
               >
-                <Send className="size-3" aria-hidden="true" />
+                <Send className="size-3.5" aria-hidden="true" />
                 <span>{sendTestMutation.isPending ? "Sending..." : "Send test email"}</span>
               </Button>
             </div>

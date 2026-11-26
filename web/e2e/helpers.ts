@@ -116,9 +116,12 @@ export function uniqueSlug(prefix: string): string {
  * server mode, the preferences menu in local mode) and waits for it to apply.
  */
 export async function chooseTheme(page: Page, theme: "Light" | "Dark" | "System"): Promise<void> {
-  await page.getByRole("button", { name: /Account menu|Preferences menu/ }).click();
+  const trigger = page.getByRole("button", { name: /Account menu|Preferences menu/ });
+  await trigger.click();
   await page.getByRole("menuitemradio", { name: theme }).click();
   await expect(page.getByRole("menu")).toHaveCount(0);
+  // Focus returns to the menu trigger, not <body>.
+  await expect(trigger).toBeFocused();
   if (theme === "Dark") {
     await expect(page.locator("html")).toHaveClass(/(^|\s)dark(\s|$)/);
   } else if (theme === "Light") {

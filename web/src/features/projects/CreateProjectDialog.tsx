@@ -122,7 +122,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
         </div>
 
         <fieldset className="flex flex-col gap-2">
-          <legend className="text-xs font-medium text-foreground">Color</legend>
+          <legend className="mb-2.5 text-xs font-medium text-foreground">Color</legend>
           <div className="flex flex-wrap gap-2">
             {PROJECT_COLORS.map((token) => {
               const selected = color === token;

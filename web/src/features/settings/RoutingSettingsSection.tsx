@@ -23,6 +23,7 @@ function RoutingSettingsForm({ project }: { project: ProjectDetail }) {
 
   const recipientRoutingId = useId();
   const recipientRoutingDescId = useId();
+  const recipientRoutingLabelId = useId();
   const plusTagsId = useId();
   const plusTagsDescId = useId();
   const hideTechId = useId();
@@ -91,10 +92,11 @@ function RoutingSettingsForm({ project }: { project: ProjectDetail }) {
   return (
     <>
       {isServer ? (
-        <Card aria-labelledby={recipientRoutingId} className="p-5">
+        <Card aria-labelledby={recipientRoutingLabelId} className="p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <label
+                id={recipientRoutingLabelId}
                 htmlFor={recipientRoutingId}
                 className="text-[15px] leading-[22px] font-semibold text-foreground"
               >

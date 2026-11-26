@@ -249,14 +249,26 @@ test.describe("Phase 7b: Multi-tenant projects, invites, viewer mode, and admin 
         await expect(viewerPage.getByRole("link", { name: "Settings" })).toHaveCount(0);
 
         // Phase 15c (audit V1, FR-035): with a single project the projects home
-        // opens that inbox. It shows only Client Portal Staging, no Internal Ops,
-        // no New project and no Admin link.
+        // opens that inbox, with no New project and no Admin link.
         await viewerPage.goto(`${srv.httpURL}/`);
         await expect(viewerPage).toHaveURL(`${srv.httpURL}/p/client-portal`);
-        await expect(viewerPage.getByText("Client Portal Staging").first()).toBeVisible();
-        await expect(viewerPage.getByText("Internal Ops")).toHaveCount(0);
         await expect(viewerPage.getByRole("button", { name: "New project" })).toHaveCount(0);
         await expect(viewerPage.getByRole("link", { name: "Admin" })).toHaveCount(0);
+
+        // The project switcher lists only the viewer's project: Client Portal
+        // Staging, not Internal Ops.
+        await viewerPage
+          .getByRole("complementary", { name: "Project sidebar" })
+          .getByRole("button", { name: "Client Portal Staging" })
+          .click();
+        const switcherList = viewerPage.getByRole("listbox", { name: "Projects" });
+        await expect(
+          switcherList.getByRole("option", { name: "Client Portal Staging" }),
+        ).toBeVisible();
+        await expect(switcherList.getByRole("option")).toHaveCount(1);
+        await expect(switcherList.getByText("Internal Ops")).toHaveCount(0);
+        await viewerPage.keyboard.press("Escape");
+        await expect(switcherList).toHaveCount(0);
 
         // Audit V2: the viewer's empty reading pane uses plain language, no shortcuts.
         await expect(viewerPage.getByRole("heading", { name: "No email selected" })).toBeVisible();
@@ -431,9 +443,11 @@ test.describe("Phase 7b: Multi-tenant projects, invites, viewer mode, and admin 
         await resetPage.getByLabel("Email").fill("dev@agency.test");
         await resetPage.getByLabel("Password", { exact: true }).fill("dev-reset-pass-456");
         await resetPage.getByRole("button", { name: "Sign in" }).click();
-        // Phase 15c (audit V1): a non-admin with one project lands in its inbox.
-        await expect(resetPage).toHaveURL(`${srv.httpURL}/p/dev-sandbox`);
-        await expect(resetPage.getByText("Dev Sandbox").first()).toBeVisible();
+        // Phase 15e (audit V1, FR-035): dev@agency.test can create projects, so
+        // with one project they keep the projects home and its "New project".
+        await expect(resetPage).toHaveURL(`${srv.httpURL}/`);
+        await expect(resetPage.getByRole("link", { name: /Dev Sandbox/ })).toBeVisible();
+        await expect(resetPage.getByRole("button", { name: "New project" })).toBeVisible();
       } finally {
         await resetContext.close();
       }

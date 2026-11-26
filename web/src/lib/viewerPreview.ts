@@ -25,17 +25,25 @@ export function canUserCreateProjects(
 }
 
 /**
- * Returns the slug of the only project of a non-admin server-mode user, or
- * null. Such a user skips the projects home and opens that inbox (audit V1,
- * SPEC FR-035), and the sidebar has no "Back to all projects" (audit V4).
- * Returns null while the user or the project list is not loaded.
+ * Returns the slug of the only project of a server-mode user who is neither an
+ * instance admin nor allowed to create projects, or null. Such a user skips the
+ * projects home and opens that inbox (audit V1, SPEC FR-035), and the sidebar
+ * has no "Back to all projects" (audit V4). Users who can create projects keep
+ * the projects home, where "New project" lives. Returns null while the user or
+ * the project list is not loaded.
  */
 export function getSingleProjectSlug(
   mode: MetaResponse["mode"] | undefined,
-  user: Pick<AuthUser, "is_admin"> | undefined,
+  user: Pick<AuthUser, "is_admin" | "can_create_projects"> | undefined,
   projects: ReadonlyArray<Pick<ProjectSummary, "slug">> | undefined,
 ): string | null {
-  if (mode !== "server" || !user || user.is_admin || projects?.length !== 1) {
+  if (
+    mode !== "server" ||
+    !user ||
+    user.is_admin ||
+    user.can_create_projects ||
+    projects?.length !== 1
+  ) {
     return null;
   }
   return projects[0]?.slug ?? null;

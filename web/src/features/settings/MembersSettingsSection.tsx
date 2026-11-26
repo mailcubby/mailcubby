@@ -278,8 +278,6 @@ function MembersSettingsContent({
   const isExplicitMember = members.some((m) => m.user.id === me?.user.id);
   const now = new Date();
 
-  const closeInvite = () => onInviteOpenChange(false);
-
   const handleInviteOpenChange = (open: boolean) => {
     onInviteOpenChange(open);
     if (!open) {
@@ -290,6 +288,8 @@ function MembersSettingsContent({
       setCreatedInvite(null);
     }
   };
+
+  const closeInvite = () => handleInviteOpenChange(false);
 
   const handleInviteSubmit = (e: FormEvent) => {
     e.preventDefault();

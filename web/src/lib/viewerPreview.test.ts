@@ -28,13 +28,20 @@ describe("viewerPreview helpers", () => {
     );
   });
 
-  // FR-035, audit V1 and V4: a non-admin with exactly one project skips the projects home.
-  it("returns the only project slug for a non-admin server-mode user", () => {
+  // FR-035, audit V1 and V4: a user with exactly one project and neither admin
+  // rights nor project creation skips the projects home.
+  it("returns the only project slug for a server-mode user without admin or create rights", () => {
     const one = [{ slug: "client-portal" }];
     const two = [{ slug: "client-portal" }, { slug: "internal-ops" }];
-    const member = { is_admin: false };
+    const member = { is_admin: false, can_create_projects: false };
     expect(getSingleProjectSlug("server", member, one)).toBe("client-portal");
-    expect(getSingleProjectSlug("server", { is_admin: true }, one)).toBeNull();
+    expect(
+      getSingleProjectSlug("server", { is_admin: true, can_create_projects: false }, one),
+    ).toBeNull();
+    // Phase 15e: users who can create projects keep the home with "New project".
+    expect(
+      getSingleProjectSlug("server", { is_admin: false, can_create_projects: true }, one),
+    ).toBeNull();
     expect(getSingleProjectSlug("server", member, two)).toBeNull();
     expect(getSingleProjectSlug("server", member, [])).toBeNull();
     expect(getSingleProjectSlug("local", member, one)).toBeNull();

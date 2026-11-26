@@ -10,6 +10,7 @@ import {
   settingsNavItemClassName,
 } from "@/components/SettingsShell";
 import { metaQueryOptions } from "@/lib/queries";
+import { useSingleProjectSlug } from "@/lib/useSingleProjectSlug";
 
 export type AccountSection = "profile" | "security" | "tokens" | "preferences";
 
@@ -23,6 +24,7 @@ export interface AccountLayoutProps {
 export function AccountLayout({ section, title, description, children }: AccountLayoutProps) {
   const { data: meta } = useQuery(metaQueryOptions());
   const isServer = meta?.mode === "server";
+  const singleProjectSlug = useSingleProjectSlug();
 
   const navItems: ReadonlyArray<{
     id: AccountSection;
@@ -53,10 +55,23 @@ export function AccountLayout({ section, title, description, children }: Account
   return (
     <SettingsShell
       back={
-        <Link to="/" className={settingsBackLinkClassName}>
-          <ArrowLeft className="size-3.5" aria-hidden="true" />
-          <span>Back to projects</span>
-        </Link>
+        // Audit V1: a user whose projects home opens their only project goes
+        // straight back to that inbox.
+        singleProjectSlug ? (
+          <Link
+            to="/p/$project"
+            params={{ project: singleProjectSlug }}
+            className={settingsBackLinkClassName}
+          >
+            <ArrowLeft className="size-3.5" aria-hidden="true" />
+            <span>Back to inbox</span>
+          </Link>
+        ) : (
+          <Link to="/" className={settingsBackLinkClassName}>
+            <ArrowLeft className="size-3.5" aria-hidden="true" />
+            <span>Back to projects</span>
+          </Link>
+        )
       }
       title={title}
       description={description}

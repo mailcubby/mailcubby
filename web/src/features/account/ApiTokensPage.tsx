@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Copy, KeyRound, Plus, Trash2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, Copy, KeyRound, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
+import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/select";
@@ -195,45 +196,41 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
       title="API tokens"
       description="Personal bearer tokens for CI pipelines, Playwright tests, and REST API scripts."
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         <Card aria-labelledby="api-tokens-heading">
-          <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
-            <div>
-              <h2
-                id="api-tokens-heading"
-                className="text-[15px] leading-[22px] font-semibold text-foreground"
+          <CardHeader
+            title="Personal API tokens"
+            titleId="api-tokens-heading"
+            description="Tokens inherit the minimum of their scope and your current project role. Management endpoints are never accessible via tokens."
+            actions={
+              <Button
+                // One primary per screen: the empty state's "Create first token" is primary.
+                variant={tokens && tokens.length === 0 ? "outline" : "primary"}
+                size="sm"
+                onClick={() => {
+                  setFormError(null);
+                  setCreateOpen(true);
+                }}
               >
-                Personal API tokens
-              </h2>
-              <p className="mt-0.5 text-[13px] text-muted-foreground">
-                Tokens inherit the minimum of their scope and your current project role. Management
-                endpoints are never accessible via tokens.
-              </p>
-            </div>
-            <Button
-              // One primary per screen: the empty state's "Create first token" is primary.
-              variant={tokens && tokens.length === 0 ? "outline" : "primary"}
-              size="sm"
-              onClick={() => {
-                setFormError(null);
-                setCreateOpen(true);
-              }}
-            >
-              <Plus className="size-3.5" aria-hidden="true" />
-              <span>New API token</span>
-            </Button>
-          </div>
+                <Plus className="size-3.5" aria-hidden="true" />
+                <span>New API token</span>
+              </Button>
+            }
+          />
 
           {error ? (
-            <div
-              role="alert"
-              className="border-t border-border p-5 text-[13px] text-muted-foreground"
-            >
-              <p className="font-medium text-foreground">Could not load API tokens</p>
-              <p className="mt-1">{getApiErrorMessage(error)}</p>
-              <Button variant="outline" size="xs" className="mt-3" onClick={() => void refetch()}>
-                Retry
-              </Button>
+            <div role="alert" className="border-t border-border">
+              <EmptyState
+                icon={AlertCircle}
+                headingLevel={3}
+                title="Could not load API tokens"
+                description={getApiErrorMessage(error)}
+                action={
+                  <Button variant="outline" size="sm" onClick={() => void refetch()}>
+                    Retry
+                  </Button>
+                }
+              />
             </div>
           ) : isPending ? (
             <div className="flex flex-col gap-2 border-t border-border p-5">
@@ -241,29 +238,34 @@ export function ApiTokensPage({ initialProjectSlug }: ApiTokensPageProps) {
               <Skeleton className="h-9 w-full" />
             </div>
           ) : !tokens || tokens.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 border-t border-border px-5 py-10 text-center">
-              <span className="flex size-10 items-center justify-center rounded-full bg-accent-subtle text-accent-subtle-foreground">
-                <KeyRound className="size-5" aria-hidden="true" />
-              </span>
-              <p className="text-[13px] font-medium text-foreground">No API tokens yet</p>
-              <p className="max-w-sm text-[13px] text-muted-foreground">
-                Create a token to authenticate REST API requests with{" "}
-                <code className="font-mono text-foreground">Authorization: Bearer mailcubby_…</code>
-                .
-              </p>
-              <Button
-                variant="primary"
-                size="sm"
-                className="mt-2"
-                onClick={() => {
-                  setFormError(null);
-                  setCreateOpen(true);
-                }}
-              >
-                <Plus className="size-3.5" aria-hidden="true" />
-                <span>Create first token</span>
-              </Button>
-            </div>
+            <EmptyState
+              icon={KeyRound}
+              headingLevel={3}
+              title="No API tokens yet"
+              description={
+                <>
+                  Create a token to authenticate REST API requests with{" "}
+                  <code className="font-mono text-foreground">
+                    Authorization: Bearer mailcubby_…
+                  </code>
+                  .
+                </>
+              }
+              action={
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    setFormError(null);
+                    setCreateOpen(true);
+                  }}
+                >
+                  <Plus className="size-3.5" aria-hidden="true" />
+                  <span>Create first token</span>
+                </Button>
+              }
+              className="border-t border-border"
+            />
           ) : (
             <div className="overflow-x-auto">
               <Table>

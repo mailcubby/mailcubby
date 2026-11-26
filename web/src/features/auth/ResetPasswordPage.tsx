@@ -133,7 +133,7 @@ export function ResetPasswordPage({ token }: ResetPasswordPageProps) {
             {errorMessage ? (
               <div
                 role="alert"
-                className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-xs text-destructive"
               >
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                 <span>{errorMessage}</span>

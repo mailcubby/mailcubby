@@ -270,7 +270,14 @@ function HeaderMenu({ mode }: { mode: "server" | "local" }) {
             ) : null}
           </div>
 
-          <ThemeMenuGroup onSelect={close} />
+          <ThemeMenuGroup
+            onSelect={() => {
+              // The chosen item unmounts with the menu: return focus to the
+              // trigger, as Escape does, instead of dropping it to <body>.
+              setOpen(false);
+              triggerRef.current?.focus();
+            }}
+          />
 
           {isServer ? (
             <div className="border-t border-border pt-1">

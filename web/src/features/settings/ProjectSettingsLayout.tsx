@@ -1,17 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
-  AlertCircle,
   Archive,
   ArrowLeft,
   Code2,
   KeyRound,
+  Lock,
   Route as RouteIcon,
   ScrollText,
   Settings2,
   Users,
 } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
+import { EmptyState } from "@/components/EmptyState";
+import { FullPageState, ProjectLoadError } from "@/components/PageStates";
 import { RoleBadge } from "@/components/RoleBadge";
 import {
   SettingsShell,
@@ -20,9 +22,9 @@ import {
   settingsNavIconClassName,
   settingsNavItemClassName,
 } from "@/components/SettingsShell";
-import { Button, buttonClassName } from "@/components/ui/button";
+import { buttonClassName } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError, getApiErrorMessage, type ProjectDetail } from "@/lib/api";
+import type { ProjectDetail } from "@/lib/api";
 import { PROJECT_COLOR_DOT_CLASS } from "@/lib/format";
 import { metaQueryOptions, projectQueryOptions } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -70,32 +72,8 @@ export function ProjectSettingsLayout({
   }, [project, title, instanceName]);
 
   if (error) {
-    const isNotFound = error instanceof ApiError && error.status === 404;
     return (
-      <main className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-        <AlertCircle className="size-8 text-muted-foreground" aria-hidden="true" />
-        <div className="max-w-md space-y-1">
-          <h1 className="text-base font-semibold text-foreground">
-            {isNotFound ? "Project not found or you do not have access" : "Could not load project"}
-          </h1>
-          <p className="text-[13px] text-muted-foreground">
-            {isNotFound
-              ? `The project "${projectSlug}" does not exist or is unavailable.`
-              : getApiErrorMessage(error)}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link to="/" className={buttonClassName()}>
-            <ArrowLeft className="size-3.5" aria-hidden="true" />
-            <span>Back to projects</span>
-          </Link>
-          {!isNotFound ? (
-            <Button variant="primary" size="sm" onClick={() => void refetch()}>
-              Retry
-            </Button>
-          ) : null}
-        </div>
-      </main>
+      <ProjectLoadError projectSlug={projectSlug} error={error} onRetry={() => void refetch()} />
     );
   }
 
@@ -119,19 +97,20 @@ export function ProjectSettingsLayout({
 
   if (project.role === "viewer") {
     return (
-      <main className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-        <AlertCircle className="size-8 text-muted-foreground" aria-hidden="true" />
-        <div className="max-w-md space-y-1">
-          <h1 className="text-base font-semibold text-foreground">Settings unavailable</h1>
-          <p className="text-[13px] text-muted-foreground">
-            Project settings are not available for viewers.
-          </p>
-        </div>
-        <Link to="/p/$project" params={{ project: project.slug }} className={buttonClassName()}>
-          <ArrowLeft className="size-3.5" aria-hidden="true" />
-          <span>Back to {project.name}</span>
-        </Link>
-      </main>
+      <FullPageState>
+        <EmptyState
+          icon={Lock}
+          headingLevel={1}
+          title="Settings unavailable"
+          description="Project settings are not available for viewers."
+          action={
+            <Link to="/p/$project" params={{ project: project.slug }} className={buttonClassName()}>
+              <ArrowLeft className="size-3.5" aria-hidden="true" />
+              <span>Back to {project.name}</span>
+            </Link>
+          }
+        />
+      </FullPageState>
     );
   }
 

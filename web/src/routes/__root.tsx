@@ -94,7 +94,7 @@ function RootShell() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      {activeInbox ? <SkipToMessageList /> : null}
+      {activeInbox?.messageListVisible ? <SkipToMessageList /> : null}
       <AppHeader />
       <div className="min-h-0 flex-1 overflow-hidden">
         <Outlet />

@@ -5,6 +5,7 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@ta
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { NotFoundPage } from "@/components/PageStates";
 import { ApiError, handleApiError, handleUnauthorizedRedirect } from "@/lib/api";
 import { routeTree } from "./routeTree.gen";
 
@@ -37,6 +38,7 @@ const queryClient = new QueryClient({
 
 const router = createRouter({
   routeTree,
+  defaultNotFoundComponent: NotFoundPage,
 });
 
 declare module "@tanstack/react-router" {
