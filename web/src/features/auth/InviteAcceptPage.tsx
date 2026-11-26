@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, LogIn, LogOut, MailCheck, UserPlus } from "lucide-react";
+import { AlertCircle, LogIn, LogOut, MailCheck, MailX, UserPlus } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { BrandMark } from "@/components/BrandMark";
+import { EmptyState } from "@/components/EmptyState";
 import { RoleBadge } from "@/components/RoleBadge";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -194,17 +194,18 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
   if (!isServer) {
     return (
       <main className="flex min-h-full items-center justify-center px-4 py-10">
-        <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-lg border border-border bg-surface p-6 text-center shadow-xs">
-          <BrandMark />
-          <div className="space-y-1">
-            <h1 className="text-base font-semibold text-foreground">Invitations unavailable</h1>
-            <p className="text-xs text-muted-foreground">
-              Invitations are only available when Mailcubby runs in server mode.
-            </p>
-          </div>
-          <Link to="/" className={buttonClassName({ variant: "primary", className: "w-full" })}>
-            Go to projects
-          </Link>
+        <div className="w-full max-w-sm rounded-lg border border-border bg-surface shadow-xs">
+          <EmptyState
+            icon={MailX}
+            headingLevel={1}
+            title="Invitations unavailable"
+            description="Invitations are only available when Mailcubby runs in server mode."
+            action={
+              <Link to="/" className={buttonClassName({ variant: "primary" })}>
+                Go to projects
+              </Link>
+            }
+          />
         </div>
       </main>
     );
@@ -219,33 +220,28 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
 
     return (
       <main className="flex min-h-full items-center justify-center px-4 py-10">
-        <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-lg border border-border bg-surface p-6 text-center shadow-xs">
-          <span className="flex size-9 items-center justify-center rounded-md bg-destructive/15 text-destructive">
-            <AlertCircle className="size-5" aria-hidden="true" />
-          </span>
-          <div className="space-y-1">
-            <h1 className="text-base font-semibold text-foreground">
-              {isRateLimited ? "Too many requests" : "Invitation unavailable"}
-            </h1>
-            <p role="alert" className="text-xs text-muted-foreground">
-              {errText}
-            </p>
-          </div>
-          <div className="flex w-full flex-col gap-2">
-            {currentUser ? (
-              <Link to="/" className={buttonClassName({ variant: "primary", className: "w-full" })}>
-                Go to projects
-              </Link>
-            ) : (
-              <Link
-                to="/login"
-                search={{ returnTo: undefined }}
-                className={buttonClassName({ variant: "primary", className: "w-full" })}
-              >
-                Sign in
-              </Link>
-            )}
-          </div>
+        <div className="w-full max-w-sm rounded-lg border border-border bg-surface shadow-xs">
+          <EmptyState
+            icon={isRateLimited ? AlertCircle : MailX}
+            headingLevel={1}
+            title={isRateLimited ? "Too many requests" : "Invitation unavailable"}
+            description={<span role="alert">{errText}</span>}
+            action={
+              currentUser ? (
+                <Link to="/" className={buttonClassName({ variant: "primary" })}>
+                  Go to projects
+                </Link>
+              ) : (
+                <Link
+                  to="/login"
+                  search={{ returnTo: undefined }}
+                  className={buttonClassName({ variant: "primary" })}
+                >
+                  Sign in
+                </Link>
+              )
+            }
+          />
         </div>
       </main>
     );
@@ -348,7 +344,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
               {errorMessage ? (
                 <div
                   role="alert"
-                  className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                  className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-xs text-destructive"
                 >
                   <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                   <span>{errorMessage}</span>
@@ -447,7 +443,7 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
             {errorMessage ? (
               <div
                 role="alert"
-                className="flex flex-col gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                className="flex flex-col gap-2 rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-xs text-destructive"
               >
                 <div className="flex items-start gap-2">
                   <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />

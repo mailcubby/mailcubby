@@ -89,7 +89,7 @@ export function LoginPage({ returnTo }: LoginPageProps) {
   };
 
   return (
-    <main className="flex min-h-full items-center justify-center px-4 py-10">
+    <main className="flex min-h-full flex-col items-center justify-center gap-4 px-4 py-10">
       <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-6 shadow-xs">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <BrandMark />
@@ -153,7 +153,7 @@ export function LoginPage({ returnTo }: LoginPageProps) {
           {errorMessage ? (
             <div
               role="alert"
-              className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive-subtle px-3 py-2 text-xs text-destructive"
             >
               <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
               <span>{errorMessage}</span>
@@ -170,6 +170,10 @@ export function LoginPage({ returnTo }: LoginPageProps) {
           </Button>
         </form>
       </div>
+      {/* Audit V6: the instance name is the title; the product name stays as a quiet footer. */}
+      {instanceName !== "Mailcubby" ? (
+        <p className="text-xs text-muted-foreground">Powered by Mailcubby</p>
+      ) : null}
     </main>
   );
 }

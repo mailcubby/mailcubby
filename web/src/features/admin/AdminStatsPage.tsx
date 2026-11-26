@@ -83,7 +83,7 @@ export function AdminStatsPage() {
       ) : statsQuery.error ? (
         <div
           role="alert"
-          className="rounded-lg border border-destructive/40 bg-destructive-subtle p-5 text-[13px] text-destructive"
+          className="rounded-lg border border-destructive/30 bg-destructive-subtle p-5 text-[13px] text-destructive"
         >
           Failed to load instance statistics: {getApiErrorMessage(statsQuery.error)}
         </div>
