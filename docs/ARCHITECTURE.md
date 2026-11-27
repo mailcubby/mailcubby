@@ -276,7 +276,7 @@ The `250` reply is sent only after the transaction commits (FR-010).
 |   |-- compose.server.yml    with Caddy
 |   |-- Caddyfile
 |   |-- launchd/              dev.mailcubby.plist (macOS LaunchAgent for the Releases binary)
-|   `-- systemd/              mailcubby.service (Linux systemd user unit for the Releases binary)
+|   `-- systemd/              mailcubby.service (local user unit), mailcubby-server.service (server system unit)
 `-- docs/                     SPEC, ARCHITECTURE, UI, PLAN, decisions/
 ```
 
@@ -377,7 +377,7 @@ distroless `static` (not `scratch`) is used because it ships CA certificates, `/
 ### 9.2 Releases
 
 - GoReleaser v2 (`.goreleaser.yaml`): `before.hooks: [make web]`; builds `linux/darwin/windows` x `amd64/arm64` with `CGO_ENABLED=0`; archives + checksums; multi-arch images `ghcr.io/mailcubby/mailcubby:{{ .Version }}`, `:{{ .Major }}.{{ .Minor }}`, `:latest` from `deploy/Dockerfile.goreleaser` (runtime stage only, copies the prebuilt binary). Use the multi-platform Docker configuration documented for the pinned GoReleaser version. SBOMs via syft and keyless cosign signing are optional.
-- Homebrew formula `mailcubby` (GoReleaser `brews`, ADR 0008) pushed to `mailcubby/homebrew-tap` with `HOMEBREW_TAP_GITHUB_TOKEN`; skipped for pre-releases. Its `service` block runs local mode with data in `$(brew --prefix)/var/mailcubby` (`brew services start mailcubby`). The archives also include `deploy/launchd/dev.mailcubby.plist` and `deploy/systemd/mailcubby.service` for running the binary as a service without Homebrew.
+- Homebrew formula `mailcubby` (GoReleaser `brews`, ADR 0008) pushed to `mailcubby/homebrew-tap` with `HOMEBREW_TAP_GITHUB_TOKEN`; skipped for pre-releases. Its `service` block runs local mode with data in `$(brew --prefix)/var/mailcubby` (`brew services start mailcubby`). The archives also include `deploy/launchd/dev.mailcubby.plist`, `deploy/systemd/mailcubby.service` (local user unit), and `deploy/systemd/mailcubby-server.service` (server system unit) for running the binary as a service without Homebrew.
 - Triggered by `release.yml` on tags `v*`.
 
 ### 9.3 Running

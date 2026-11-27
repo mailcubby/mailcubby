@@ -1,0 +1,81 @@
+# systemd system unit that runs the Mailcubby Releases binary in server mode.
+#
+# Install:
+#   sudo install -m 0755 mailcubby /usr/local/bin/mailcubby
+#   sudo useradd --system --user-group --no-create-home --home-dir /var/lib/mailcubby --shell /usr/sbin/nologin mailcubby
+#   sudo install -d -m 0755 /etc/mailcubby
+#   # Create /etc/mailcubby/mailcubby.env (chmod 0600, owned by root:root).
+#   sudo install -m 0644 deploy/systemd/mailcubby-server.service /etc/systemd/system/mailcubby-server.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now mailcubby-server
+#
+# Required variables in /etc/mailcubby/mailcubby.env:
+#   MAILCUBBY_MODE=server
+#   MAILCUBBY_BASE_URL=https://mail.example.com
+#   MAILCUBBY_APP_KEY=<output of `mailcubby keygen`>
+#   MAILCUBBY_DATA_DIR=/var/lib/mailcubby
+#   MAILCUBBY_SMTP_TLS_CERT=/path/to/fullchain.pem
+#   MAILCUBBY_SMTP_TLS_KEY=/path/to/privkey.pem
+#   MAILCUBBY_TRUSTED_PROXIES=127.0.0.1/32
+#
+# Recommended in /etc/mailcubby/mailcubby.env when behind a local reverse proxy:
+#   MAILCUBBY_HTTP_ADDR=127.0.0.1:8025
+#   MAILCUBBY_SMTP_HOSTNAME=mail.example.com
+#
+# Privileged ports (587 / 465) and TLS certificate access:
+#   By default Mailcubby listens on unprivileged SMTP port 1025. If you bind
+#   directly to port 587 or 465 (MAILCUBBY_SMTP_ADDR=:587 / MAILCUBBY_SMTPS_ADDR=:465),
+#   add a drop-in override (`sudo systemctl edit mailcubby-server`) with:
+#     [Service]
+#     AmbientCapabilities=CAP_NET_BIND_SERVICE
+#     CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+#
+#   Ensure MAILCUBBY_SMTP_TLS_CERT and MAILCUBBY_SMTP_TLS_KEY (and their parent
+#   directories) are readable by the `mailcubby` user — for example via a
+#   supplementary group (`SupplementaryGroups=...`) or file ACLs, and add
+#   `ReadOnlyPaths=/path/to/certs` if the files live under a restricted path.
+#
+# See README "Run the Releases binary as a service". Logs: journalctl -u mailcubby-server
+
+[Unit]
+Description=Mailcubby email testing server (server mode)
+Documentation=https://github.com/mailcubby/mailcubby
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mailcubby
+Group=mailcubby
+EnvironmentFile=/etc/mailcubby/mailcubby.env
+ExecStart=/usr/local/bin/mailcubby serve
+WorkingDirectory=/var/lib/mailcubby
+StateDirectory=mailcubby
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=5
+# Match Mailcubby's 30 s graceful shutdown with a 5 s buffer.
+TimeoutStopSec=35
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectControlGroups=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+LockPersonality=yes
+RestrictRealtime=yes
+UMask=0077
+
+# Uncomment (or set via `systemctl edit mailcubby-server`) if binding directly
+# to privileged SMTP ports (587 / 465) instead of 1025:
+# AmbientCapabilities=CAP_NET_BIND_SERVICE
+# CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+#
+# Uncomment if TLS cert/key files need extra read-only path or group access:
+# ReadOnlyPaths=/etc/letsencrypt
+# SupplementaryGroups=ssl-cert
+
+[Install]
+WantedBy=multi-user.target

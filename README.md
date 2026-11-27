@@ -114,6 +114,43 @@ systemctl --user enable --now mailcubby
 
 Logs: `journalctl --user -u mailcubby`. To keep it running while you are logged out, run `loginctl enable-linger "$USER"`. Both files keep the default listen addresses; add `MAILCUBBY_HTTP_ADDR=127.0.0.1:8025` and `MAILCUBBY_SMTP_ADDR=127.0.0.1:1025` to the environment for loopback only.
 
+#### Server mode (Linux systemd system unit)
+
+To run the standalone Linux binary in multi-tenant server mode without Docker, install it with the hardened system unit `deploy/systemd/mailcubby-server.service` from the release archive:
+
+```sh
+sudo install -m 0755 mailcubby /usr/local/bin/mailcubby
+sudo useradd --system --user-group --no-create-home --home-dir /var/lib/mailcubby --shell /usr/sbin/nologin mailcubby
+sudo install -d -m 0755 /etc/mailcubby
+sudo install -m 0644 deploy/systemd/mailcubby-server.service /etc/systemd/system/mailcubby-server.service
+```
+
+Generate an application key (`mailcubby keygen`) and create `/etc/mailcubby/mailcubby.env` readable only by `root` (`chmod 0600`):
+
+```sh
+sudo sh -c 'umask 077 && cat > /etc/mailcubby/mailcubby.env <<EOF
+MAILCUBBY_MODE=server
+MAILCUBBY_BASE_URL=https://mail.example.com
+MAILCUBBY_APP_KEY=$(/usr/local/bin/mailcubby keygen)
+MAILCUBBY_DATA_DIR=/var/lib/mailcubby
+MAILCUBBY_HTTP_ADDR=127.0.0.1:8025
+MAILCUBBY_SMTP_HOSTNAME=mail.example.com
+MAILCUBBY_SMTP_TLS_CERT=/etc/letsencrypt/live/mail.example.com/fullchain.pem
+MAILCUBBY_SMTP_TLS_KEY=/etc/letsencrypt/live/mail.example.com/privkey.pem
+MAILCUBBY_TRUSTED_PROXIES=127.0.0.1/32
+EOF'
+sudo chmod 0600 /etc/mailcubby/mailcubby.env
+```
+
+Enable and start the service (systemd creates `/var/lib/mailcubby` automatically via `StateDirectory=mailcubby` with mode `0700`):
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now mailcubby-server
+```
+
+Check logs and read the one-time setup token with `sudo journalctl -u mailcubby-server`. Put a reverse proxy (Caddy, nginx, or Traefik — see [Reverse proxy notes](#reverse-proxy-notes)) in front of `127.0.0.1:8025` for HTTPS. If you bind Mailcubby directly to privileged SMTP ports (`MAILCUBBY_SMTP_ADDR=:587` or `MAILCUBBY_SMTPS_ADDR=:465`), add `AmbientCapabilities=CAP_NET_BIND_SERVICE` and `CapabilityBoundingSet=CAP_NET_BIND_SERVICE` via `sudo systemctl edit mailcubby-server`, and ensure `mailcubby` can read the TLS certificate and key files (for example via `SupplementaryGroups=` or `ReadOnlyPaths=`; see comments in `mailcubby-server.service`).
+
 ### Build from source
 
 Requires Go 1.27.4, Node.js 26 LTS, and pnpm 12.21.0:
@@ -171,7 +208,7 @@ Local mode rejects cross-origin `POST`/`PUT`/`PATCH`/`DELETE` requests from brow
 
 ### Server mode (team / agency)
 
-Server mode requires HTTPS (terminated by a reverse proxy), a 32-byte `MAILCUBBY_APP_KEY`, and a TLS certificate for SMTP STARTTLS.
+Server mode requires HTTPS (terminated by a reverse proxy), a 32-byte `MAILCUBBY_APP_KEY`, and a TLS certificate for SMTP STARTTLS. The steps below use Docker Compose with Caddy; to run the standalone Linux binary with systemd instead, see [Server mode (Linux systemd system unit)](#server-mode-linux-systemd-system-unit).
 
 #### 1. Configure DNS and firewall
 

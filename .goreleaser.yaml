@@ -41,6 +41,7 @@ archives:
       - .env.example
       - deploy/launchd/dev.mailcubby.plist
       - deploy/systemd/mailcubby.service
+      - deploy/systemd/mailcubby-server.service
 
 checksum:
   name_template: checksums.txt
