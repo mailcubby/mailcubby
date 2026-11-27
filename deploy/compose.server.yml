@@ -36,7 +36,7 @@ services:
       - caddy-config:/config
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.9-alpine
     restart: unless-stopped
     user: "65532:65532"
     depends_on:
@@ -78,6 +78,12 @@ services:
       MAILCUBBY_SMTP_TLS_KEY: "/caddy/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${MAILCUBBY_DOMAIN}/${MAILCUBBY_DOMAIN}.key"
       # Optional implicit TLS (SMTPS) on port 465:
       # MAILCUBBY_SMTPS_ADDR: :1465
+      # Trusts RFC 1918 private ranges by default to cover Docker's dynamically
+      # assigned bridge subnets. This is safe in this stack because Mailcubby's
+      # HTTP port (:8025) is only exposed on the internal Docker bridge behind
+      # Caddy (which overwrites untrusted client X-Forwarded-For headers).
+      # Narrow MAILCUBBY_TRUSTED_PROXIES to the specific proxy subnet or IP if
+      # :8025 is directly reachable from other hosts on a private network.
       MAILCUBBY_TRUSTED_PROXIES: "${MAILCUBBY_TRUSTED_PROXIES:-172.16.0.0/12,10.0.0.0/8,192.168.0.0/16}"
     ports:
       - "587:1025" # SMTP with STARTTLS, exposed directly (not through Caddy)

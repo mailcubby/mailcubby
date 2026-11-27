@@ -81,9 +81,41 @@ func TestRouteClassSecurityHeaders(t *testing.T) {
 		"Content-Disposition: attachment; filename=\"evil.svg\"\r\n\r\n" +
 		"<svg onload=\"alert(1)\"/>\r\n" +
 		"--B\r\n" +
+		"Content-Type: application/atom+xml\r\n" +
+		"Content-Disposition: attachment; filename=\"feed.atom\"\r\n\r\n" +
+		"<feed xmlns=\"http://www.w3.org/2005/Atom\"/>\r\n" +
+		"--B\r\n" +
+		"Content-Type: application/rss+xml\r\n" +
+		"Content-Disposition: attachment; filename=\"feed.rss\"\r\n\r\n" +
+		"<rss version=\"2.0\"/>\r\n" +
+		"--B\r\n" +
+		"Content-Type: text/xml\r\n" +
+		"Content-Disposition: attachment; filename=\"data.xml\"\r\n\r\n" +
+		"<root/>\r\n" +
+		"--B\r\n" +
+		"Content-Type: application/xml\r\n" +
+		"Content-Disposition: attachment; filename=\"config.xml\"\r\n\r\n" +
+		"<cfg/>\r\n" +
+		"--B\r\n" +
+		"Content-Type: foo/xml\r\n" +
+		"Content-Disposition: attachment; filename=\"custom.xml\"\r\n\r\n" +
+		"<custom/>\r\n" +
+		"--B\r\n" +
 		"Content-Type: image/png\r\n" +
 		"Content-Disposition: attachment; filename=\"pic.png\"\r\n\r\n" +
 		"\x89PNG\r\n\x1a\n" +
+		"--B\r\n" +
+		"Content-Type: image/jpeg\r\n" +
+		"Content-Disposition: attachment; filename=\"pic.jpg\"\r\n\r\n" +
+		"\xff\xd8\xff\xd9\r\n" +
+		"--B\r\n" +
+		"Content-Type: image/gif\r\n" +
+		"Content-Disposition: attachment; filename=\"pic.gif\"\r\n\r\n" +
+		"GIF89a\r\n" +
+		"--B\r\n" +
+		"Content-Type: image/webp\r\n" +
+		"Content-Disposition: attachment; filename=\"pic.webp\"\r\n\r\n" +
+		"RIFF\x00\x00\x00\x00WEBP\r\n" +
 		"--B\r\n" +
 		"Content-Type: application/pdf\r\n" +
 		"Content-Disposition: attachment; filename=\"doc.pdf\"\r\n\r\n" +
@@ -185,11 +217,22 @@ func TestRouteClassSecurityHeaders(t *testing.T) {
 		}{
 			{file: "evil.html", query: "?inline=1", wantCT: "application/octet-stream", wantDisp: "attachment;"},
 			{file: "evil.svg", query: "?inline=1", wantCT: "application/octet-stream", wantDisp: "attachment;"},
+			{file: "feed.atom", query: "?inline=1", wantCT: "application/octet-stream", wantDisp: "attachment;"},
+			{file: "feed.rss", query: "?inline=1", wantCT: "application/octet-stream", wantDisp: "attachment;"},
+			{file: "data.xml", query: "?inline=1", wantCT: "application/octet-stream", wantDisp: "attachment;"},
+			{file: "config.xml", query: "?inline=1", wantCT: "application/octet-stream", wantDisp: "attachment;"},
+			{file: "custom.xml", query: "?inline=1", wantCT: "application/octet-stream", wantDisp: "attachment;"},
 			{file: "pic.png", query: "", wantCT: "image/png", wantDisp: "attachment;"},
 			{file: "pic.png", query: "?inline=1", wantCT: "image/png", wantDisp: "inline;"},
+			{file: "pic.jpg", query: "?inline=1", wantCT: "image/jpeg", wantDisp: "inline;"},
+			{file: "pic.gif", query: "?inline=1", wantCT: "image/gif", wantDisp: "inline;"},
+			{file: "pic.webp", query: "?inline=1", wantCT: "image/webp", wantDisp: "inline;"},
 			{file: "doc.pdf", query: "?inline=1", wantCT: "application/pdf", wantDisp: "attachment;"},
 		} {
-			id := attByName[tc.file]
+			id, found := attByName[tc.file]
+			if !found {
+				t.Fatalf("attachment %q missing from message detail: %+v", tc.file, attByName)
+			}
 			path := "/api/v1/projects/hdrs/messages/" + msgID + "/attachments/" + strconv.FormatInt(id, 10) + tc.query
 			rec := doReq(t, httpSrv.Handler(), http.MethodGet, path, nil, nil, nil)
 			if rec.Code != http.StatusOK {
@@ -201,6 +244,54 @@ func TestRouteClassSecurityHeaders(t *testing.T) {
 			assertHeader(t, rec.Header(), "Cache-Control", "private, no-store")
 			if disp := rec.Header().Get("Content-Disposition"); !strings.HasPrefix(disp, tc.wantDisp) {
 				t.Errorf("%s Content-Disposition = %q, want prefix %q", path, disp, tc.wantDisp)
+			}
+		}
+
+		// SPEC 12.2, FR-074: stored attachments with empty, malformed, or header-injecting
+		// Content-Type values must always be coerced to application/octet-stream and
+		// never honour ?inline=1.
+		msgRow, err := st.GetMessageByID(t.Context(), proj.ID, msgID)
+		if err != nil {
+			t.Fatalf("GetMessageByID: %v", err)
+		}
+		pngAtt, err := st.GetAttachmentByID(t.Context(), proj.ID, msgRow.PK, attByName["pic.png"])
+		if err != nil {
+			t.Fatalf("GetAttachmentByID(pic.png): %v", err)
+		}
+		for _, bad := range []struct {
+			name        string
+			contentType string
+		}{
+			{name: "empty", contentType: ""},
+			{name: "not-a-mime-type", contentType: "not-a-mime-type"},
+			{name: "malformed-param-html", contentType: "text/html; bad=;"},
+			{name: "malformed-param-png", contentType: "image/png; bad=;"},
+			{name: "crlf-injection", contentType: "image/png\r\nX-Injected: 1"},
+		} {
+			inserted, insErr := st.InsertAttachment(t.Context(), store.InsertAttachmentParams{
+				MessagePK:   msgRow.PK,
+				ProjectID:   proj.ID,
+				PartPath:    pngAtt.PartPath,
+				Filename:    bad.name + ".bin",
+				ContentType: bad.contentType,
+				SizeBytes:   pngAtt.SizeBytes,
+				Disposition: "attachment",
+				SHA256:      pngAtt.SHA256,
+			})
+			if insErr != nil {
+				t.Fatalf("InsertAttachment(%s): %v", bad.name, insErr)
+			}
+			path := "/api/v1/projects/hdrs/messages/" + msgID + "/attachments/" + strconv.FormatInt(inserted.ID, 10) + "?inline=1"
+			rec := doReq(t, httpSrv.Handler(), http.MethodGet, path, nil, nil, nil)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("GET %s (%s) status = %d, want 200", path, bad.name, rec.Code)
+			}
+			assertHeader(t, rec.Header(), "Content-Type", "application/octet-stream")
+			assertHeader(t, rec.Header(), "Content-Security-Policy", wantAttachmentCSP)
+			assertHeader(t, rec.Header(), "X-Content-Type-Options", "nosniff")
+			assertHeaderAbsent(t, rec.Header(), "X-Injected")
+			if disp := rec.Header().Get("Content-Disposition"); !strings.HasPrefix(disp, "attachment;") {
+				t.Errorf("%s (%s) Content-Disposition = %q, want prefix attachment;", path, bad.name, disp)
 			}
 		}
 

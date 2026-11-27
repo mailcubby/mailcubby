@@ -153,16 +153,16 @@ Routing rules are defined precisely in section 7.
 
 **FR-043 Login.** `POST /api/v1/auth/login {email, password}`. On failure return `401` with a generic message; the time taken is the same whether the user exists or not (verify against a dummy hash). Disabled users and users without a password (`password_hash` NULL, invite not yet accepted) cannot log in and take the dummy-hash path.
 
-**FR-044 Sessions.** Server-side sessions. The cookie `mailcubby_session` holds a 32-byte random token (base64url); the DB stores only its SHA-256. Cookie flags: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` when `MAILCUBBY_BASE_URL` is https. Absolute lifetime `MAILCUBBY_SESSION_TTL` (default `30d`), idle timeout `MAILCUBBY_SESSION_IDLE_TIMEOUT` (default `7d`). `last_seen_at` is updated at most once per minute. New token on every login. Logout deletes the session. Password change deletes all other sessions of the user. Disabling a user deletes all their sessions and revokes their API tokens.
+**FR-044 Sessions.** Server-side sessions. The cookie `mailcubby_session` holds a 32-byte random token (base64url); the DB stores only its SHA-256. Cookie flags: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` when `MAILCUBBY_BASE_URL` is https. Absolute lifetime `MAILCUBBY_SESSION_TTL` (default `30d`), idle timeout `MAILCUBBY_SESSION_IDLE_TIMEOUT` (default `7d`). `last_seen_at` is updated at most once per minute. New token on every login. Logout deletes the session. Password change deletes all other sessions of the user (and invalidates outstanding password-reset links) without revoking personal API tokens. Disabling a user deletes all their sessions, invalidates outstanding password-reset links, and revokes all of their API tokens.
 - AC: a session unused for longer than the idle timeout returns `401`.
 
 **FR-045 CSRF.** Cookie-authenticated unsafe requests (POST, PUT, PATCH, DELETE) MUST carry header `X-CSRF-Token` equal to the session's CSRF token (returned by `GET /api/v1/auth/me`), AND the `Origin` header (or `Referer` if Origin is absent) MUST match `MAILCUBBY_BASE_URL`. Bearer-token requests are exempt. Unauthenticated unsafe endpoints (login, setup, invite accept, password reset) check Origin only. Local mode has no cookies and no CSRF token; instead it rejects cross-origin unsafe requests from browsers with `403 forbidden` using Go's `http.CrossOriginProtection`: a request is rejected when `Sec-Fetch-Site` is present and is not `same-origin` or `none`, or, without `Sec-Fetch-Site`, when the `Origin` host differs from the `Host` header. `MAILCUBBY_BASE_URL`, when set, is also a trusted origin (for reverse proxies that rewrite `Host`). Requests without either header (curl, SDKs, test clients) and same-origin requests (the UI, the Vite dev proxy, which keeps `Host`) pass. There is no `Host` allowlist and no `Content-Type` requirement.
 - AC (local mode): a `POST` with a foreign `Origin` or `Sec-Fetch-Site: cross-site` returns `403`; the same request without `Origin`, or same-origin, succeeds.
 - AC: a POST with a valid cookie but missing `X-CSRF-Token` returns `403`.
 
-**FR-046 Password reset.** No email. An admin generates a single-use reset link (`POST /api/v1/admin/users/{id}/password-reset`, also `mailcubby admin reset-password --email x`) valid for 1 hour; the token is stored hashed. Using it sets a new password and deletes all the user's sessions.
+**FR-046 Password reset.** No email. An admin generates a single-use reset link (`POST /api/v1/admin/users/{id}/password-reset`, also `mailcubby admin reset-password --email x`) valid for 1 hour; the token is stored hashed. Using it sets a new password, deletes all the user's sessions, invalidates any other outstanding reset links for the user, and closes their open SSE streams. Completing a password reset does **not** revoke the user's personal API tokens (so routine resets do not break CI or test integrations); if account compromise is suspected, personal API tokens MUST be revoked separately (`DELETE /api/v1/tokens/{id}` or the Account UI), or an admin can disable the user to revoke both sessions and all API tokens immediately.
 
-**FR-047 Own account.** Users can change name and password (requires current password), list their sessions and revoke them.
+**FR-047 Own account.** Users can change name and password (requires current password), list their sessions and revoke them. Changing a password deletes all other sessions of the user (and invalidates outstanding reset links) but does not revoke personal API tokens; compromised tokens must be revoked separately.
 
 ### 6.5 Roles and permissions
 
@@ -246,7 +246,7 @@ Acceptance is single-use: `accepted_at` is set in the same transaction with a `W
 
 **FR-077 Send test email.** `POST /api/v1/projects/{p}/send-test` ingests a built-in sample message (HTML + text, an inline CID image, a PDF attachment, a link) directly through the ingest pipeline (no network), so the empty-inbox guide can show a working example.
 
-**FR-078 Wait for message.** `GET /api/v1/projects/{p}/messages/wait?query=&since=&timeout=` blocks until a message matching `query` with ID greater than `since` exists, then returns it (`200`). `since` accepts a ULID, an RFC 3339 time, or `now` (default: request time). `timeout` default `30s`, max `MAILCUBBY_API_WAIT_MAX_TIMEOUT` (`120s`). On timeout returns `204`. Implementation subscribes to the event bus before querying the DB, so no message can be missed.
+**FR-078 Wait for message.** `GET /api/v1/projects/{p}/messages/wait?query=&since=&timeout=` blocks until a message matching `query` with ID greater than `since` exists, then returns it (`200`). `since` accepts a ULID, an RFC 3339 time, or `now` (default: request time). `timeout` defaults to `30s` (capped at `MAILCUBBY_API_WAIT_MAX_TIMEOUT`, default `120s`; values above the cap return `400`). On timeout returns `204`. Implementation subscribes to the event bus (project-scoped, 256-event buffer) before querying the DB so no message can be missed, lifts the HTTP server write deadline while waiting, and unsubscribes on response, client disconnect, or server shutdown (returning `503` on slow-consumer bus close or shutdown). In server mode, each `/messages/wait` request counts once against `MAILCUBBY_API_RATE_LIMIT`. Unlike SSE (`MAILCUBBY_SSE_MAX_CONNECTIONS_PER_USER`), there is no separate per-user or per-token cap on concurrent `/messages/wait` requests; concurrency is bounded by `MAILCUBBY_API_WAIT_MAX_TIMEOUT`, `MAILCUBBY_API_RATE_LIMIT`, HTTP server/OS resources, and reverse-proxy connection limits. Operators with untrusted tenants SHOULD keep `MAILCUBBY_API_WAIT_MAX_TIMEOUT` conservative and enforce connection limits at the reverse proxy.
 - AC: a test starts `wait`, then sends via SMTP; the response arrives within 500 ms of SMTP DATA completion.
 - AC: `wait` with `since=<older ULID>` returns an existing matching message immediately.
 
@@ -339,13 +339,14 @@ Unknown operators are treated as plain text. The parser MUST produce parameteris
 | `mailcubby keygen` | Print a new base64 `MAILCUBBY_APP_KEY`. |
 | `mailcubby healthcheck [--url]` | Exit 0 if `/readyz` returns 200 within 2 s, else exit 1 (for Docker `HEALTHCHECK` in a distroless image, no shell). Default URL: `http://127.0.0.1:<port of MAILCUBBY_HTTP_ADDR>/readyz`. |
 | `mailcubby migrate status` | Show applied migrations. Migrations run automatically on `serve`. |
+| `mailcubby backup --out <path\|-> [--data-dir path] [--overwrite]` | Create a consistent online backup of `app.db` using SQLite `VACUUM INTO` (safe while `serve` runs in WAL mode; works inside the distroless image without `sqlite3` or a shell). File targets are written atomically with mode `0600` and refuse to overwrite an existing file unless `--overwrite` is passed; `--out -` stages under `$MAILCUBBY_DATA_DIR/tmp/` and streams raw SQLite bytes to stdout. Refuses to run if `app.db` does not exist. |
 | `mailcubby admin create-user --email --name [--admin]` | Print an invite link for a new user. |
 | `mailcubby admin list-users` | List all users (ID, email, name, flags, project count, status). |
 | `mailcubby admin enable-user --email` | Re-enable a disabled user and write a `user.enable` audit entry. |
 | `mailcubby admin reset-password --email` | Print a single-use reset link. |
 | `mailcubby sendmail [-t] [-f from] [--smtp host:port] [--user u --password p] [to...]` | Read a message on stdin and submit it via SMTP (default `localhost:1025`, or `MAILCUBBY_SENDMAIL_SMTP`) as a sendmail replacement for PHP `sendmail_path`. Recipients from arguments, or from headers with `-t`. Flags commonly passed by PHP and MTAs (`-i`, `-oi`, `-odi`, `-bm`, `-F name`) are accepted and ignored. Exit code 0 on `250`, non-zero with the SMTP reply on stderr otherwise. |
 
-Admin commands open the same SQLite database (safe with WAL while `serve` runs).
+Admin and backup commands open the same SQLite database (safe with WAL while `serve` runs).
 
 The CLI uses the stdlib `flag` package, so long options are written `--name value` or `-name value`; `sendmail` parses its arguments by hand because sendmail-style flags (`-oi`, `-t`) do not fit `flag`.
 
@@ -557,14 +558,14 @@ Environment variables only (no config file in v1). Variables marked (secret) als
 | Variable | Default | Description |
 |---|---|---|
 | `MAILCUBBY_HTTP_ADDR` | `:8025` | Listen address. |
-| `MAILCUBBY_TRUSTED_PROXIES` | empty | Comma-separated CIDRs whose `X-Forwarded-For` / `X-Forwarded-Proto` are trusted. |
+| `MAILCUBBY_TRUSTED_PROXIES` | empty | Comma-separated CIDRs whose `X-Forwarded-For` / `X-Forwarded-Proto` are trusted. Restrict to the reverse proxy's IP or subnet (see section 12.4). |
 | `MAILCUBBY_SESSION_TTL` | `30d` | Absolute session lifetime. |
 | `MAILCUBBY_SESSION_IDLE_TIMEOUT` | `7d` | Idle timeout. |
 | `MAILCUBBY_INVITE_TTL` | `7d` | Invite expiry. |
 | `MAILCUBBY_HSTS` | `true` | Send HSTS when `BASE_URL` is https. |
 | `MAILCUBBY_LOGIN_RATE_LIMIT` | `10/15m` | Failed logins per IP+email before `429` (window as duration after `/`). |
 | `MAILCUBBY_API_RATE_LIMIT` | `1200/m` | Requests per token or session (server mode only; local mode is not rate limited). |
-| `MAILCUBBY_API_WAIT_MAX_TIMEOUT` | `120s` | Max `wait` timeout. |
+| `MAILCUBBY_API_WAIT_MAX_TIMEOUT` | `120s` | Max `timeout` for `GET /messages/wait` (FR-078). There is no separate per-user concurrent wait cap; lower this or enforce reverse-proxy connection limits for untrusted tenants. |
 | `MAILCUBBY_SSE_MAX_CONNECTIONS_PER_USER` | `10` | Concurrent SSE streams per user or token. |
 | `MAILCUBBY_RENDER_REMOTE_IMAGES` | `opt-in` | `opt-in` (toggle, blocked by default) or `off`. |
 
@@ -795,7 +796,7 @@ $MAILCUBBY_DATA_DIR/
 - Write: create `tmp/<ulid>.tmp`, stream zstd-compressed DATA into it, fsync, rename into place, fsync the directory, then the DB transaction.
 - Delete: DB transaction first, then remove the file. Missing files on delete are not errors.
 - Read: open, zstd-decompress stream. Raw download streams without buffering the whole message.
-- Backup: stop the container or use `sqlite3 app.db ".backup"` plus a copy of `blobs/`. Documented in README.
+- Backup: stop the container and archive the data directory, or run `mailcubby backup --out <path|->` (online SQLite `VACUUM INTO`, works inside the distroless image without `sqlite3` or a shell) plus a copy of `blobs/` and a separate backup of `MAILCUBBY_APP_KEY`. Documented in README.
 - File modes: directories 0700, files 0600. `app.db` is created 0600 before SQLite opens it (SQLite gives `-wal`/`-shm` the same mode); an existing `app.db` (and leftover `-wal`/`-shm`) with wider permissions is tightened to 0600 at startup, best effort (a filesystem that rejects `chmod`, such as some bind mounts, does not stop startup). No process umask is changed. The container runs as non-root UID 65532.
 
 ---
@@ -825,7 +826,7 @@ Email HTML is attacker-controlled. It MUST never execute script, reach the app's
 
 - `Content-Disposition: attachment; filename="<ascii fallback>"; filename*=UTF-8''<percent-encoded>`.
 - `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox; default-src 'none'`.
-- `Content-Type`: declared type, except types that browsers can execute or render as active content (`text/html`, `application/xhtml+xml`, `image/svg+xml`, `text/xml`, `application/xml`, `application/javascript`, `text/javascript`, any `multipart/*`) are served as `application/octet-stream`.
+- `Content-Type`: declared media type (parameters stripped), except types that browsers can execute or render as active content (`text/html`, any `*/xml` or `*+xml` including `text/xml`, `application/xml`, `application/xhtml+xml`, `image/svg+xml`, `application/atom+xml`, `application/rss+xml`, `application/javascript`, `text/javascript`, `application/x-javascript`, `text/ecmascript`, `application/ecmascript`, any `multipart/*`) and any empty or syntactically invalid `Content-Type` values are served as `application/octet-stream`.
 - `?inline=1` only for `image/png`, `image/jpeg`, `image/gif`, `image/webp`; sets `Content-Disposition: inline`. Ignored for every other type (including PDF).
 - Raw source and HTML source are served as `text/plain; charset=utf-8` with nosniff.
 
@@ -845,8 +846,8 @@ In-memory (single process), sliding windows; state is lost on restart, which is 
 - SMTP AUTH: after `MAILCUBBY_SMTP_AUTH_MAX_FAILURES` failures per (IP, username) within `MAILCUBBY_SMTP_AUTH_LOCKOUT`, further AUTH attempts for that pair get `454 4.7.0` without checking the password until the window passes; an IP is locked for all usernames after 5x that many failures. There is no global per-username lockout (usernames are not secret, and one client with a stale password must not lock out the others behind the same IP). Attempts rejected by a lockout are not counted. Server-side errors (credential lookup, or decryption, for example under a wrong `MAILCUBBY_APP_KEY`) return `454 4.7.0` and are not counted; while the key is wrong this distinguishes existing usernames from unknown ones without delay, which is acceptable because usernames are not secret. Clients such as Python `smtplib` try PLAIN and then LOGIN, so one wrong `login()` counts as two failures. Lockout state is in memory; restarting clears it. An audit entry `smtp.auth_lockout` (metadata `reason` `ip_and_username` or `ip`) is written once per lockout. After a failure the server delays its reply by 1 s (the delay goes through the injected clock so tests do not sleep).
 - HTTP login: `MAILCUBBY_LOGIN_RATE_LIMIT` per (IP, email) and 5x that per IP; `429` with `Retry-After`. Only failed attempts count, but each attempt is reserved atomically before the password is verified and given back only on success, so concurrent requests cannot exceed the limit. An email longer than 254 bytes gets `400 bad_request` before rate limiting, hashing or auditing.
 - Invite preview/accept and password reset: 20 requests per 15 min per IP.
-- API: `MAILCUBBY_API_RATE_LIMIT` per token or session (token bucket).
-- Client IP is the socket address, or `X-Forwarded-For` (rightmost untrusted hop) only when the peer is in `MAILCUBBY_TRUSTED_PROXIES`.
+- API: `MAILCUBBY_API_RATE_LIMIT` per token or session (token bucket, server mode only). Long-poll `GET /messages/wait` requests are subject to this per-request rate limit and to `MAILCUBBY_API_WAIT_MAX_TIMEOUT` (default `120s`), with no separate per-user concurrent wait cap (FR-078).
+- Client IP is the socket address, or `X-Forwarded-For` (rightmost untrusted hop) only when the peer is in `MAILCUBBY_TRUSTED_PROXIES`. `deploy/compose.server.yml` defaults `MAILCUBBY_TRUSTED_PROXIES` to the RFC 1918 private ranges (`172.16.0.0/12,10.0.0.0/8,192.168.0.0/16`) so Docker's dynamically assigned bridge subnets match automatically; this is safe in that Compose stack only because Mailcubby's HTTP port (`:8025`) is not published and is reachable exclusively on the internal Docker bridge behind Caddy (which overwrites untrusted client `X-Forwarded-For` headers). If Mailcubby's HTTP port is directly reachable from other hosts on a private network (or shared with untrusted containers), operators SHOULD narrow `MAILCUBBY_TRUSTED_PROXIES` to the specific reverse proxy subnet or IP so other private-network hosts cannot spoof `X-Forwarded-For`.
 
 ### 12.5 Tenant isolation
 
@@ -866,7 +867,7 @@ See FR-105. Admin and owner screens show the log.
 | ID | Requirement | Target | How measured |
 |---|---|---|---|
 | NFR-001 | Ingest throughput | at least 200 messages/s sustained, 10 KiB messages, 10 parallel SMTP clients, 2 vCPU, SSD | `make bench` (`BenchmarkSMTPIngest` in `internal/smtpd`, using `net/smtp`) |
-| NFR-002 | Ingest latency to SSE | p95 under 250 ms from end of DATA to SSE event | integration test with timestamps |
+| NFR-002 | Ingest latency to SSE | p95 under 250 ms from end of DATA to SSE event | `make bench` (`BenchmarkSSELatencyNFR002` in `internal/api`) |
 | NFR-003 | Message list | first page p95 under 50 ms with 100k messages in the project | Go benchmark on seeded DB |
 | NFR-004 | Search | p95 under 150 ms for a two-word query with 100k messages | Go benchmark |
 | NFR-005 | Memory | idle RSS under 40 MB; under 150 MB while ingesting at NFR-001 rate with 1M stored messages | manual + CI smoke |

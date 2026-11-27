@@ -234,7 +234,7 @@ The `250` reply is sent only after the transaction commits (FR-010).
 |-- cmd/mailcubby/             main.go, subcommands
 |-- internal/
 |   |-- app/                  wiring, lifecycle, errgroup
-|   |-- cli/                  admin/keygen/healthcheck/sendmail subcommands
+|   |-- cli/                  admin/backup/keygen/healthcheck/migrate/sendmail subcommands
 |   |-- config/               env parsing, validation
 |   |-- smtpd/                go-smtp backend, session, routing, LOGIN sasl, limitListener
 |   |-- ingest/               spool, parse (enmime), metadata, tags, sample message
@@ -276,7 +276,7 @@ The `250` reply is sent only after the transaction commits (FR-010).
 |   |-- compose.server.yml    with Caddy
 |   |-- Caddyfile
 |   |-- launchd/              dev.mailcubby.plist (macOS LaunchAgent for the Releases binary)
-|   `-- systemd/              mailcubby.service (Linux systemd user unit for the Releases binary)
+|   `-- systemd/              mailcubby.service (local user unit), mailcubby-server.service (server system unit)
 `-- docs/                     SPEC, ARCHITECTURE, UI, PLAN, decisions/
 ```
 
@@ -312,7 +312,7 @@ See SPEC sections 10 and 11. Additional implementation notes:
 | Frontend unit | Vitest + Testing Library | hooks (shortcuts, SSE cache updates), query parser helpers, components with logic |
 | E2E (from Phase 4a) | Playwright (Chromium only) via `make e2e` | every UI phase adds specs for its screens; Phase 11 adds hostile-email checks; Phase 13 adds `@axe-core/playwright` on every screen and cross-checks the whole suite |
 
-Rules: no sleeping in tests (use fake clocks and event channels); no network beyond loopback; tests must pass with `-race` (`make test-race`, CGO enabled in CI only for the race job). Latency targets (NFR-002, FR-078 500 ms) are asserted in benchmarks or dedicated non-race tests; functional tests wait with generous timeouts (2 s) so they do not flake on slow CI.
+Rules: no sleeping in tests (use fake clocks and event channels); no network beyond loopback; tests must pass with `-race` (`make test-race`, CGO enabled in CI only for the race job). Latency targets (NFR-002) are measured in benchmarks (`make bench`); functional tests wait with generous timeouts (2 s) so they do not flake on slow CI.
 
 **E2E harness** (`web/e2e/`, Phase 4a): `make e2e` builds the binary with the UI (`make build-all`), and Playwright's `globalSetup` starts `bin/mailcubby serve` on free ports with a fresh temp data dir (local mode, plus a server-mode instance with `MAILCUBBY_ADMIN_EMAIL`/`_PASSWORD` and `MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH=true` and `MAILCUBBY_BASE_URL` equal to its own `http://127.0.0.1:<port>` so Origin checks pass, from Phase 6). Specs create mail through `POST /send-test` or by running `bin/mailcubby sendmail` on files from `testdata/mime/` (`child_process.execFile`), and wait on UI state with Playwright's auto-waiting assertions, never fixed sleeps. Chromium is installed by `make deps` (`pnpm --dir web exec playwright install chromium`).
 
@@ -356,7 +356,18 @@ COPY --from=build --chown=65532:65532 /out/data /data
 ENV MAILCUBBY_DATA_DIR=/data
 VOLUME /data
 EXPOSE 1025 8025
-HEALTHCHECK --interval=30s --timeout=3s CMD ["/mailcubby", "healthcheck"]
+ARG VERSION=dev
+ARG COMMIT=none
+ARG DATE=unknown
+LABEL org.opencontainers.image.title="mailcubby" \
+      org.opencontainers.image.description="Self-hosted multi-tenant email testing server" \
+      org.opencontainers.image.source="https://github.com/mailcubby/mailcubby" \
+      org.opencontainers.image.url="https://github.com/mailcubby/mailcubby" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}" \
+      org.opencontainers.image.created="${DATE}" \
+      org.opencontainers.image.licenses="LicenseRef-PolyForm-Shield-1.0.0"
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s CMD ["/mailcubby", "healthcheck"]
 ENTRYPOINT ["/mailcubby"]
 CMD ["serve"]
 ```
@@ -366,7 +377,7 @@ distroless `static` (not `scratch`) is used because it ships CA certificates, `/
 ### 9.2 Releases
 
 - GoReleaser v2 (`.goreleaser.yaml`): `before.hooks: [make web]`; builds `linux/darwin/windows` x `amd64/arm64` with `CGO_ENABLED=0`; archives + checksums; multi-arch images `ghcr.io/mailcubby/mailcubby:{{ .Version }}`, `:{{ .Major }}.{{ .Minor }}`, `:latest` from `deploy/Dockerfile.goreleaser` (runtime stage only, copies the prebuilt binary). Use the multi-platform Docker configuration documented for the pinned GoReleaser version. SBOMs via syft and keyless cosign signing are optional.
-- Homebrew formula `mailcubby` (GoReleaser `brews`, ADR 0008) pushed to `mailcubby/homebrew-tap` with `HOMEBREW_TAP_GITHUB_TOKEN`; skipped for pre-releases. Its `service` block runs local mode with data in `$(brew --prefix)/var/mailcubby` (`brew services start mailcubby`). The archives also include `deploy/launchd/dev.mailcubby.plist` and `deploy/systemd/mailcubby.service` for running the binary as a service without Homebrew.
+- Homebrew formula `mailcubby` (GoReleaser `brews`, ADR 0008) pushed to `mailcubby/homebrew-tap` with `HOMEBREW_TAP_GITHUB_TOKEN`; skipped for pre-releases. Its `service` block runs local mode with data in `$(brew --prefix)/var/mailcubby` (`brew services start mailcubby`). The archives also include `deploy/launchd/dev.mailcubby.plist`, `deploy/systemd/mailcubby.service` (local user unit), and `deploy/systemd/mailcubby-server.service` (server system unit) for running the binary as a service without Homebrew.
 - Triggered by `release.yml` on tags `v*`.
 
 ### 9.3 Running
@@ -393,7 +404,7 @@ Internet --587--> mailcubby:1025 (STARTTLS, cert files from Caddy's volume, read
 ### 9.4 Operations
 
 - Logs: `log/slog` to stdout, `text` or `json`. Each HTTP request logs method, route pattern, status, duration, request ID, principal kind; each SMTP session logs remote IP, auth user, recipients count, result code, message IDs.
-- Backups: documented in README (SQLite `.backup` + blobs copy, or stop and copy the volume).
+- Backups: documented in README (`mailcubby backup --out <path|->` online SQLite `VACUUM INTO` + `blobs/` copy, or stop and copy the volume).
 - Upgrades: migrations run automatically; downgrades are not supported (restore from backup).
 
 ## 10. Threat model
@@ -430,9 +441,9 @@ Mailcubby is designed to capture untrusted email from staging/development applic
 | **Active content execution via downloads / attachments** | Attachments and `.eml` downloads force `Content-Disposition: attachment` (inline only for raster PNG/JPEG/GIF/WebP with `?inline=1`), `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox; default-src 'none'`, and coerce HTML/XHTML/SVG/XML/JS/multipart to `application/octet-stream`. Raw/HTML sources are served as `text/plain; charset=utf-8` with `nosniff` and attachment CSP. | `internal/api/headers_test.go`, `internal/api/api_test.go` |
 | **Cross-tenant data leakage** | Every tenant store method takes `projectID` explicitly and filters every referenced tenant table (`isolation_test.go` SQL lint). Middleware resolves `{project}` once per request and returns `404` on inaccessible projects. `projects.id` is `AUTOINCREMENT` (migration 00003) so deleted IDs are never reused. SSE filters by live membership set, drops deleted project IDs immediately, and closes streams on logout/revocation/disable/delete. Viewers never see `envelope.auth_user`. | `internal/store/isolation_test.go`, `internal/api/isolation_test.go`, `internal/api/project_id_reuse_test.go`, `internal/api/viewer_test.go` |
 | **Privilege escalation & broken access control** | Single route table (`internal/api/routes.go`) mapped to `internal/auth/permissions.go` (`Allowed`, `EffectiveTokenRole`, `CanReadTechnical`). Last active admin (with password) and sole project owner cannot be removed/deleted (`409`). Project invites cannot set passwords on existing accounts (`409 login_required`). | `internal/api/authz_matrix_test.go`, `internal/api/members_invites_test.go`, `internal/api/log_redaction_test.go` |
-| **CSRF & session hijacking** | `HttpOnly`, `SameSite=Lax`, `Secure` (on `https://`) session cookies; idle and absolute expiry enforced; unsafe cookie requests require both matching `Origin`/`Referer` and `X-CSRF-Token` (kept in memory, never `localStorage`). Local mode (no cookies) rejects cross-origin unsafe browser requests with stdlib `http.CrossOriginProtection` (`Sec-Fetch-Site`, else `Origin` vs `Host`), so a web page cannot create or delete data on a developer's instance; DNS rebinding is out of scope, as in Mailpit (bind to `127.0.0.1`). Password change/reset revokes other/all sessions, outstanding reset tokens, and open SSE streams. Post-login `returnTo` rejects external origins, backslashes, control chars, and protocol-relative paths. | `internal/api/auth_test.go`, `internal/api/cross_origin_test.go`, `internal/api/log_redaction_test.go`, `web/src/features/auth/auth.test.tsx` |
+| **CSRF & session hijacking** | `HttpOnly`, `SameSite=Lax`, `Secure` (on `https://`) session cookies; idle and absolute expiry enforced; unsafe cookie requests require both matching `Origin`/`Referer` and `X-CSRF-Token` (kept in memory, never `localStorage`). Local mode (no cookies) rejects cross-origin unsafe browser requests with stdlib `http.CrossOriginProtection` (`Sec-Fetch-Site`, else `Origin` vs `Host`), so a web page cannot create or delete data on a developer's instance; DNS rebinding is out of scope, as in Mailpit (bind to `127.0.0.1`). Password change/reset revokes other/all sessions, outstanding reset tokens, and open SSE streams (leaving personal API tokens active; disabling a user revokes both sessions and all API tokens). Post-login `returnTo` rejects external origins, backslashes, control chars, and protocol-relative paths. | `internal/api/auth_test.go`, `internal/api/cross_origin_test.go`, `internal/api/log_redaction_test.go`, `web/src/features/auth/auth.test.tsx` |
 | **Credential brute force & enumeration** | Argon2id (`m=19456, t=2, p=1`, semaphore of 2) with dummy-hash verification for unknown/disabled/passwordless users. Atomic `Reserve`/`Cancel` rate limits on HTTP login (`MAILCUBBY_LOGIN_RATE_LIMIT` per IP+email and 5x per IP) and SMTP AUTH (`MAILCUBBY_SMTP_AUTH_MAX_FAILURES` per (IP, username) and 5x per IP, 1 s failure delay, `smtp.auth_lockout` audit). `20/15m` per-IP limits on invite and password-reset endpoints; `MAILCUBBY_API_RATE_LIMIT` token bucket per session/token in server mode. Server-mode SMTP requires TLS before AUTH unless `MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH=true`. | `internal/ratelimit/*_test.go`, `internal/api/rate_limit_test.go`, `internal/smtpd/server_mode_test.go`, `internal/smtpd/auth_lockout_test.go` |
-| **Resource exhaustion / DoS** | SMTP total and per-IP connection limits (`limitListener`), `MaxMessageBytes` (25 MiB default, max 100 MiB), `MaxRecipients` (100), bounded parse semaphore (`2 * GOMAXPROCS`), 50 auto-tag cap per message, 10 MiB `cid:` inline render cap, per-project SMTP rate limit (`450`), instance storage quota (`452`), retention sweeper and orphan blob GC, 1 MiB JSON request body cap, HTTP server timeouts, SSE per-user connection cap (10) and slow-consumer disconnect (256 buffer). | `internal/smtpd/limit_listener_test.go`, `internal/ingest/ingest_test.go`, `internal/app/retention_quota_test.go`, `internal/retention/*_test.go` |
+| **Resource exhaustion / DoS** | SMTP total and per-IP connection limits (`limitListener`), `MaxMessageBytes` (25 MiB default, max 100 MiB), `MaxRecipients` (100), bounded parse semaphore (`2 * GOMAXPROCS`), 50 auto-tag cap per message, 10 MiB `cid:` inline render cap, per-project SMTP rate limit (`450`), instance storage quota (`452`), retention sweeper and orphan blob GC, 1 MiB JSON request body cap, HTTP server timeouts, SSE per-user connection cap (10) and slow-consumer disconnect (256 buffer), `/messages/wait` timeout cap (`MAILCUBBY_API_WAIT_MAX_TIMEOUT`, default `120s`), server-mode per-request `MAILCUBBY_API_RATE_LIMIT`, and 256-event bus buffer (no separate per-user concurrent wait cap). | `internal/smtpd/limit_listener_test.go`, `internal/ingest/ingest_test.go`, `internal/app/retention_quota_test.go`, `internal/retention/*_test.go` |
 | **SQL injection & path traversal** | All SQL is sqlc-generated parameterized queries or `internal/search` fixed fragments + bind parameters (fuzz-tested). Blob paths are built solely from integer project IDs and ULIDs with strict validation (`internal/blob`). | `internal/search/search_test.go` (fuzz), `internal/blob/blob_test.go` |
 | **Secret leakage in logs or storage** | Access and panic logs never log query strings, redact `Authorization`/`Cookie`/`Set-Cookie`/`X-CSRF-Token`, and replace token segments in `/api/v1/invites/*`, `/api/v1/password-reset/*`, `/invite/*`, `/reset/*` with `[REDACTED]`. Decrypted SMTP passwords are never logged or stored in plaintext. `app.key` is created atomically with `0600`. Static analysis (`gosec`) and CI vulnerability scanning (`govulncheck`). | `internal/api/log_redaction_test.go`, `internal/secrets/secrets_test.go`, `.github/workflows/ci.yml` |
 
@@ -440,6 +451,8 @@ Mailcubby is designed to capture untrusted email from staging/development applic
 
 - **Local mode has no authentication**: `MAILCUBBY_MODE=local` is strictly for local development and must never be exposed to untrusted networks.
 - **In-memory rate limiting**: sliding-window and token-bucket counters live in process memory and reset on restart.
-- **Reverse proxy configuration**: operators running behind Caddy/Traefik/nginx must set `MAILCUBBY_TRUSTED_PROXIES` accurately so client IP extraction for rate limiting and audit logs cannot be spoofed via `X-Forwarded-For`, and must terminate HTTPS with `MAILCUBBY_BASE_URL=https://...` so `Secure` cookies and HSTS apply.
+- **Personal API tokens survive password changes and resets**: changing a password (`PATCH /api/v1/auth/me`) or completing a password reset (`POST /api/v1/password-reset/{token}`) deletes sessions and closes open SSE streams, but intentionally leaves the user's personal API tokens active so routine password resets do not disrupt CI/test automation. If account compromise is suspected, revoke API tokens separately (`DELETE /api/v1/tokens/{id}` or the Account UI), or have an admin disable the user (`PATCH /api/v1/admin/users/{id}` with `disabled: true`) to immediately revoke both sessions and all API tokens.
+- **Long-poll `/messages/wait` concurrency**: each waiting request lifts the HTTP write deadline, holds one HTTP connection and one project-scoped event bus subscription (256-event buffer, returning `503` if the buffer overflows or on shutdown) for up to `MAILCUBBY_API_WAIT_MAX_TIMEOUT` (default `120s`), and consumes one token from `MAILCUBBY_API_RATE_LIMIT` in server mode. Unlike SSE (`MAILCUBBY_SSE_MAX_CONNECTIONS_PER_USER`), Mailcubby does not enforce a separate per-user or per-token concurrent wait cap; concurrent waits are bounded by `MAILCUBBY_API_WAIT_MAX_TIMEOUT`, `MAILCUBBY_API_RATE_LIMIT`, HTTP server/OS resources, and reverse-proxy limits. Operators serving untrusted tenants should keep `MAILCUBBY_API_WAIT_MAX_TIMEOUT` conservative and apply connection limits at the reverse proxy.
+- **Reverse proxy configuration**: operators running behind Caddy/Traefik/nginx must set `MAILCUBBY_TRUSTED_PROXIES` accurately so client IP extraction for rate limiting and audit logs cannot be spoofed via `X-Forwarded-For`, and must terminate HTTPS with `MAILCUBBY_BASE_URL=https://...` so `Secure` cookies and HSTS apply. `deploy/compose.server.yml` defaults `MAILCUBBY_TRUSTED_PROXIES` to RFC 1918 private ranges (`172.16.0.0/12,10.0.0.0/8,192.168.0.0/16`) because `:8025` is only reachable on the internal Docker bridge behind Caddy (which overwrites client `X-Forwarded-For`); narrow it to the specific proxy subnet or IP if Mailcubby's HTTP port is directly reachable from other private-network hosts.
 - **Server-mode recipient routing**: enabling `recipient_routing_enabled` on a project permits unauthenticated SMTP delivery to routed addresses; operators enabling it should firewall SMTP access to trusted networks.
 - **Database host security**: compromise of both `MAILCUBBY_APP_KEY` and `app.db` allows decrypting stored SMTP credentials; keep `MAILCUBBY_APP_KEY` outside backups or in a secret manager.

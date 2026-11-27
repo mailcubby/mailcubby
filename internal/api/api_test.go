@@ -292,7 +292,7 @@ func TestIntegrationAttachmentSecurityHeadersAndInlinePolicy(t *testing.T) {
 	base := "http://" + srv.HTTPAddr
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	// Send one message with x.html (text/html), pixel.png (image/png), doc.pdf (application/pdf), icon.svg (image/svg+xml).
+	// Send one message with active/XML types, raster image, and PDF attachments (SPEC 12.2, FR-074).
 	raw := []byte(strings.Join([]string{
 		"From: sender@example.test",
 		"To: rcpt@example.test",
@@ -326,6 +326,21 @@ func TestIntegrationAttachmentSecurityHeadersAndInlinePolicy(t *testing.T) {
 		`Content-Disposition: attachment; filename="icon.svg"`,
 		"",
 		`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`,
+		"--BOUND",
+		`Content-Type: application/atom+xml; name="feed.atom"`,
+		`Content-Disposition: attachment; filename="feed.atom"`,
+		"",
+		`<feed xmlns="http://www.w3.org/2005/Atom"/>`,
+		"--BOUND",
+		`Content-Type: application/rss+xml; name="feed.rss"`,
+		`Content-Disposition: attachment; filename="feed.rss"`,
+		"",
+		`<rss version="2.0"/>`,
+		"--BOUND",
+		`Content-Type: foo/xml; name="custom.xml"`,
+		`Content-Disposition: attachment; filename="custom.xml"`,
+		"",
+		`<custom/>`,
 		"--BOUND--",
 		"",
 	}, "\r\n"))
@@ -411,6 +426,27 @@ func TestIntegrationAttachmentSecurityHeadersAndInlinePolicy(t *testing.T) {
 			query:          "?inline=1",
 			wantCT:         "application/octet-stream",
 			wantDispPrefix: `attachment; filename="icon.svg"`,
+		},
+		{
+			name:           "feed.atom (+xml) downgraded to octet-stream attachment",
+			filename:       "feed.atom",
+			query:          "?inline=1",
+			wantCT:         "application/octet-stream",
+			wantDispPrefix: `attachment; filename="feed.atom"`,
+		},
+		{
+			name:           "feed.rss (+xml) downgraded to octet-stream attachment",
+			filename:       "feed.rss",
+			query:          "?inline=1",
+			wantCT:         "application/octet-stream",
+			wantDispPrefix: `attachment; filename="feed.rss"`,
+		},
+		{
+			name:           "custom.xml (*/xml) downgraded to octet-stream attachment",
+			filename:       "custom.xml",
+			query:          "?inline=1",
+			wantCT:         "application/octet-stream",
+			wantDispPrefix: `attachment; filename="custom.xml"`,
 		},
 	}
 

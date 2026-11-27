@@ -20,14 +20,17 @@ import (
 )
 
 const (
-	defaultPageLimit     = 50
-	maxPageLimit         = 200
-	maxDetailTextBytes   = 1 << 20 // 1 MiB (SPEC 8.4)
-	maxEMLFilenameRunes  = 80
-	defaultAttachmentExt = "download"
+	defaultPageLimit             = 50
+	maxPageLimit                 = 200
+	maxDetailTextBytes           = 1 << 20 // 1 MiB (SPEC 8.4)
+	maxEMLFilenameRunes          = 80
+	defaultAttachmentExt         = "download"
+	defaultAttachmentContentType = "application/octet-stream"
 )
 
 // activeContentTypes must always be served as application/octet-stream (SPEC 12.2).
+// Any */xml, *+xml, multipart/*, or invalid Content-Type is also coerced by
+// safeAttachmentContentType.
 var activeContentTypes = map[string]struct{}{
 	"text/html":                {},
 	"application/xhtml+xml":    {},
@@ -700,19 +703,27 @@ func toAddressResponses(addrs []store.Address) []addressResponse {
 }
 
 func safeAttachmentContentType(declared string) string {
+	for _, r := range declared {
+		if unicode.IsControl(r) {
+			return defaultAttachmentContentType
+		}
+	}
 	mediaType, _, err := mime.ParseMediaType(declared)
 	if err != nil {
-		mediaType = strings.ToLower(strings.TrimSpace(strings.Split(declared, ";")[0]))
+		return defaultAttachmentContentType
 	}
-	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
-	if mediaType == "" || !strings.Contains(mediaType, "/") {
-		return "application/octet-stream"
+	typ, subtype, ok := strings.Cut(mediaType, "/")
+	if !ok || typ == "" || subtype == "" || strings.Contains(subtype, "/") {
+		return defaultAttachmentContentType
 	}
-	if strings.HasPrefix(mediaType, "multipart/") {
-		return "application/octet-stream"
+	if typ == "multipart" {
+		return defaultAttachmentContentType
+	}
+	if subtype == "xml" || strings.HasSuffix(subtype, "+xml") {
+		return defaultAttachmentContentType
 	}
 	if _, unsafe := activeContentTypes[mediaType]; unsafe {
-		return "application/octet-stream"
+		return defaultAttachmentContentType
 	}
 	return mediaType
 }

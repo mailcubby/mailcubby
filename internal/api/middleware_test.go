@@ -347,3 +347,111 @@ func TestRedactLogPath(t *testing.T) {
 		})
 	}
 }
+
+func TestAccessLogLevelForAssetsHealthAndAPI(t *testing.T) {
+	t.Parallel()
+
+	st := testutil.NewStore(t)
+	dataDir := t.TempDir()
+	blobs, err := blob.NewStore(dataDir, 3)
+	if err != nil {
+		t.Fatalf("blob.NewStore: %v", err)
+	}
+	cfg, err := config.Load(func(k string) (string, bool) {
+		if k == "MAILCUBBY_DATA_DIR" {
+			return dataDir, true
+		}
+		return "", false
+	})
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	srv := api.New(cfg, st, blobs, nil, api.Options{
+		Logger: logger,
+		WebHandler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/assets/missing.js":
+				w.WriteHeader(http.StatusNotFound)
+			case "/assets/error.js":
+				w.WriteHeader(http.StatusInternalServerError)
+			case "/assets/cached.js":
+				w.WriteHeader(http.StatusNotModified)
+			default:
+				w.WriteHeader(http.StatusOK)
+			}
+		}),
+	})
+	defer srv.Close()
+
+	cases := []struct {
+		name      string
+		path      string
+		wantCode  int
+		wantLevel string
+	}{
+		{name: "asset 200 logs at debug", path: "/assets/index-abc123.js", wantCode: http.StatusOK, wantLevel: "DEBUG"},
+		{name: "asset 304 logs at debug", path: "/assets/cached.js", wantCode: http.StatusNotModified, wantLevel: "DEBUG"},
+		{name: "favicon 200 logs at debug", path: "/favicon.svg", wantCode: http.StatusOK, wantLevel: "DEBUG"},
+		{name: "theme.js 200 logs at debug", path: "/theme.js", wantCode: http.StatusOK, wantLevel: "DEBUG"},
+		{name: "healthz 200 logs at debug", path: "/healthz", wantCode: http.StatusOK, wantLevel: "DEBUG"},
+		{name: "readyz logs at debug", path: "/readyz", wantCode: http.StatusOK, wantLevel: "DEBUG"},
+		{name: "missing asset 404 logs at info", path: "/assets/missing.js", wantCode: http.StatusNotFound, wantLevel: "INFO"},
+		{name: "asset 500 logs at info", path: "/assets/error.js", wantCode: http.StatusInternalServerError, wantLevel: "INFO"},
+		{name: "api 200 logs at info", path: "/api/v1/meta", wantCode: http.StatusOK, wantLevel: "INFO"},
+		{name: "api 404 logs at info", path: "/api/v1/unknown", wantCode: http.StatusNotFound, wantLevel: "INFO"},
+		{name: "spa root 200 logs at info", path: "/", wantCode: http.StatusOK, wantLevel: "INFO"},
+	}
+
+	for _, tc := range cases {
+		logBuf.Reset()
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tc.path, nil)
+		srv.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != tc.wantCode {
+			t.Fatalf("%s: status = %d, want %d", tc.name, rec.Code, tc.wantCode)
+		}
+
+		var entry struct {
+			Level string `json:"level"`
+			Msg   string `json:"msg"`
+			Path  string `json:"path"`
+		}
+		if err := json.Unmarshal(bytes.TrimSpace(logBuf.Bytes()), &entry); err != nil {
+			t.Fatalf("%s: decode log line %q: %v", tc.name, logBuf.String(), err)
+		}
+		if entry.Level != tc.wantLevel {
+			t.Errorf("%s (%s): level = %q, want %q (line: %s)", tc.name, tc.path, entry.Level, tc.wantLevel, logBuf.String())
+		}
+	}
+
+	// Verify INFO-level logger omits static asset 200 hits altogether.
+	var infoBuf bytes.Buffer
+	infoLogger := slog.New(slog.NewJSONHandler(&infoBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	infoSrv := api.New(cfg, st, blobs, nil, api.Options{
+		Logger: infoLogger,
+		WebHandler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/assets/missing.js" {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}),
+	})
+	defer infoSrv.Close()
+
+	for _, p := range []string{"/assets/app.js", "/favicon.svg", "/theme.js"} {
+		infoSrv.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, p, nil))
+	}
+	if infoBuf.Len() != 0 {
+		t.Fatalf("INFO logger should suppress 200 static assets, got: %s", infoBuf.String())
+	}
+
+	infoSrv.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/assets/missing.js", nil))
+	if !strings.Contains(infoBuf.String(), `"/assets/missing.js"`) {
+		t.Fatalf("INFO logger should record 404 static assets, got: %s", infoBuf.String())
+	}
+}

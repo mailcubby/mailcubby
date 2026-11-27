@@ -619,5 +619,50 @@ test.describe("WCAG 2.1 AA accessibility audit (NFR-010, Phase 13 and 15e)", () 
         await expect(page.getByRole("heading", { name: /Set a new password/i })).toBeVisible();
         await assertAuthPageBothThemes(page, "server /reset/$token");
       });
+
+      test("signed-in project invite warns on email mismatch in both themes (audit S8)", async ({
+        page,
+      }) => {
+        test.setTimeout(120_000);
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        const { httpURL } = server();
+
+        const admin = await ApiClient.login(httpURL, ADMIN_EMAIL, ADMIN_PASSWORD);
+        const matchingInvite = await admin.request<{ url: string }>(
+          "POST",
+          "/api/v1/projects/empty-box/invites",
+          { email: VIEWER_EMAIL.toUpperCase(), role: "viewer" },
+        );
+        const mismatchedInvite = await admin.request<{ url: string }>(
+          "POST",
+          "/api/v1/projects/empty-box/invites",
+          { email: "other-client@a11y.test", role: "viewer" },
+        );
+
+        await signIn(page, VIEWER_EMAIL, VIEWER_PASSWORD);
+
+        // Matching email (ignoring case): no mismatch warning alert.
+        await page.goto(matchingInvite.url);
+        await expect(page.getByRole("heading", { name: "Join Empty Box" })).toBeVisible();
+        await expect(page.getByRole("alert")).toHaveCount(0);
+        await expect(page.getByText(/Signed in as/)).toBeVisible();
+
+        // Different email: clear warning alert naming both emails, accessible in both themes.
+        await page.goto(mismatchedInvite.url);
+        await expect(page.getByRole("heading", { name: "Join Empty Box" })).toBeVisible();
+        const alert = page.getByRole("alert");
+        await expect(alert).toBeVisible();
+        await expect(alert).toContainText("Different email address");
+        await expect(alert).toContainText("other-client@a11y.test");
+        await expect(alert).toContainText(VIEWER_EMAIL);
+        await expect(
+          page.getByRole("button", { name: "Sign out to use a different account" }),
+        ).toBeVisible();
+        await assertAuthPageBothThemes(page, "server /invite/$token email mismatch");
+
+        // Accepting still works for the signed-in account.
+        await page.getByRole("button", { name: "Accept invitation" }).click();
+        await expect(page).toHaveURL(`${httpURL}/p/empty-box`);
+      });
     });
 });

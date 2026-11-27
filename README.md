@@ -114,6 +114,43 @@ systemctl --user enable --now mailcubby
 
 Logs: `journalctl --user -u mailcubby`. To keep it running while you are logged out, run `loginctl enable-linger "$USER"`. Both files keep the default listen addresses; add `MAILCUBBY_HTTP_ADDR=127.0.0.1:8025` and `MAILCUBBY_SMTP_ADDR=127.0.0.1:1025` to the environment for loopback only.
 
+#### Server mode (Linux systemd system unit)
+
+To run the standalone Linux binary in multi-tenant server mode without Docker, install it with the hardened system unit `deploy/systemd/mailcubby-server.service` from the release archive:
+
+```sh
+sudo install -m 0755 mailcubby /usr/local/bin/mailcubby
+sudo useradd --system --user-group --no-create-home --home-dir /var/lib/mailcubby --shell /usr/sbin/nologin mailcubby
+sudo install -d -m 0755 /etc/mailcubby
+sudo install -m 0644 deploy/systemd/mailcubby-server.service /etc/systemd/system/mailcubby-server.service
+```
+
+Generate an application key (`mailcubby keygen`) and create `/etc/mailcubby/mailcubby.env` readable only by `root` (`chmod 0600`):
+
+```sh
+sudo sh -c 'umask 077 && cat > /etc/mailcubby/mailcubby.env <<EOF
+MAILCUBBY_MODE=server
+MAILCUBBY_BASE_URL=https://mail.example.com
+MAILCUBBY_APP_KEY=$(/usr/local/bin/mailcubby keygen)
+MAILCUBBY_DATA_DIR=/var/lib/mailcubby
+MAILCUBBY_HTTP_ADDR=127.0.0.1:8025
+MAILCUBBY_SMTP_HOSTNAME=mail.example.com
+MAILCUBBY_SMTP_TLS_CERT=/etc/letsencrypt/live/mail.example.com/fullchain.pem
+MAILCUBBY_SMTP_TLS_KEY=/etc/letsencrypt/live/mail.example.com/privkey.pem
+MAILCUBBY_TRUSTED_PROXIES=127.0.0.1/32
+EOF'
+sudo chmod 0600 /etc/mailcubby/mailcubby.env
+```
+
+Enable and start the service (systemd creates `/var/lib/mailcubby` automatically via `StateDirectory=mailcubby` with mode `0700`):
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now mailcubby-server
+```
+
+Check logs and read the one-time setup token with `sudo journalctl -u mailcubby-server`. Put a reverse proxy (Caddy, nginx, or Traefik — see [Reverse proxy notes](#reverse-proxy-notes)) in front of `127.0.0.1:8025` for HTTPS. If you bind Mailcubby directly to privileged SMTP ports (`MAILCUBBY_SMTP_ADDR=:587` or `MAILCUBBY_SMTPS_ADDR=:465`), add `AmbientCapabilities=CAP_NET_BIND_SERVICE` and `CapabilityBoundingSet=CAP_NET_BIND_SERVICE` via `sudo systemctl edit mailcubby-server`, and ensure `mailcubby` can read the TLS certificate and key files (for example via `SupplementaryGroups=` or `ReadOnlyPaths=`; see comments in `mailcubby-server.service`).
+
 ### Build from source
 
 Requires Go 1.27.4, Node.js 26 LTS, and pnpm 12.21.0:
@@ -165,13 +202,80 @@ Open http://localhost:8025 and point your application's SMTP settings at `localh
 - The SMTP username becomes the project slug and auto-creates the project on first message (for example `MAIL_USERNAME=shop-staging` routes to project `shop-staging`).
 - Without SMTP credentials, mail goes to the `default` project (or routes by recipient when `MAILCUBBY_INBOX_DOMAIN` is set).
 
+#### Framework SMTP snippets (local mode)
+
+Each project in the web UI includes copyable snippets (Laravel, Symfony, Nodemailer, WordPress, Django, Rails, `swaks`, and PHP `sendmail_path`). For a quick local setup targeting project `shop`:
+
+**Laravel (`.env`)**
+
+```env
+MAIL_MAILER=smtp
+MAIL_SCHEME=smtp            # Laravel 10 and older: MAIL_ENCRYPTION=null
+MAIL_HOST=localhost
+MAIL_PORT=1025
+MAIL_USERNAME=shop
+MAIL_PASSWORD=dev
+```
+
+**Node.js (Nodemailer)**
+
+```js
+nodemailer.createTransport({
+  host: "localhost",
+  port: 1025,
+  secure: false,
+  auth: {
+    user: "shop",
+    pass: "dev",
+  },
+});
+```
+
+**Django (`settings.py`)**
+
+```python
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "localhost"
+EMAIL_PORT = 1025
+EMAIL_HOST_USER = "shop"
+EMAIL_HOST_PASSWORD = "dev"
+EMAIL_USE_TLS = False
+```
+
+**Rails (`config/environments/development.rb`)**
+
+```ruby
+config.action_mailer.delivery_method = :smtp
+config.action_mailer.smtp_settings = {
+  address: "localhost",
+  port: 1025,
+  user_name: "shop",
+  password: "dev",
+  authentication: :plain,
+  enable_starttls_auto: false,
+}
+```
+
+#### Reaching Mailcubby from Docker containers
+
+If your application runs inside a Docker container while Mailcubby runs on the host (for example via Homebrew, `mailcubby serve`, LaunchAgent, or systemd), point your container's SMTP host at `host.docker.internal:1025` instead of `localhost:1025` (Mailcubby must be listening on all interfaces, the default `:1025`, rather than `127.0.0.1:1025`).
+
+Docker Desktop on macOS and Windows resolves `host.docker.internal` automatically. On Linux, pass `--add-host=host.docker.internal:host-gateway` to `docker run`, or add it in Compose:
+
+```yaml
+services:
+  app:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
+
 > **Warning:** Local mode has no authentication. Never expose it to the internet.
 
 Local mode rejects cross-origin `POST`/`PUT`/`PATCH`/`DELETE` requests from browsers (`403`), so a web page you visit cannot change your inbox. curl, SDKs, test clients, the Vite dev proxy and reverse proxies are not affected; behind a proxy that rewrites `Host`, set `MAILCUBBY_BASE_URL` to the URL you open.
 
 ### Server mode (team / agency)
 
-Server mode requires HTTPS (terminated by a reverse proxy), a 32-byte `MAILCUBBY_APP_KEY`, and a TLS certificate for SMTP STARTTLS.
+Server mode requires HTTPS (terminated by a reverse proxy), a 32-byte `MAILCUBBY_APP_KEY`, and a TLS certificate for SMTP STARTTLS. The steps below use Docker Compose with Caddy; to run the standalone Linux binary with systemd instead, see [Server mode (Linux systemd system unit)](#server-mode-linux-systemd-system-unit).
 
 #### 1. Configure DNS and firewall
 
@@ -234,6 +338,8 @@ To bootstrap an admin headlessly instead of using the setup wizard, set `MAILCUB
 docker compose -f deploy/compose.server.yml exec mailcubby /mailcubby admin reset-password --email admin@example.com
 ```
 
+> **Security note (API tokens):** Completing a password reset revokes all active browser sessions and closes open SSE streams (changing a password in Account settings revokes all other sessions), but intentionally does **not** revoke the user's personal API tokens so CI and test integrations keep running. If an account may be compromised, revoke its API tokens separately (Account → API tokens, or `DELETE /api/v1/tokens/{id}`), or disable the user in Admin → Users to immediately revoke both sessions and all API tokens.
+
 #### 5. Verify STARTTLS on port 587
 
 Using a credential created in your project's SMTP settings:
@@ -249,11 +355,31 @@ swaks --to test@example.test \
 
 To also accept **implicit TLS (SMTPS)** on port 465, uncomment `MAILCUBBY_SMTPS_ADDR: :1465` and the `"465:1465"` port mapping in `deploy/compose.server.yml` (the same certificate reloader serves both STARTTLS and implicit TLS).
 
+### Waiting for an email in tests
+
+Use `GET /api/v1/projects/{project}/messages/wait` in CI and end-to-end tests instead of polling. The endpoint blocks until a message matching `query` arrives and returns it (`200` JSON), or returns `204 No Content` when `timeout` elapses (default `30s`, max `MAILCUBBY_API_WAIT_MAX_TIMEOUT`, default `120s`). Pass `since=<ulid-or-rfc3339>` to also match messages that arrived just before the call.
+
+Local mode (no authentication):
+
+```sh
+curl -sS "http://localhost:8025/api/v1/projects/shop/messages/wait?query=subject:welcome&timeout=30s"
+```
+
+Server mode (using a personal API token from **Account > API tokens**):
+
+```sh
+curl -sS \
+  -H "Authorization: Bearer $MAILCUBBY_TOKEN" \
+  "https://mail.example.com/api/v1/projects/shop/messages/wait?query=subject:welcome&timeout=30s"
+```
+
 ---
 
 ## Reverse proxy notes
 
 Mailcubby terminates plain HTTP on `MAILCUBBY_HTTP_ADDR` (default `:8025`). Put Caddy, Traefik, or nginx in front of it for HTTPS, and set `MAILCUBBY_TRUSTED_PROXIES` to the CIDR(s) of your proxy so client IPs from `X-Forwarded-For` are recorded accurately in rate limits and audit logs.
+
+In `deploy/compose.server.yml`, `MAILCUBBY_TRUSTED_PROXIES` defaults to the RFC 1918 private ranges (`172.16.0.0/12,10.0.0.0/8,192.168.0.0/16`) so Docker's dynamically assigned bridge subnets are trusted automatically. This is safe in that Compose setup because Mailcubby's HTTP port (`:8025`) is not published on the host and is reachable only on the internal Docker bridge behind Caddy (which overwrites untrusted client `X-Forwarded-For` headers). If you publish `:8025` or otherwise make Mailcubby's HTTP port directly reachable from other hosts on a private network (or shared container network), narrow `MAILCUBBY_TRUSTED_PROXIES` to the specific reverse proxy subnet or IP so other hosts cannot spoof `X-Forwarded-For`.
 
 SMTP (`:1025` / `:587` and optional `:1465` / `:465`) is exposed directly by Mailcubby, not proxied through HTTP.
 
@@ -367,13 +493,27 @@ docker compose -f deploy/compose.server.yml start mailcubby
 
 ### Online backup (without downtime)
 
-SQLite runs in WAL mode, so never copy `app.db` with `cp` while Mailcubby is running. Use SQLite's online `.backup` command and then sync `blobs/`:
+SQLite runs in WAL mode, so never copy `app.db` with `cp` while Mailcubby is running. Use `mailcubby backup` (which runs SQLite's online `VACUUM INTO` and works inside the distroless Docker image without `sqlite3` or a shell), then copy `blobs/`.
+
+With Docker Compose (streams `app.db` to the host with no extra bind mount, then archives `blobs/` from the volume):
 
 ```sh
-mkdir -p /backups/mailcubby
-sqlite3 /path/to/data/app.db ".backup '/backups/mailcubby/app.db'"
+mkdir -m 0700 -p /backups/mailcubby
+(umask 077 && docker compose -f deploy/compose.server.yml exec -T mailcubby \
+  /mailcubby backup --out - > /backups/mailcubby/app.db)
+docker run --rm -v mailcubby_mailcubby-data:/data:ro -v /backups/mailcubby:/backup alpine:3.21 \
+  tar -cf /backup/blobs.tar -C /data blobs
+```
+
+With the standalone binary (or a bind-mounted data directory):
+
+```sh
+mkdir -m 0700 -p /backups/mailcubby
+mailcubby backup --data-dir /path/to/data --out /backups/mailcubby/app.db
 rsync -a /path/to/data/blobs/ /backups/mailcubby/blobs/
 ```
+
+`mailcubby backup --out <path>` writes atomically with mode `0600` and refuses to overwrite an existing file unless `--overwrite` is passed. Because `blobs/` already holds zstd-compressed `.eml.zst` files, plain `tar -cf` avoids spending CPU re-compressing them.
 
 To restore, stop Mailcubby, replace `app.db` (remove any old `app.db-wal`/`app.db-shm`) and `blobs/` with permissions owned by UID `65532` (in Docker), and start Mailcubby again.
 
@@ -454,6 +594,7 @@ sendmail_path = "/usr/local/bin/mailcubby sendmail -t --smtp localhost:1025 --us
 | `mailcubby keygen` | Generate a new 32-byte base64 `MAILCUBBY_APP_KEY`. |
 | `mailcubby healthcheck [--url]` | Exit 0 if `/readyz` returns 200 within 2 s (used by Docker `HEALTHCHECK`). |
 | `mailcubby migrate status` | Display applied and pending database migrations. |
+| `mailcubby backup --out <path\|-> [--data-dir path] [--overwrite]` | Create a consistent online SQLite backup of `app.db` (file or stdout). |
 | `mailcubby admin create-user --email --name [--admin]` | Create a user and print a one-time invite link. |
 | `mailcubby admin reset-password --email` | Print a one-time 1-hour password reset link. |
 | `mailcubby sendmail [-t] [-f from] [--smtp host:port] [--user u --password p] [to...]` | Submit an email from stdin over SMTP. |

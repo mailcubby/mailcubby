@@ -291,3 +291,38 @@ func TestTopLevelHelpAndAdminSubcommands(t *testing.T) {
 		t.Fatalf("admin list-users via main.run = (%d, stdout=%q, stderr=%q), want (0, %q)", code, stdout.String(), stderr.String(), "No users found.")
 	}
 }
+
+func TestBackupSubcommand(t *testing.T) {
+	t.Parallel()
+
+	// Usage lists the backup subcommand.
+	var helpOut, helpErr bytes.Buffer
+	if code := run([]string{"--help"}, strings.NewReader(""), &helpOut, &helpErr, func(string) (string, bool) { return "", false }); code != 0 {
+		t.Fatalf("help exit=%d, want 0 (stderr: %q)", code, helpErr.String())
+	}
+	if !strings.Contains(helpOut.String(), "backup") {
+		t.Fatalf("top-level help missing backup subcommand:\n%s", helpOut.String())
+	}
+
+	dir := t.TempDir()
+	st, err := store.Open(t.Context(), filepath.Join(dir, store.DBFilename))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	dst := filepath.Join(t.TempDir(), "app.db")
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"backup", "--out", dst}, strings.NewReader(""), &stdout, &stderr, func(k string) (string, bool) {
+		if k == "MAILCUBBY_DATA_DIR" {
+			return dir, true
+		}
+		return "", false
+	})
+	if code != 0 {
+		t.Fatalf("backup exit=%d, want 0 (stderr: %q)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), dst) {
+		t.Fatalf("backup stdout=%q, want %q", stdout.String(), dst)
+	}
+}
