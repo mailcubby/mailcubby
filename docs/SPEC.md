@@ -863,7 +863,7 @@ See FR-105. Admin and owner screens show the log.
 | ID | Requirement | Target | How measured |
 |---|---|---|---|
 | NFR-001 | Ingest throughput | at least 200 messages/s sustained, 10 KiB messages, 10 parallel SMTP clients, 2 vCPU, SSD | `make bench` (`BenchmarkSMTPIngest` in `internal/smtpd`, using `net/smtp`) |
-| NFR-002 | Ingest latency to SSE | p95 under 250 ms from end of DATA to SSE event | integration test with timestamps |
+| NFR-002 | Ingest latency to SSE | p95 under 250 ms from end of DATA to SSE event | `make bench` (`BenchmarkSSELatencyNFR002` in `internal/api`) |
 | NFR-003 | Message list | first page p95 under 50 ms with 100k messages in the project | Go benchmark on seeded DB |
 | NFR-004 | Search | p95 under 150 ms for a two-word query with 100k messages | Go benchmark |
 | NFR-005 | Memory | idle RSS under 40 MB; under 150 MB while ingesting at NFR-001 rate with 1M stored messages | manual + CI smoke |

@@ -14,7 +14,7 @@ Measured on **2026-11-25** against the v1.0 release candidate (`CGO_ENABLED=0` s
 | NFR | Requirement | Target | Measured | Status |
 |---|---|---|---|---|
 | **NFR-001** | SMTP ingest throughput (10 KiB, 10 parallel clients) | ≥ 200 msgs/s (2 vCPU, Linux SSD) | **190.0 msgs/s** (5.26 ms/op, 1.36 MB/op) on macOS APFS (`fsync` spool + dir + WAL per message) | Note below (see macOS APFS fsync barrier) |
-| **NFR-002** | Ingest latency to SSE (`message.created`) | < 250 ms p95 | **10.27 ms p95** (min 7.68 ms, median 9.60 ms, max 10.29 ms) | PASS |
+| **NFR-002** | Ingest latency to SSE (`message.created`) | < 250 ms p95 | **9.89 ms p95** (p50 8.55 ms, 9.05 ms/op) | PASS |
 | **NFR-003** | Message list first page (100k messages) | < 50 ms p95 | **0.55 ms p95** (p50 0.25 ms, 288 µs/op) | PASS |
 | **NFR-004** | Full-text search, two words (100k messages) | < 150 ms p95 | **11.10 ms p95** (p50 4.53 ms, 5.46 ms/op) | PASS |
 | **NFR-005** | Memory (RSS) | < 40 MB idle; < 150 MB ingesting | **22.03 MB idle**; **91.84 MB peak** during 10-client burst | PASS |
@@ -54,15 +54,13 @@ Notes:
 Command:
 
 ```sh
-go test -v ./internal/api -run TestIntegrationSSELatencyNFR002
+go test -run='^$' -bench=BenchmarkSSELatencyNFR002 -benchmem -benchtime=20x ./internal/api
 ```
 
 Output:
 
 ```text
-=== RUN   TestIntegrationSSELatencyNFR002
-    events_latency_test.go:60: NFR-002 SSE latency over 20 sends: min=7.676708ms median=9.601417ms p95=10.272834ms max=10.293084ms
---- PASS: TestIntegrationSSELatencyNFR002 (0.21s)
+BenchmarkSSELatencyNFR002-18    	      20	   9054365 ns/op	         8.549 p50-ms/op	         9.888 p95-ms/op	  808562 B/op	     625 allocs/op
 ```
 
 ### NFR-003: Message list first page (100k messages)
