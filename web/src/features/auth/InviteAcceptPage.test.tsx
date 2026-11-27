@@ -321,12 +321,112 @@ describe("InviteAcceptPage (FR-056)", () => {
 
     renderWithQuery(<InviteAcceptPage token="tok-logged-in" />);
     const acceptBtn = await screen.findByRole("button", { name: "Accept invitation" });
+    expect(screen.queryByRole("alert")).toBeNull();
     fireEvent.click(acceptBtn);
 
     await waitFor(() => {
       expect(mockPost).toHaveBeenCalledWith("/api/v1/invites/{token}/accept", {
         params: { path: { token: "tok-logged-in" } },
         body: {},
+      });
+    });
+  });
+
+  it("hides mismatch warning when signed-in email matches case-insensitively", async () => {
+    mockGet.mockImplementation(async (path: string) => {
+      if (path === "/api/v1/meta") {
+        return ok(SERVER_META);
+      }
+      if (path === "/api/v1/invites/{token}") {
+        return ok({
+          project: { name: "Shop Staging", slug: "shop" },
+          role: "member",
+          email: "DEV@Agency.Test",
+          invited_by: "Admin",
+          expires_at: "2026-12-01T00:00:00.000Z",
+        });
+      }
+      if (path === "/api/v1/auth/me") {
+        return ok({
+          user: {
+            id: 5,
+            email: " dev@agency.test ",
+            name: "Dev",
+            is_admin: false,
+            can_create_projects: false,
+          },
+          csrf_token: "csrf-5",
+          memberships: [],
+        });
+      }
+      if (path === "/api/v1/projects") {
+        return ok([]);
+      }
+      throw new Error(`unexpected GET ${path}`);
+    });
+
+    renderWithQuery(<InviteAcceptPage token="tok-case-match" />);
+    expect(await screen.findByRole("button", { name: "Accept invitation" })).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText(/Signed in as/)).toBeTruthy();
+  });
+
+  it("warns when signed-in email differs from invite and still accepts", async () => {
+    mockGet.mockImplementation(async (path: string) => {
+      if (path === "/api/v1/meta") {
+        return ok(SERVER_META);
+      }
+      if (path === "/api/v1/invites/{token}") {
+        return ok({
+          project: { name: "Shop Staging", slug: "shop" },
+          role: "viewer",
+          email: "client@shop.test",
+          invited_by: "Admin",
+          expires_at: "2026-12-01T00:00:00.000Z",
+        });
+      }
+      if (path === "/api/v1/auth/me") {
+        return ok({
+          user: {
+            id: 5,
+            email: "other@agency.test",
+            name: "Other User",
+            is_admin: false,
+            can_create_projects: false,
+          },
+          csrf_token: "csrf-5",
+          memberships: [],
+        });
+      }
+      if (path === "/api/v1/projects") {
+        return ok([]);
+      }
+      throw new Error(`unexpected GET ${path}`);
+    });
+
+    mockPost.mockResolvedValue(ok({ project: { name: "Shop Staging", slug: "shop" } }));
+
+    renderWithQuery(<InviteAcceptPage token="tok-email-mismatch" />);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Different email address");
+    expect(alert.textContent).toContain("client@shop.test");
+    expect(alert.textContent).toContain("other@agency.test");
+    expect(alert.textContent).toContain("Accepting will add other@agency.test to this project.");
+    expect(
+      screen.getByRole("button", { name: "Sign out to use a different account" }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept invitation" }));
+
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith("/api/v1/invites/{token}/accept", {
+        params: { path: { token: "tok-email-mismatch" } },
+        body: {},
+      });
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/p/$project",
+        params: { project: "shop" },
+        replace: true,
       });
     });
   });
