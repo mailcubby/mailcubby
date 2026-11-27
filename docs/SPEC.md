@@ -338,11 +338,12 @@ Unknown operators are treated as plain text. The parser MUST produce parameteris
 | `mailcubby keygen` | Print a new base64 `MAILCUBBY_APP_KEY`. |
 | `mailcubby healthcheck [--url]` | Exit 0 if `/readyz` returns 200 within 2 s, else exit 1 (for Docker `HEALTHCHECK` in a distroless image, no shell). Default URL: `http://127.0.0.1:<port of MAILCUBBY_HTTP_ADDR>/readyz`. |
 | `mailcubby migrate status` | Show applied migrations. Migrations run automatically on `serve`. |
+| `mailcubby backup --out <path\|-> [--data-dir path] [--overwrite]` | Create a consistent online backup of `app.db` using SQLite `VACUUM INTO` (safe while `serve` runs in WAL mode; works inside the distroless image without `sqlite3` or a shell). File targets are written atomically with mode `0600` and refuse to overwrite an existing file unless `--overwrite` is passed; `--out -` stages under `$MAILCUBBY_DATA_DIR/tmp/` and streams raw SQLite bytes to stdout. Refuses to run if `app.db` does not exist. |
 | `mailcubby admin create-user --email --name [--admin]` | Print an invite link for a new user. |
 | `mailcubby admin reset-password --email` | Print a single-use reset link. |
 | `mailcubby sendmail [-t] [-f from] [--smtp host:port] [--user u --password p] [to...]` | Read a message on stdin and submit it via SMTP (default `localhost:1025`, or `MAILCUBBY_SENDMAIL_SMTP`) as a sendmail replacement for PHP `sendmail_path`. Recipients from arguments, or from headers with `-t`. Flags commonly passed by PHP and MTAs (`-i`, `-oi`, `-odi`, `-bm`, `-F name`) are accepted and ignored. Exit code 0 on `250`, non-zero with the SMTP reply on stderr otherwise. |
 
-Admin commands open the same SQLite database (safe with WAL while `serve` runs).
+Admin and backup commands open the same SQLite database (safe with WAL while `serve` runs).
 
 The CLI uses the stdlib `flag` package, so long options are written `--name value` or `-name value`; `sendmail` parses its arguments by hand because sendmail-style flags (`-oi`, `-t`) do not fit `flag`.
 
@@ -792,7 +793,7 @@ $MAILCUBBY_DATA_DIR/
 - Write: create `tmp/<ulid>.tmp`, stream zstd-compressed DATA into it, fsync, rename into place, fsync the directory, then the DB transaction.
 - Delete: DB transaction first, then remove the file. Missing files on delete are not errors.
 - Read: open, zstd-decompress stream. Raw download streams without buffering the whole message.
-- Backup: stop the container or use `sqlite3 app.db ".backup"` plus a copy of `blobs/`. Documented in README.
+- Backup: stop the container and archive the data directory, or run `mailcubby backup --out <path|->` (online SQLite `VACUUM INTO`, works inside the distroless image without `sqlite3` or a shell) plus a copy of `blobs/` and a separate backup of `MAILCUBBY_APP_KEY`. Documented in README.
 - File modes: directories 0700, files 0600. `app.db` is created 0600 before SQLite opens it (SQLite gives `-wal`/`-shm` the same mode); an existing `app.db` (and leftover `-wal`/`-shm`) with wider permissions is tightened to 0600 at startup, best effort (a filesystem that rejects `chmod`, such as some bind mounts, does not stop startup). No process umask is changed. The container runs as non-root UID 65532.
 
 ---
