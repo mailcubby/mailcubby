@@ -271,6 +271,8 @@ To bootstrap an admin headlessly instead of using the setup wizard, set `MAILCUB
 docker compose -f deploy/compose.server.yml exec mailcubby /mailcubby admin reset-password --email admin@example.com
 ```
 
+> **Security note (API tokens):** Completing a password reset revokes all active browser sessions and closes open SSE streams (changing a password in Account settings revokes all other sessions), but intentionally does **not** revoke the user's personal API tokens so CI and test integrations keep running. If an account may be compromised, revoke its API tokens separately (Account → API tokens, or `DELETE /api/v1/tokens/{id}`), or disable the user in Admin → Users to immediately revoke both sessions and all API tokens.
+
 #### 5. Verify STARTTLS on port 587
 
 Using a credential created in your project's SMTP settings:
@@ -291,6 +293,8 @@ To also accept **implicit TLS (SMTPS)** on port 465, uncomment `MAILCUBBY_SMTPS_
 ## Reverse proxy notes
 
 Mailcubby terminates plain HTTP on `MAILCUBBY_HTTP_ADDR` (default `:8025`). Put Caddy, Traefik, or nginx in front of it for HTTPS, and set `MAILCUBBY_TRUSTED_PROXIES` to the CIDR(s) of your proxy so client IPs from `X-Forwarded-For` are recorded accurately in rate limits and audit logs.
+
+In `deploy/compose.server.yml`, `MAILCUBBY_TRUSTED_PROXIES` defaults to the RFC 1918 private ranges (`172.16.0.0/12,10.0.0.0/8,192.168.0.0/16`) so Docker's dynamically assigned bridge subnets are trusted automatically. This is safe in that Compose setup because Mailcubby's HTTP port (`:8025`) is not published on the host and is reachable only on the internal Docker bridge behind Caddy (which overwrites untrusted client `X-Forwarded-For` headers). If you publish `:8025` or otherwise make Mailcubby's HTTP port directly reachable from other hosts on a private network (or shared container network), narrow `MAILCUBBY_TRUSTED_PROXIES` to the specific reverse proxy subnet or IP so other hosts cannot spoof `X-Forwarded-For`.
 
 SMTP (`:1025` / `:587` and optional `:1465` / `:465`) is exposed directly by Mailcubby, not proxied through HTTP.
 
