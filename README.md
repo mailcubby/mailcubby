@@ -165,6 +165,73 @@ Open http://localhost:8025 and point your application's SMTP settings at `localh
 - The SMTP username becomes the project slug and auto-creates the project on first message (for example `MAIL_USERNAME=shop-staging` routes to project `shop-staging`).
 - Without SMTP credentials, mail goes to the `default` project (or routes by recipient when `MAILCUBBY_INBOX_DOMAIN` is set).
 
+#### Framework SMTP snippets (local mode)
+
+Each project in the web UI includes copyable snippets (Laravel, Symfony, Nodemailer, WordPress, Django, Rails, `swaks`, and PHP `sendmail_path`). For a quick local setup targeting project `shop`:
+
+**Laravel (`.env`)**
+
+```env
+MAIL_MAILER=smtp
+MAIL_SCHEME=smtp            # Laravel 10 and older: MAIL_ENCRYPTION=null
+MAIL_HOST=localhost
+MAIL_PORT=1025
+MAIL_USERNAME=shop
+MAIL_PASSWORD=dev
+```
+
+**Node.js (Nodemailer)**
+
+```js
+nodemailer.createTransport({
+  host: "localhost",
+  port: 1025,
+  secure: false,
+  auth: {
+    user: "shop",
+    pass: "dev",
+  },
+});
+```
+
+**Django (`settings.py`)**
+
+```python
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "localhost"
+EMAIL_PORT = 1025
+EMAIL_HOST_USER = "shop"
+EMAIL_HOST_PASSWORD = "dev"
+EMAIL_USE_TLS = False
+```
+
+**Rails (`config/environments/development.rb`)**
+
+```ruby
+config.action_mailer.delivery_method = :smtp
+config.action_mailer.smtp_settings = {
+  address: "localhost",
+  port: 1025,
+  user_name: "shop",
+  password: "dev",
+  authentication: :plain,
+  enable_starttls_auto: false,
+}
+```
+
+#### Reaching Mailcubby from Docker containers
+
+If your application runs inside a Docker container while Mailcubby runs on the host (for example via Homebrew, `mailcubby serve`, LaunchAgent, or systemd), point your container's SMTP host at `host.docker.internal:1025` instead of `localhost:1025` (Mailcubby must be listening on all interfaces, the default `:1025`, rather than `127.0.0.1:1025`).
+
+Docker Desktop on macOS and Windows resolves `host.docker.internal` automatically. On Linux, pass `--add-host=host.docker.internal:host-gateway` to `docker run`, or add it in Compose:
+
+```yaml
+services:
+  app:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
+
 > **Warning:** Local mode has no authentication. Never expose it to the internet.
 
 Local mode rejects cross-origin `POST`/`PUT`/`PATCH`/`DELETE` requests from browsers (`403`), so a web page you visit cannot change your inbox. curl, SDKs, test clients, the Vite dev proxy and reverse proxies are not affected; behind a proxy that rewrites `Host`, set `MAILCUBBY_BASE_URL` to the URL you open.
@@ -248,6 +315,24 @@ swaks --to test@example.test \
 ```
 
 To also accept **implicit TLS (SMTPS)** on port 465, uncomment `MAILCUBBY_SMTPS_ADDR: :1465` and the `"465:1465"` port mapping in `deploy/compose.server.yml` (the same certificate reloader serves both STARTTLS and implicit TLS).
+
+### Waiting for an email in tests
+
+Use `GET /api/v1/projects/{project}/messages/wait` in CI and end-to-end tests instead of polling. The endpoint blocks until a message matching `query` arrives and returns it (`200` JSON), or returns `204 No Content` when `timeout` elapses (default `30s`, max `MAILCUBBY_API_WAIT_MAX_TIMEOUT`, default `120s`). Pass `since=<ulid-or-rfc3339>` to also match messages that arrived just before the call.
+
+Local mode (no authentication):
+
+```sh
+curl -sS "http://localhost:8025/api/v1/projects/shop/messages/wait?query=subject:welcome&timeout=30s"
+```
+
+Server mode (using a personal API token from **Account > API tokens**):
+
+```sh
+curl -sS \
+  -H "Authorization: Bearer $MAILCUBBY_TOKEN" \
+  "https://mail.example.com/api/v1/projects/shop/messages/wait?query=subject:welcome&timeout=30s"
+```
 
 ---
 

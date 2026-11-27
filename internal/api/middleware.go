@@ -247,11 +247,7 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 		}
 		duration := s.clk.Now().Sub(start)
 
-		// FR-110: /healthz and /readyz must not log at INFO.
-		level := slog.LevelInfo
-		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
-			level = slog.LevelDebug
-		}
+		level := accessLogLevel(r.URL.Path, status)
 
 		// Log path without query string and never log Authorization/Cookie/X-CSRF-Token.
 		s.log.Log(r.Context(), level, "http request",
@@ -265,6 +261,26 @@ func (s *Server) accessLogMiddleware(next http.Handler) http.Handler {
 			"principal", string(meta.principalKind),
 		)
 	})
+}
+
+func accessLogLevel(reqPath string, status int) slog.Level {
+	cleanPath := path.Clean("/" + reqPath)
+	// FR-110: /healthz and /readyz must not log at INFO.
+	if cleanPath == "/healthz" || cleanPath == "/readyz" {
+		return slog.LevelDebug
+	}
+	// Routine static asset hits are logged at DEBUG unless they fail (>= 400).
+	if status < http.StatusBadRequest && isQuietAssetPath(cleanPath) {
+		return slog.LevelDebug
+	}
+	return slog.LevelInfo
+}
+
+func isQuietAssetPath(cleanPath string) bool {
+	return strings.HasPrefix(cleanPath, "/assets/") ||
+		cleanPath == "/favicon.svg" ||
+		cleanPath == "/favicon.ico" ||
+		cleanPath == "/theme.js"
 }
 
 func (s *Server) bodyLimitMiddleware(next http.Handler) http.Handler {
