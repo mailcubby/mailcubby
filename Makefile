@@ -188,9 +188,9 @@ check: ## Verify generated code is up to date, then lint, test, and build-all
 	fi; \
 	pnpm --dir web check:bundle
 
-bench: ## Run Go benchmarks (store, search, ingest, smtpd, app)
+bench: ## Run Go benchmarks (store, search, ingest, smtpd, api, app)
 	@pkgs=""; \
-	for p in ./internal/store ./internal/search ./internal/ingest ./internal/smtpd ./internal/app; do \
+	for p in ./internal/store ./internal/search ./internal/ingest ./internal/smtpd ./internal/api ./internal/app; do \
 		if [ -d "$$p" ]; then pkgs="$$pkgs $$p"; fi; \
 	done; \
 	if [ -z "$$pkgs" ]; then \

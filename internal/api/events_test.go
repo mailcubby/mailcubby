@@ -27,7 +27,7 @@ type sseFrame struct {
 	retry   string
 }
 
-func readSSEFrame(t *testing.T, r *bufio.Reader) (sseFrame, error) {
+func readSSEFrame(t testing.TB, r *bufio.Reader) (sseFrame, error) {
 	t.Helper()
 	const timeout = 2 * time.Second
 	type result struct {
