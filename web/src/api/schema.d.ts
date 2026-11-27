@@ -913,6 +913,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/render/{project}/{id}/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: components["parameters"]["MessageID"];
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        /** Serve a validated PDF attachment inline with PDF-specific CSP headers (ADR 0009) */
+        get: operations["renderMessageAttachmentPDF"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -924,7 +945,7 @@ export interface components {
         ErrorEnvelope: {
             error: {
                 /** @enum {string} */
-                code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "method_not_allowed" | "conflict" | "login_required" | "gone" | "payload_too_large" | "rate_limited" | "internal" | "service_unavailable";
+                code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "method_not_allowed" | "conflict" | "login_required" | "gone" | "payload_too_large" | "unsupported_media_type" | "rate_limited" | "internal" | "service_unavailable";
                 message: string;
                 details?: {
                     [key: string]: string;
@@ -947,6 +968,7 @@ export interface components {
                 /** @enum {string} */
                 remote_images: "opt-in" | "off";
                 recipient_routing: boolean;
+                inline_pdf: boolean;
             };
             inbox_domain: string;
             smtp: components["schemas"]["SMTPConnectionInfo"];
@@ -3242,6 +3264,34 @@ export interface operations {
                 };
             };
             404: components["responses"]["ErrorResponse"];
+        };
+    };
+    renderMessageAttachmentPDF: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: components["parameters"]["MessageID"];
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Inline PDF preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            415: components["responses"]["ErrorResponse"];
         };
     };
 }

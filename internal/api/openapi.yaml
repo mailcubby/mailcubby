@@ -1576,6 +1576,36 @@ paths:
         "404":
           $ref: "#/components/responses/ErrorResponse"
 
+  /render/{project}/{id}/attachments/{attachment_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - $ref: "#/components/parameters/MessageID"
+      - name: attachment_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: renderMessageAttachmentPDF
+      summary: Serve a validated PDF attachment inline with PDF-specific CSP headers (ADR 0009)
+      responses:
+        "200":
+          description: Inline PDF preview
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "415":
+          $ref: "#/components/responses/ErrorResponse"
+
 components:
   parameters:
     ProjectSlug:
@@ -1644,6 +1674,7 @@ components:
                 - login_required
                 - gone
                 - payload_too_large
+                - unsupported_media_type
                 - rate_limited
                 - internal
                 - service_unavailable
@@ -1689,12 +1720,14 @@ components:
           type: string
         features:
           type: object
-          required: [remote_images, recipient_routing]
+          required: [remote_images, recipient_routing, inline_pdf]
           properties:
             remote_images:
               type: string
               enum: [opt-in, "off"]
             recipient_routing:
+              type: boolean
+            inline_pdf:
               type: boolean
         inbox_domain:
           type: string

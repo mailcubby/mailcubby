@@ -1,0 +1,39 @@
+From: attacker@evil.example
+To: victim@app.test
+Subject: Hostile 13: Forged HTML and SVG disguised as PDF
+Date: Tue, 27 Nov 2026 12:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="forged-pdf-boundary"
+
+--forged-pdf-boundary
+Content-Type: text/html; charset="utf-8"
+
+<!doctype html>
+<html>
+  <body>
+    <p>Please review the attached forged PDF documents.</p>
+  </body>
+</html>
+
+--forged-pdf-boundary
+Content-Type: application/pdf; name="invoice-evil.pdf"
+Content-Disposition: attachment; filename="invoice-evil.pdf"
+
+<!doctype html>
+<html>
+  <body>
+    <script>
+      window.__pwned = 'forged-pdf-html';
+      try { window.top.__pwned = 'forged-pdf-html'; } catch (e) {}
+    </script>
+    <p>HTML disguised as application/pdf</p>
+  </body>
+</html>
+
+--forged-pdf-boundary
+Content-Type: application/pdf; name="diagram-evil.pdf"
+Content-Disposition: attachment; filename="diagram-evil.pdf"
+
+<svg xmlns="http://www.w3.org/2000/svg" onload="window.__pwned='forged-pdf-svg';try{window.top.__pwned='forged-pdf-svg';}catch(e){}"><script>window.__pwned='forged-pdf-svg-script';</script></svg>
+
+--forged-pdf-boundary--

@@ -20,6 +20,7 @@ var openAPISpec []byte
 type metaFeatures struct {
 	RemoteImages     string `json:"remote_images"`
 	RecipientRouting bool   `json:"recipient_routing"`
+	InlinePDF        bool   `json:"inline_pdf"`
 }
 
 type smtpConnectionInfo struct {
@@ -96,6 +97,7 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		Features: metaFeatures{
 			RemoteImages:     string(s.cfg.RenderRemoteImages),
 			RecipientRouting: s.cfg.InboxDomain != "",
+			InlinePDF:        s.cfg.RenderInlinePDF,
 		},
 		InboxDomain: s.cfg.InboxDomain,
 		SMTP:        s.smtpConnectionInfo(),

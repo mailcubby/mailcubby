@@ -137,6 +137,7 @@ func (s *Server) buildRoutes() []Route {
 		// Events & Render (SPEC 8.9)
 		{Method: http.MethodGet, Pattern: "/api/v1/events", Need: PermUser, Handler: s.handleEvents},
 		{Method: http.MethodGet, Pattern: "/render/{project}/{id}", Need: PermViewer, Handler: s.handleRenderMessage},
+		{Method: http.MethodGet, Pattern: "/render/{project}/{id}/attachments/{attachment_id}", Need: PermViewer, Handler: s.handleRenderAttachment},
 	}
 }
 

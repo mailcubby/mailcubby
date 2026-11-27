@@ -145,7 +145,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 	credsByRole[roleTokenRead] = roleCreds{user: ownerUser, bearer: readTok}
 	credsByRole[roleTokenWrite] = roleCreds{user: ownerUser, bearer: writeTok}
 
-	sendSample := func(slug string) (string, int64) {
+	sendSample := func(slug string) (string, int64, int64) {
 		t.Helper()
 		oc := credsByRole[roleOwner]
 		rec := doReq(t, h, http.MethodPost, "/api/v1/projects/"+slug+"/send-test", nil, oc.cookie, csrfHeaders(oc.csrf))
@@ -161,17 +161,28 @@ func TestAuthorizationMatrix(t *testing.T) {
 		detRec := doReq(t, h, http.MethodGet, "/api/v1/projects/"+slug+"/messages/"+s.ID, nil, oc.cookie, nil)
 		var d struct {
 			Attachments []struct {
-				ID int64 `json:"id"`
+				ID          int64  `json:"id"`
+				ContentType string `json:"content_type"`
 			} `json:"attachments"`
 		}
 		if err := json.Unmarshal(detRec.Body.Bytes(), &d); err != nil || len(d.Attachments) == 0 {
 			t.Fatalf("seed attachment lookup failed: err=%v len=%d", err, len(d.Attachments))
 		}
-		return s.ID, d.Attachments[0].ID
+		var pdfID int64
+		for _, a := range d.Attachments {
+			if strings.HasPrefix(strings.ToLower(a.ContentType), "application/pdf") {
+				pdfID = a.ID
+				break
+			}
+		}
+		if pdfID == 0 {
+			t.Fatalf("seed sample message missing PDF attachment: %+v", d.Attachments)
+		}
+		return s.ID, d.Attachments[0].ID, pdfID
 	}
 
-	msgID, attID := sendSample(proj.Slug)
-	msgTechOffID, _ := sendSample(projTechOff.Slug)
+	msgID, attID, pdfAttID := sendSample(proj.Slug)
+	msgTechOffID, _, _ := sendSample(projTechOff.Slug)
 
 	seedTag, err := env.store.CreateTag(t.Context(), proj.ID, "seed-tag", "slate", env.clk.Now().UTC())
 	if err != nil {
@@ -481,7 +492,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 			expected: member204,
 			makeReq: func(t *testing.T, role authzRole, _ roleCreds) (string, any, *http.Cookie, string) {
 				if role == roleMember || role == roleOwner || role == roleAdmin || role == roleTokenWrite {
-					id, _ := sendSample(proj.Slug)
+					id, _, _ := sendSample(proj.Slug)
 					return "/api/v1/projects/" + proj.Slug + "/messages/" + id, nil, nil, ""
 				}
 				return "/api/v1/projects/" + proj.Slug + "/messages/" + msgID, nil, nil, ""
@@ -687,8 +698,9 @@ func TestAuthorizationMatrix(t *testing.T) {
 		"GET /api/v1/admin/stats":      {expected: adminOK, makeReq: constPath("/api/v1/admin/stats", nil)},
 
 		// Events & Render
-		"GET /api/v1/events":         {expected: userOK, makeReq: constPath("/api/v1/events", nil)},
-		"GET /render/{project}/{id}": {expected: viewerOK, makeReq: constPath("/render/"+proj.Slug+"/"+msgID, nil)},
+		"GET /api/v1/events":                                     {expected: userOK, makeReq: constPath("/api/v1/events", nil)},
+		"GET /render/{project}/{id}":                             {expected: viewerOK, makeReq: constPath("/render/"+proj.Slug+"/"+msgID, nil)},
+		"GET /render/{project}/{id}/attachments/{attachment_id}": {expected: viewerOK, makeReq: constPath("/render/"+proj.Slug+"/"+msgID+"/attachments/"+strconv.FormatInt(pdfAttID, 10), nil)},
 	}
 
 	// 1. Assert 1:1 coverage between srv.Routes() and matrix (FR-050 AC).

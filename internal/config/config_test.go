@@ -289,8 +289,8 @@ func TestLoadLocalDefaults(t *testing.T) {
 	if cfg.RetentionMaxAge != 30*24*time.Hour || cfg.RetentionMaxMessages != 5000 || cfg.RetentionMaxBytes != 1024*1024*1024 {
 		t.Errorf("Retention defaults mismatch: %+v", cfg)
 	}
-	if cfg.ZstdLevel != 3 || !cfg.HSTS || cfg.RenderRemoteImages != RenderRemoteImagesOptIn {
-		t.Errorf("Other defaults mismatch: zstd=%d hsts=%v remote=%q", cfg.ZstdLevel, cfg.HSTS, cfg.RenderRemoteImages)
+	if cfg.ZstdLevel != 3 || !cfg.HSTS || cfg.RenderRemoteImages != RenderRemoteImagesOptIn || !cfg.RenderInlinePDF {
+		t.Errorf("Other defaults mismatch: zstd=%d hsts=%v remote=%q inline_pdf=%v", cfg.ZstdLevel, cfg.HSTS, cfg.RenderRemoteImages, cfg.RenderInlinePDF)
 	}
 }
 
@@ -335,6 +335,9 @@ func TestLoadServerDefaultsAndOverrides(t *testing.T) {
 	}
 	if !cfg.SMTPRateLimit.Disabled() {
 		t.Errorf("SMTPRateLimit = %+v, want disabled", cfg.SMTPRateLimit)
+	}
+	if !cfg.RenderInlinePDF {
+		t.Errorf("RenderInlinePDF = false, want true by default in server mode")
 	}
 	wantProxies := []netip.Prefix{
 		netip.MustParsePrefix("10.0.0.0/8"),
@@ -467,6 +470,7 @@ func TestLoadValidationErrors(t *testing.T) {
 				"MAILCUBBY_ZSTD_LEVEL":           "20",
 				"MAILCUBBY_SMTP_PUBLIC_PORT":     "70000",
 				"MAILCUBBY_RENDER_REMOTE_IMAGES": "always",
+				"MAILCUBBY_RENDER_INLINE_PDF":    "maybe",
 				"MAILCUBBY_DEFAULT_PROJECT":      "admin",
 				"MAILCUBBY_TRUSTED_PROXIES":      "not-a-cidr",
 				"MAILCUBBY_SMTP_TLS_CERT":        "/etc/cert.pem",
@@ -475,6 +479,7 @@ func TestLoadValidationErrors(t *testing.T) {
 				"MAILCUBBY_ZSTD_LEVEL",
 				"MAILCUBBY_SMTP_PUBLIC_PORT",
 				"MAILCUBBY_RENDER_REMOTE_IMAGES",
+				"MAILCUBBY_RENDER_INLINE_PDF",
 				"MAILCUBBY_DEFAULT_PROJECT",
 				"MAILCUBBY_TRUSTED_PROXIES",
 				"MAILCUBBY_SMTP_TLS_CERT",
@@ -606,6 +611,44 @@ func TestLoadModeExplicit(t *testing.T) {
 			}
 			if cfg.Mode != tc.wantMode || cfg.ModeExplicit != tc.wantExplicit {
 				t.Fatalf("Mode = (%q, explicit=%v), want (%q, %v)", cfg.Mode, cfg.ModeExplicit, tc.wantMode, tc.wantExplicit)
+			}
+		})
+	}
+}
+
+// SPEC 9.2, ADR 0009: MAILCUBBY_RENDER_INLINE_PDF defaults to true in both modes
+// and accepts standard boolean overrides.
+func TestLoadRenderInlinePDF(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		env  map[string]string
+		want bool
+	}{
+		{name: "local default", env: nil, want: true},
+		{name: "local false", env: map[string]string{"MAILCUBBY_RENDER_INLINE_PDF": "false"}, want: false},
+		{name: "local zero", env: map[string]string{"MAILCUBBY_RENDER_INLINE_PDF": "0"}, want: false},
+		{name: "local true", env: map[string]string{"MAILCUBBY_RENDER_INLINE_PDF": "true"}, want: true},
+		{name: "local one", env: map[string]string{"MAILCUBBY_RENDER_INLINE_PDF": "1"}, want: true},
+		{name: "server false", env: map[string]string{
+			"MAILCUBBY_MODE":                     "server",
+			"MAILCUBBY_BASE_URL":                 "https://mail.example.com",
+			"MAILCUBBY_APP_KEY":                  testAppKeyBase64(),
+			"MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH": "true",
+			"MAILCUBBY_RENDER_INLINE_PDF":        "false",
+		}, want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := Load(mapLookup(tc.env))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.RenderInlinePDF != tc.want {
+				t.Fatalf("RenderInlinePDF = %v, want %v", cfg.RenderInlinePDF, tc.want)
 			}
 		})
 	}
