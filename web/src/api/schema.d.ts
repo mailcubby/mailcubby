@@ -451,6 +451,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/messages/{id}/html-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: components["parameters"]["MessageID"];
+            };
+            cookie?: never;
+        };
+        /** Run offline email client HTML/CSS compatibility check against embedded caniemail data */
+        get: operations["getMessageHTMLCheck"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/messages/{id}/headers": {
         parameters: {
             query?: never;
@@ -1233,6 +1253,65 @@ export interface components {
         PatchMessageRequest: {
             seen?: boolean;
             tags?: string[];
+        };
+        /** @enum {string} */
+        HTMLCheckClientFamily: "gmail" | "outlook" | "apple-mail" | "yahoo" | "other";
+        /** @enum {string} */
+        HTMLCheckSupportStatus: "supported" | "partial" | "unsupported" | "unknown";
+        /** @enum {string} */
+        HTMLCheckFeatureCategory: "html" | "css" | "image" | "others";
+        HTMLCheckDatasetMeta: {
+            source: string;
+            license: string;
+            api_version: string;
+            last_update_date: string;
+        };
+        HTMLCheckClient: {
+            id: string;
+            family: components["schemas"]["HTMLCheckClientFamily"];
+            family_name: string;
+            name: string;
+            platform: string;
+            weight: number;
+        };
+        HTMLCheckClientSupport: {
+            client_id: string;
+            status: components["schemas"]["HTMLCheckSupportStatus"];
+            notes?: string[];
+        };
+        HTMLCheckFeatureSummary: {
+            supported: number;
+            partial: number;
+            unsupported: number;
+            unknown: number;
+        };
+        HTMLCheckFeature: {
+            slug: string;
+            title: string;
+            category: components["schemas"]["HTMLCheckFeatureCategory"];
+            /** Format: uri */
+            url: string;
+            count: number;
+            summary: components["schemas"]["HTMLCheckFeatureSummary"];
+            support: components["schemas"]["HTMLCheckClientSupport"][];
+        };
+        HTMLCheckSummary: {
+            supported_pct: number;
+            partial_pct: number;
+            unsupported_pct: number;
+            supported: number;
+            partial: number;
+            unsupported: number;
+            unknown: number;
+            features_count: number;
+        };
+        HTMLCheckReport: {
+            score: number;
+            summary: components["schemas"]["HTMLCheckSummary"];
+            dataset: components["schemas"]["HTMLCheckDatasetMeta"];
+            truncated: boolean;
+            clients: components["schemas"]["HTMLCheckClient"][];
+            features: components["schemas"]["HTMLCheckFeature"][];
         };
         BulkMessagesRequest: {
             ids: string[];
@@ -2336,6 +2415,31 @@ export interface operations {
                     "text/plain": string;
                 };
             };
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    getMessageHTMLCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: components["parameters"]["MessageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description HTML/CSS compatibility report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTMLCheckReport"];
+                };
+            };
+            403: components["responses"]["ErrorResponse"];
             404: components["responses"]["ErrorResponse"];
         };
     };

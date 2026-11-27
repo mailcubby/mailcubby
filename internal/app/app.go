@@ -24,6 +24,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/blob"
 	"github.com/mailcubby/mailcubby/internal/clock"
+	"github.com/mailcubby/mailcubby/internal/compat"
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
 	"github.com/mailcubby/mailcubby/internal/ingest"
@@ -266,12 +267,24 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 	handler := opts.HTTPHandler
 	if handler == nil {
 		renderer := render.New(blobs)
+		compatChecker, err := compat.New(blobs)
+		if err != nil {
+			if smtpsLn != nil {
+				_ = smtpsLn.Close()
+			}
+			_ = httpLn.Close()
+			_ = smtpLn.Close()
+			bus.Close()
+			_ = st.Close()
+			return nil, fmt.Errorf("app: init compat checker: %w", err)
+		}
 		a.apiSrv = api.New(cfg, st, blobs, bus, api.Options{
 			Version:        ver,
 			Clock:          clk,
 			Logger:         log,
 			Ingestor:       ing,
 			Renderer:       renderer,
+			CompatChecker:  compatChecker,
 			WebHandler:     web.Handler(),
 			ListenersReady: a.listenersReady.Load,
 		})

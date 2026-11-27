@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/mailcubby/mailcubby/internal/auth"
+	"github.com/mailcubby/mailcubby/internal/compat"
 	"github.com/mailcubby/mailcubby/internal/ingest"
 	"github.com/mailcubby/mailcubby/internal/render"
 	"github.com/mailcubby/mailcubby/internal/search"
@@ -483,6 +484,47 @@ func (s *Server) handleGetMessageHTML(w http.ResponseWriter, r *http.Request) {
 	h.Set("Cache-Control", "private, no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, htmlSrc)
+}
+
+func (s *Server) handleGetMessageHTMLCheck(w http.ResponseWriter, r *http.Request) {
+	pctx, msg, ok := s.loadProjectMessage(w, r)
+	if !ok {
+		return
+	}
+	if !msg.HasHTML {
+		writeError(w, http.StatusNotFound, ErrCodeNotFound, "message has no HTML part", nil)
+		return
+	}
+	if s.compatChecker == nil {
+		s.log.Error("html compatibility checker is not initialized",
+			"request_id", RequestIDFromContext(r.Context()),
+			"project_id", pctx.Project.ID,
+			"message_id", msg.ID,
+		)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+
+	report, err := s.compatChecker.Check(r.Context(), pctx.Project.ID, msg.ID, msg.BlobPath)
+	if err != nil {
+		if errors.Is(err, compat.ErrNoHTML) {
+			writeError(w, http.StatusNotFound, ErrCodeNotFound, "message has no HTML part", nil)
+			return
+		}
+		if errors.Is(err, context.Canceled) || r.Context().Err() != nil {
+			return
+		}
+		s.log.Error("html compatibility check failed",
+			"request_id", RequestIDFromContext(r.Context()),
+			"project_id", pctx.Project.ID,
+			"message_id", msg.ID,
+			"error", err,
+		)
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "internal server error", nil)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, report)
 }
 
 func (s *Server) handleGetMessageHeaders(w http.ResponseWriter, r *http.Request) {

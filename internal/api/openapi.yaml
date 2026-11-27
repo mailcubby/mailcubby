@@ -711,6 +711,25 @@ paths:
         "404":
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/projects/{project}/messages/{id}/html-check:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - $ref: "#/components/parameters/MessageID"
+    get:
+      operationId: getMessageHTMLCheck
+      summary: Run offline email client HTML/CSS compatibility check against embedded caniemail data
+      responses:
+        "200":
+          description: HTML/CSS compatibility report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTMLCheckReport"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/projects/{project}/messages/{id}/headers:
     parameters:
       - $ref: "#/components/parameters/ProjectSlug"
@@ -2326,6 +2345,146 @@ components:
           maxItems: 50
           items:
             type: string
+
+    HTMLCheckClientFamily:
+      type: string
+      enum: [gmail, outlook, apple-mail, yahoo, other]
+
+    HTMLCheckSupportStatus:
+      type: string
+      enum: [supported, partial, unsupported, unknown]
+
+    HTMLCheckFeatureCategory:
+      type: string
+      enum: [html, css, image, others]
+
+    HTMLCheckDatasetMeta:
+      type: object
+      required: [source, license, api_version, last_update_date]
+      properties:
+        source:
+          type: string
+        license:
+          type: string
+        api_version:
+          type: string
+        last_update_date:
+          type: string
+
+    HTMLCheckClient:
+      type: object
+      required: [id, family, family_name, name, platform, weight]
+      properties:
+        id:
+          type: string
+        family:
+          $ref: "#/components/schemas/HTMLCheckClientFamily"
+        family_name:
+          type: string
+        name:
+          type: string
+        platform:
+          type: string
+        weight:
+          type: integer
+
+    HTMLCheckClientSupport:
+      type: object
+      required: [client_id, status]
+      properties:
+        client_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/HTMLCheckSupportStatus"
+        notes:
+          type: array
+          items:
+            type: string
+
+    HTMLCheckFeatureSummary:
+      type: object
+      required: [supported, partial, unsupported, unknown]
+      properties:
+        supported:
+          type: integer
+        partial:
+          type: integer
+        unsupported:
+          type: integer
+        unknown:
+          type: integer
+
+    HTMLCheckFeature:
+      type: object
+      required: [slug, title, category, url, count, summary, support]
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        category:
+          $ref: "#/components/schemas/HTMLCheckFeatureCategory"
+        url:
+          type: string
+          format: uri
+        count:
+          type: integer
+        summary:
+          $ref: "#/components/schemas/HTMLCheckFeatureSummary"
+        support:
+          type: array
+          items:
+            $ref: "#/components/schemas/HTMLCheckClientSupport"
+
+    HTMLCheckSummary:
+      type: object
+      required:
+        - supported_pct
+        - partial_pct
+        - unsupported_pct
+        - supported
+        - partial
+        - unsupported
+        - unknown
+        - features_count
+      properties:
+        supported_pct:
+          type: number
+        partial_pct:
+          type: number
+        unsupported_pct:
+          type: number
+        supported:
+          type: integer
+        partial:
+          type: integer
+        unsupported:
+          type: integer
+        unknown:
+          type: integer
+        features_count:
+          type: integer
+
+    HTMLCheckReport:
+      type: object
+      required: [score, summary, dataset, truncated, clients, features]
+      properties:
+        score:
+          type: number
+        summary:
+          $ref: "#/components/schemas/HTMLCheckSummary"
+        dataset:
+          $ref: "#/components/schemas/HTMLCheckDatasetMeta"
+        truncated:
+          type: boolean
+        clients:
+          type: array
+          items:
+            $ref: "#/components/schemas/HTMLCheckClient"
+        features:
+          type: array
+          items:
+            $ref: "#/components/schemas/HTMLCheckFeature"
 
     BulkMessagesRequest:
       type: object

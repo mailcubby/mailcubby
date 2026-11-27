@@ -91,6 +91,7 @@ func (s *Server) buildRoutes() []Route {
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}/raw", Need: PermViewerTech, Handler: s.handleGetMessageRaw},
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}/eml", Need: PermViewerTech, Handler: s.handleGetMessageEML},
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}/html", Need: PermViewerTech, Handler: s.handleGetMessageHTML},
+		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}/html-check", Need: PermViewerTech, Handler: s.handleGetMessageHTMLCheck},
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}/headers", Need: PermViewerTech, Handler: s.handleGetMessageHeaders},
 		{Method: http.MethodGet, Pattern: "/api/v1/projects/{project}/messages/{id}/attachments/{attachment_id}", Need: PermViewer, Handler: s.handleGetMessageAttachment},
 		{Method: http.MethodPost, Pattern: "/api/v1/projects/{project}/send-test", Need: PermMember, Handler: s.handleSendTest},

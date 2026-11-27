@@ -173,7 +173,7 @@ Roles are per project: `owner`, `member`, `viewer`. Instance admins (`users.is_a
 | Action | viewer | member | owner | admin |
 |---|---|---|---|---|
 | See project in list, read message list and message content (HTML preview, text, attachments) | yes | yes | yes | yes |
-| Raw source, headers, HTML source, `.eml` download, Tech tab | yes, unless `viewer_hide_technical` | yes | yes | yes |
+| Raw source, headers, HTML source, `.eml` download, HTML compatibility check, Tech tab | yes, unless `viewer_hide_technical` | yes | yes | yes |
 | Mark seen/unseen | no | yes | yes | yes |
 | Add/remove tags on messages, create/edit/delete tags | no | yes | yes | yes |
 | Delete messages, delete all, send test email | no | yes | yes | yes |
@@ -249,6 +249,11 @@ Acceptance is single-use: `accepted_at` is set in the same transaction with a `W
 **FR-078 Wait for message.** `GET /api/v1/projects/{p}/messages/wait?query=&since=&timeout=` blocks until a message matching `query` with ID greater than `since` exists, then returns it (`200`). `since` accepts a ULID, an RFC 3339 time, or `now` (default: request time). `timeout` defaults to `30s` (capped at `MAILCUBBY_API_WAIT_MAX_TIMEOUT`, default `120s`; values above the cap return `400`). On timeout returns `204`. Implementation subscribes to the event bus (project-scoped, 256-event buffer) before querying the DB so no message can be missed, lifts the HTTP server write deadline while waiting, and unsubscribes on response, client disconnect, or server shutdown (returning `503` on slow-consumer bus close or shutdown). In server mode, each `/messages/wait` request counts once against `MAILCUBBY_API_RATE_LIMIT`. Unlike SSE (`MAILCUBBY_SSE_MAX_CONNECTIONS_PER_USER`), there is no separate per-user or per-token cap on concurrent `/messages/wait` requests; concurrency is bounded by `MAILCUBBY_API_WAIT_MAX_TIMEOUT`, `MAILCUBBY_API_RATE_LIMIT`, HTTP server/OS resources, and reverse-proxy connection limits. Operators with untrusted tenants SHOULD keep `MAILCUBBY_API_WAIT_MAX_TIMEOUT` conservative and enforce connection limits at the reverse proxy.
 - AC: a test starts `wait`, then sends via SMTP; the response arrives within 500 ms of SMTP DATA completion.
 - AC: `wait` with `since=<older ULID>` returns an existing matching message immediately.
+
+**FR-079 HTML compatibility check.** `GET /api/v1/projects/{p}/messages/{id}/html-check` analyzes the message's HTML and CSS offline against an embedded, compacted zstd-compressed snapshot of the `caniemail.com` dataset (MIT license, under 100 KB compressed, curated ~18 current email clients distinguishing Outlook Classic on Windows from Outlook.com / New Outlook). The analyzer walks HTML with `golang.org/x/net/html` (ignoring MSO conditional comments `<!--[if mso]>...<![endif]-->`), parses CSS in linear time O(N) with zero backtracking regexes under strict byte, token, rule, declaration, and nesting caps, and returns deterministic weighted compatibility percentages (`supported_pct`, `partial_pct`, `unsupported_pct`, `score`), per-client support with resolved notes, and occurrence counts per detected feature. Messages without an HTML part return `404`. Access requires `viewer*` (denied with `403` for viewers when `viewer_hide_technical` is enabled). Results are cached in a 64-entry LRU keyed by `{project_id, message_id}`.
+- AC: embedded compressed dataset stays under 100 KB and every rule slug resolves in the dataset.
+- AC: `GET /api/v1/projects/{p}/messages/{id}/html-check` returns deterministic compatibility scores and per-client support, returns `404` for text-only messages, and enforces `viewer_hide_technical`.
+- AC: fuzz testing of the HTML/CSS analyzer (`FuzzAnalyzeHTML`) completes without panics.
 
 ### 6.10 Search
 
@@ -463,6 +468,7 @@ Base path: `/api/v1` (the UI and API are always served from the root of `MAILCUB
 | GET | `/projects/{project}/messages/{id}/raw` | viewer* | | `text/plain; charset=utf-8` raw source (inline) |
 | GET | `/projects/{project}/messages/{id}/eml` | viewer* | | `message/rfc822` attachment |
 | GET | `/projects/{project}/messages/{id}/html` | viewer* | | `text/plain; charset=utf-8` HTML source |
+| GET | `/projects/{project}/messages/{id}/html-check` | viewer* | | `HTMLCheckReport` (FR-079; `404` when no HTML part) |
 | GET | `/projects/{project}/messages/{id}/headers` | viewer* | | `[{name, value}]` in original order |
 | GET | `/projects/{project}/messages/{id}/attachments/{attachment_id}` | viewer | `?inline=1` (raster images only) | file (section 12.2) |
 | POST | `/projects/{project}/send-test` | member | | `201 MessageSummary` |
@@ -901,7 +907,7 @@ See FR-105. Admin and owner screens show the log.
 Listed so v1 design does not block them. Do not implement in v1.
 
 1. **Release / relay**: forward a captured message to a real address through a configured upstream SMTP (per project allowlist).
-2. **HTML compatibility check** (caniemail data) and **link checker**.
+2. **HTML compatibility check** (`caniemail` data — backend implemented in v0.2 as FR-079 `GET /api/v1/projects/{project}/messages/{id}/html-check`; UI in Phase 16c) and **link checker** (Phases 16d–16e).
 3. **Spam check** (SpamAssassin / rspamd integration).
 4. **Webhooks** per project on `message.created`.
 5. **MCP endpoint** so AI agents can query inboxes (list, search, read, wait).
