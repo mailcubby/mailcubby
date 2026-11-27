@@ -166,6 +166,13 @@ Memory: the raw message is never fully buffered by Mailcubby itself; enmime hold
 - The Vite build uses absolute asset URLs (`base: '/'`). Relative URLs (`base: './'`) would break deep links such as `/p/shop/m/01J...` after a reload, because the browser would resolve `./assets/...` against the nested path. A Go test requests a deep link and asserts the returned HTML references `/assets/`.
 - If `dist/index.html` is missing (Go-only dev build), serves a plain page "UI not built: run `make web`".
 
+### 3.14 `internal/compat`
+
+- Offline email HTML/CSS compatibility analyzer backed by a compacted, zstd-compressed snapshot of `caniemail.com/api/data.json` (MIT license, attribution in `internal/compat/data/NOTICE`) embedded via `//go:embed data/caniemail.json.zst` (~19 KB compressed, 18 curated email clients distinguishing Outlook Classic on Windows from Outlook.com / New Outlook). Refreshed manually via `scripts/update-caniemail` (`go run ./internal/compat/cmd/gen`).
+- `Checker` (no mutable globals) holds the decompressed immutable `*Dataset` and a 64-entry LRU cache keyed by `{projectID, msgID}`. `Check(ctx, projectID, msgID, blobPath)` parses the message blob with `enmime`, returns `ErrNoHTML` when no HTML part exists, and delegates to `AnalyzeHTMLWithCIDs`.
+- HTML walking uses `golang.org/x/net/html` under strict caps (`MaxHTMLBytes` 2 MiB, `MaxHTMLNodes` 50,000), ignoring MSO conditional comments (`<!--[if mso]>...<![endif]-->` and downlevel-revealed wrappers). CSS in `<style>` blocks and inline `style=""` attributes is parsed by a linear-time O(N), zero-regex hand-written scanner (`MaxCSSBytes` 512 KiB, `MaxCSSRules` 5,000, `MaxCSSDeclarations` 20,000, `MaxCSSDepth` 32).
+- Declarative rule registries (`rules.go`) map HTML elements/attributes, image formats (URLs, `data:` URIs, `cid:` inline parts), and CSS at-rules/media features/selectors/properties/values/functions/units to `caniemail` slugs (every slug verified against the embedded dataset in unit tests). Scoring weights clients by tier and reports deterministic `score`, `supported_pct`/`partial_pct`/`unsupported_pct`, and per-client support with resolved notes.
+
 ## 4. Request flows
 
 ### 4.1 SMTP ingest (server mode, authenticated)
@@ -250,6 +257,7 @@ The `250` reply is sent only after the transaction commits (FR-010).
 |   |-- api/                  routes, middleware, handlers, SSE, openapi.yaml
 |   |-- events/               in-process bus
 |   |-- render/               HTML rewrite for sandboxed preview
+|   |-- compat/               offline caniemail HTML/CSS compatibility checker + embedded data/
 |   |-- retention/            sweeper, orphan GC, vacuum, housekeeping
 |   |-- tlsutil/              certificate reloader
 |   |-- clock/                Clock interface + fake
@@ -281,7 +289,7 @@ The `250` reply is sent only after the transaction commits (FR-010).
 `-- docs/                     SPEC, ARCHITECTURE, UI, PLAN, decisions/
 ```
 
-Dependency direction (enforced by review, optionally by `depguard`): `cmd -> app -> {smtpd, api, retention} -> {ingest, search, auth, render, events} -> {store, blob, secrets} -> stdlib/sqlc`. `store` never imports `api`; `api` never touches `*sql.DB` directly.
+Dependency direction (enforced by review, optionally by `depguard`): `cmd -> app -> {smtpd, api, retention} -> {ingest, search, auth, render, compat, events} -> {store, blob, secrets} -> stdlib/sqlc`. `store` never imports `api`; `api` never touches `*sql.DB` directly.
 
 ## 6. Data and storage
 
@@ -305,7 +313,7 @@ See SPEC sections 10 and 11. Additional implementation notes:
 
 | Level | Tooling | Scope |
 |---|---|---|
-| Unit | `go test`, table-driven, `t.Parallel()` | config parsing, slugify, routing table, search parser (plus `go test -fuzz`), permissions, render rewriting, token formats, ratelimit |
+| Unit | `go test`, table-driven, `t.Parallel()` | config parsing, slugify, routing table, search parser (plus `go test -fuzz`), HTML/CSS compatibility analyzer (plus `FuzzAnalyzeHTML`), permissions, render rewriting, token formats, ratelimit |
 | Store | real SQLite in `t.TempDir()` via `testutil.NewStore(t)` | every query, counters, cascades, migrations up from empty |
 | Golden MIME | `testdata/mime/*.eml` -> `*.golden.json` | ingest metadata; `go test ./internal/ingest -update` regenerates; diffs reviewed |
 | Integration | `testutil.StartServer(t, cfg)` (random ports on 127.0.0.1) + `net/smtp` client (PLAIN AUTH, STARTTLS with a runtime-generated self-signed cert) + `net/http` client | end-to-end ingest, routing in both modes, API, SSE, wait, isolation, authz matrix |

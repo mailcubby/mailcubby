@@ -99,6 +99,9 @@ jobs:
       - name: Fuzz search parser and SQL builder (60s)
         run: go test -fuzz=FuzzParseAndBuild -fuzztime=60s ./internal/search
 
+      - name: Fuzz HTML compatibility analyzer (30s)
+        run: go test -fuzz=FuzzAnalyzeHTML -fuzztime=30s ./internal/compat
+
   vuln:
     runs-on: ubuntu-latest
     steps:
