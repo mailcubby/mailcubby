@@ -822,7 +822,7 @@ Email HTML is attacker-controlled. It MUST never execute script, reach the app's
 
 - `Content-Disposition: attachment; filename="<ascii fallback>"; filename*=UTF-8''<percent-encoded>`.
 - `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox; default-src 'none'`.
-- `Content-Type`: declared type, except types that browsers can execute or render as active content (`text/html`, `application/xhtml+xml`, `image/svg+xml`, `text/xml`, `application/xml`, `application/javascript`, `text/javascript`, any `multipart/*`) are served as `application/octet-stream`.
+- `Content-Type`: declared media type (parameters stripped), except types that browsers can execute or render as active content (`text/html`, any `*/xml` or `*+xml` including `text/xml`, `application/xml`, `application/xhtml+xml`, `image/svg+xml`, `application/atom+xml`, `application/rss+xml`, `application/javascript`, `text/javascript`, `application/x-javascript`, `text/ecmascript`, `application/ecmascript`, any `multipart/*`) and any empty or syntactically invalid `Content-Type` values are served as `application/octet-stream`.
 - `?inline=1` only for `image/png`, `image/jpeg`, `image/gif`, `image/webp`; sets `Content-Disposition: inline`. Ignored for every other type (including PDF).
 - Raw source and HTML source are served as `text/plain; charset=utf-8` with nosniff.
 
