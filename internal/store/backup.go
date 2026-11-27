@@ -31,6 +31,9 @@ func Backup(ctx context.Context, srcDBPath, dstPath string) error {
 	if strings.TrimSpace(dstPath) == "" {
 		return errors.New("store: backup destination path must not be empty")
 	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("store: backup canceled: %w", err)
+	}
 
 	srcAbs, err := filepath.Abs(srcDBPath)
 	if err != nil {

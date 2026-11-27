@@ -187,7 +187,11 @@ func TestBackupOnlineWALAndUncommittedWrite(t *testing.T) {
 			return os.ErrInvalid
 		})
 	}()
-	<-txStarted
+	select {
+	case <-txStarted:
+	case err := <-txErrCh:
+		t.Fatalf("uncommitted tx failed before starting: %v", err)
+	}
 
 	dstPath := filepath.Join(outDir, "app.db.bak")
 	env := func(k string) (string, bool) {
@@ -200,7 +204,9 @@ func TestBackupOnlineWALAndUncommittedWrite(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := cli.RunBackup(t.Context(), []string{"--out", dstPath}, &stdout, &stderr, env)
 	close(releaseTx)
-	<-txErrCh
+	if txErr := <-txErrCh; !errors.Is(txErr, os.ErrInvalid) {
+		t.Fatalf("uncommitted tx err = %v, want %v", txErr, os.ErrInvalid)
+	}
 
 	if code != 0 {
 		t.Fatalf("RunBackup exit=%d, want 0 (stderr: %q)", code, stderr.String())
@@ -379,19 +385,68 @@ func TestBackupSafetyGuards(t *testing.T) {
 	dataDir := t.TempDir()
 	seedLiveBackupStore(t, dataDir)
 
-	// Refuses overwriting the live database file or its WAL/SHM companions.
-	for _, target := range []string{
-		filepath.Join(dataDir, store.DBFilename),
-		filepath.Join(dataDir, store.DBFilename+"-wal"),
-		filepath.Join(dataDir, store.DBFilename+"-shm"),
-	} {
+	assertLiveDBRejected := func(t *testing.T, target string, overwrite bool) {
+		t.Helper()
+		args := []string{"--data-dir", dataDir, "--out", target}
+		if overwrite {
+			args = append(args, "--overwrite")
+		}
 		var stdout, stderr bytes.Buffer
-		code := cli.RunBackup(t.Context(), []string{"--data-dir", dataDir, "--out", target, "--overwrite"}, &stdout, &stderr, nil)
+		code := cli.RunBackup(t.Context(), args, &stdout, &stderr, nil)
 		if code != 1 {
-			t.Fatalf("target=%q: exit=%d, want 1 (stderr: %q)", target, code, stderr.String())
+			t.Fatalf("target=%q overwrite=%v: exit=%d, want 1 (stderr: %q)", target, overwrite, code, stderr.String())
 		}
 		if !strings.Contains(stderr.String(), "live database") {
-			t.Fatalf("target=%q: stderr=%q, want 'live database'", target, stderr.String())
+			t.Fatalf("target=%q overwrite=%v: stderr=%q, want 'live database'", target, overwrite, stderr.String())
+		}
+	}
+
+	// Refuses overwriting the live database file or its WAL/SHM/journal companions.
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		target := filepath.Join(dataDir, store.DBFilename+suffix)
+		for _, overwrite := range []bool{false, true} {
+			assertLiveDBRejected(t, target, overwrite)
+		}
+	}
+
+	if runtime.GOOS != "windows" {
+		// Symlinked parent directory targeting app.db and companions (both with and without --overwrite).
+		linkParentDir := filepath.Join(t.TempDir(), "data-link")
+		if err := os.Symlink(dataDir, linkParentDir); err != nil {
+			t.Fatalf("os.Symlink(dataDir): %v", err)
+		}
+		for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+			target := filepath.Join(linkParentDir, store.DBFilename+suffix)
+			for _, overwrite := range []bool{false, true} {
+				assertLiveDBRejected(t, target, overwrite)
+			}
+		}
+
+		// Symlink pointing directly to app.db and to app.db-wal.
+		linkDir := t.TempDir()
+		dbSymlink := filepath.Join(linkDir, "link-to-db")
+		if err := os.Symlink(filepath.Join(dataDir, store.DBFilename), dbSymlink); err != nil {
+			t.Fatalf("os.Symlink(app.db): %v", err)
+		}
+		walSymlink := filepath.Join(linkDir, "link-to-wal")
+		if err := os.Symlink(filepath.Join(dataDir, store.DBFilename+"-wal"), walSymlink); err != nil {
+			t.Fatalf("os.Symlink(app.db-wal): %v", err)
+		}
+		for _, target := range []string{dbSymlink, walSymlink} {
+			for _, overwrite := range []bool{false, true} {
+				assertLiveDBRejected(t, target, overwrite)
+			}
+		}
+
+		// Hard link pointing directly to app.db-wal (exists while live WAL store is open).
+		walPath := filepath.Join(dataDir, store.DBFilename+"-wal")
+		if _, err := os.Stat(walPath); err == nil {
+			walHardlink := filepath.Join(t.TempDir(), "hardlink-to-wal")
+			if err := os.Link(walPath, walHardlink); err == nil {
+				for _, overwrite := range []bool{false, true} {
+					assertLiveDBRejected(t, walHardlink, overwrite)
+				}
+			}
 		}
 	}
 
@@ -402,6 +457,135 @@ func TestBackupSafetyGuards(t *testing.T) {
 	if code != 1 || !strings.Contains(stderr.String(), "directory") {
 		t.Fatalf("dir target = (%d, %q), want (1, contains directory)", code, stderr.String())
 	}
+}
+
+type cancelAfterFirstWrite struct {
+	cancel context.CancelFunc
+	writes int
+}
+
+func (w *cancelAfterFirstWrite) Write(p []byte) (int, error) {
+	w.writes++
+	if w.writes == 1 {
+		w.cancel()
+	}
+	return len(p), nil
+}
+
+// FR-115: Canceled context fails cleanly without leaving temp/staging files.
+func TestBackupCanceledContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("pre-canceled file backup", func(t *testing.T) {
+		t.Parallel()
+		dataDir := t.TempDir()
+		outDir := t.TempDir()
+		seedLiveBackupStore(t, dataDir)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		dstPath := filepath.Join(outDir, "canceled.db")
+		var stdout, stderr bytes.Buffer
+		code := cli.RunBackup(ctx, []string{"--data-dir", dataDir, "--out", dstPath}, &stdout, &stderr, nil)
+		if code != 1 {
+			t.Fatalf("exit=%d, want 1 (stderr: %q)", code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "canceled") {
+			t.Fatalf("stderr=%q, want 'canceled'", stderr.String())
+		}
+
+		entries, err := os.ReadDir(outDir)
+		if err != nil {
+			t.Fatalf("ReadDir(outDir): %v", err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("leftover entries in outDir after canceled backup: %+v", entries)
+		}
+	})
+
+	t.Run("pre-canceled stdout backup", func(t *testing.T) {
+		t.Parallel()
+		dataDir := t.TempDir()
+		seedLiveBackupStore(t, dataDir)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		var stdout, stderr bytes.Buffer
+		code := cli.RunBackup(ctx, []string{"--data-dir", dataDir, "--out", "-"}, &stdout, &stderr, nil)
+		if code != 1 {
+			t.Fatalf("exit=%d, want 1 (stderr: %q)", code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "canceled") {
+			t.Fatalf("stderr=%q, want 'canceled'", stderr.String())
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("expected empty stdout, got %d bytes", stdout.Len())
+		}
+
+		tmpEntries, err := os.ReadDir(filepath.Join(dataDir, "tmp"))
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("ReadDir(tmp): %v", err)
+		}
+		if len(tmpEntries) != 0 {
+			t.Fatalf("leftover entries in dataDir/tmp after canceled stdout backup: %+v", tmpEntries)
+		}
+	})
+
+	t.Run("pre-canceled store.Backup", func(t *testing.T) {
+		t.Parallel()
+		dataDir := t.TempDir()
+		outDir := t.TempDir()
+		seedLiveBackupStore(t, dataDir)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		dstPath := filepath.Join(outDir, "direct.db")
+		err := store.Backup(ctx, filepath.Join(dataDir, store.DBFilename), dstPath)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("store.Backup err = %v, want context.Canceled", err)
+		}
+
+		entries, err := os.ReadDir(outDir)
+		if err != nil {
+			t.Fatalf("ReadDir(outDir): %v", err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("leftover entries in outDir after canceled store.Backup: %+v", entries)
+		}
+	})
+
+	t.Run("canceled mid-stream during stdout backup", func(t *testing.T) {
+		t.Parallel()
+		dataDir := t.TempDir()
+		seedLiveBackupStore(t, dataDir)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		w := &cancelAfterFirstWrite{cancel: cancel}
+		var stderr bytes.Buffer
+		code := cli.RunBackup(ctx, []string{"--data-dir", dataDir, "--out", "-"}, w, &stderr, nil)
+		if code != 1 {
+			t.Fatalf("exit=%d, want 1 (writes=%d, stderr: %q)", code, w.writes, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "canceled") {
+			t.Fatalf("stderr=%q, want 'canceled'", stderr.String())
+		}
+		if w.writes != 1 {
+			t.Fatalf("writes = %d, want 1 (stream should abort immediately after cancel)", w.writes)
+		}
+
+		tmpEntries, err := os.ReadDir(filepath.Join(dataDir, "tmp"))
+		if err != nil {
+			t.Fatalf("ReadDir(tmp): %v", err)
+		}
+		if len(tmpEntries) != 0 {
+			t.Fatalf("leftover entries in dataDir/tmp after mid-stream cancel: %+v", tmpEntries)
+		}
+	})
 }
 
 func TestBackupFlagsAndHelp(t *testing.T) {

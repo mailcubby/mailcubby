@@ -372,7 +372,7 @@ SQLite runs in WAL mode, so never copy `app.db` with `cp` while Mailcubby is run
 With Docker Compose (streams `app.db` to the host with no extra bind mount, then archives `blobs/` from the volume):
 
 ```sh
-mkdir -p /backups/mailcubby
+mkdir -m 0700 -p /backups/mailcubby
 (umask 077 && docker compose -f deploy/compose.server.yml exec -T mailcubby \
   /mailcubby backup --out - > /backups/mailcubby/app.db)
 docker run --rm -v mailcubby_mailcubby-data:/data:ro -v /backups/mailcubby:/backup alpine:3.21 \
@@ -382,7 +382,7 @@ docker run --rm -v mailcubby_mailcubby-data:/data:ro -v /backups/mailcubby:/back
 With the standalone binary (or a bind-mounted data directory):
 
 ```sh
-mkdir -p /backups/mailcubby
+mkdir -m 0700 -p /backups/mailcubby
 mailcubby backup --data-dir /path/to/data --out /backups/mailcubby/app.db
 rsync -a /path/to/data/blobs/ /backups/mailcubby/blobs/
 ```

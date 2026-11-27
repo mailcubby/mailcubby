@@ -15,6 +15,14 @@ import (
 
 const backupDirPerm = 0o700
 
+var liveDBCompanionSuffixes = [...]string{"", "-wal", "-shm", "-journal"}
+
+type readerFunc func([]byte) (int, error)
+
+func (fn readerFunc) Read(p []byte) (int, error) {
+	return fn(p)
+}
+
 // RunBackup implements "mailcubby backup --out <path|-> [--data-dir path] [--overwrite]"
 // (SPEC FR-115). It creates a consistent online SQLite backup of app.db using
 // VACUUM INTO, safe to run while "mailcubby serve" is active in WAL mode.
@@ -118,6 +126,10 @@ Notes:
 }
 
 func backupToWriter(ctx context.Context, dataDir, srcAbs string, w io.Writer) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	tmpBase := filepath.Join(dataDir, "tmp")
 	if err := os.MkdirAll(tmpBase, backupDirPerm); err != nil {
 		return fmt.Errorf("create tmp directory %q: %w", tmpBase, err)
@@ -141,7 +153,14 @@ func backupToWriter(ctx context.Context, dataDir, srcAbs string, w io.Writer) er
 	}
 	defer func() { _ = f.Close() }()
 
-	if _, err := io.Copy(w, f); err != nil {
+	// Wrap f so io.Copy reads in chunks and stops promptly on context cancellation.
+	ctxReader := readerFunc(func(p []byte) (int, error) {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		return f.Read(p)
+	})
+	if _, err := io.Copy(w, ctxReader); err != nil {
 		return fmt.Errorf("stream backup to stdout: %w", err)
 	}
 	return nil
@@ -153,34 +172,12 @@ func backupToFile(ctx context.Context, srcAbs string, srcInfo os.FileInfo, outPa
 		return 0, fmt.Errorf("resolve destination %q: %w", outPath, err)
 	}
 
-	if dstAbs == srcAbs || dstAbs == srcAbs+"-wal" || dstAbs == srcAbs+"-shm" {
-		return 0, fmt.Errorf("destination %q must not be the live database file", outPath)
+	if err := validateBackupDestination(srcAbs, srcInfo, dstAbs, outPath, overwrite); err != nil {
+		return 0, err
 	}
 
-	dstInfo, lstatErr := os.Lstat(dstAbs)
-	if lstatErr != nil && !errors.Is(lstatErr, os.ErrNotExist) {
-		return 0, fmt.Errorf("stat destination %q: %w", outPath, lstatErr)
-	}
-	if lstatErr == nil {
-		if os.SameFile(srcInfo, dstInfo) {
-			return 0, fmt.Errorf("destination %q must not be the live database file", outPath)
-		}
-		if dstInfo.IsDir() {
-			return 0, fmt.Errorf("destination %q is a directory", outPath)
-		}
-		if dstInfo.Mode()&os.ModeSymlink != 0 {
-			if targetInfo, statErr := os.Stat(dstAbs); statErr == nil {
-				if os.SameFile(srcInfo, targetInfo) {
-					return 0, fmt.Errorf("destination %q must not point to the live database file", outPath)
-				}
-				if targetInfo.IsDir() {
-					return 0, fmt.Errorf("destination %q is a directory", outPath)
-				}
-			}
-		}
-		if !overwrite {
-			return 0, fmt.Errorf("destination %q already exists (use --overwrite to replace)", outPath)
-		}
+	if err := ctx.Err(); err != nil {
+		return 0, err
 	}
 
 	dstDir := filepath.Dir(dstAbs)
@@ -213,6 +210,122 @@ func backupToFile(ctx context.Context, srcAbs string, srcInfo os.FileInfo, outPa
 	// Best-effort directory fsync so the directory entry survives crashes.
 	_ = syncDirBestEffort(dstDir)
 	return fi.Size(), nil
+}
+
+func validateBackupDestination(srcAbs string, srcInfo os.FileInfo, dstAbs, outPath string, overwrite bool) error {
+	protectedPaths, protectedInfos := collectProtectedLiveDB(srcAbs, srcInfo)
+
+	if matchesProtectedPath(dstAbs, protectedPaths) {
+		return fmt.Errorf("destination %q must not be the live database file", outPath)
+	}
+
+	dstInfo, lstatErr := os.Lstat(dstAbs)
+	if lstatErr != nil && !errors.Is(lstatErr, os.ErrNotExist) {
+		return fmt.Errorf("stat destination %q: %w", outPath, lstatErr)
+	}
+	if lstatErr == nil {
+		if sameAsAnyFile(dstInfo, protectedInfos) {
+			return fmt.Errorf("destination %q must not be the live database file", outPath)
+		}
+		if dstInfo.IsDir() {
+			return fmt.Errorf("destination %q is a directory", outPath)
+		}
+		if dstInfo.Mode()&os.ModeSymlink != 0 {
+			if targetReal, err := filepath.EvalSymlinks(dstAbs); err == nil {
+				if matchesProtectedPath(targetReal, protectedPaths) {
+					return fmt.Errorf("destination %q must not point to the live database file", outPath)
+				}
+			}
+			if linkTarget, err := os.Readlink(dstAbs); err == nil {
+				if !filepath.IsAbs(linkTarget) {
+					linkTarget = filepath.Join(filepath.Dir(dstAbs), linkTarget)
+				}
+				if matchesProtectedPath(filepath.Clean(linkTarget), protectedPaths) {
+					return fmt.Errorf("destination %q must not point to the live database file", outPath)
+				}
+			}
+			if targetInfo, statErr := os.Stat(dstAbs); statErr == nil {
+				if sameAsAnyFile(targetInfo, protectedInfos) {
+					return fmt.Errorf("destination %q must not point to the live database file", outPath)
+				}
+				if targetInfo.IsDir() {
+					return fmt.Errorf("destination %q is a directory", outPath)
+				}
+			}
+		}
+		if !overwrite {
+			return fmt.Errorf("destination %q already exists (use --overwrite to replace)", outPath)
+		}
+	}
+
+	return nil
+}
+
+func collectProtectedLiveDB(srcAbs string, srcInfo os.FileInfo) (map[string]struct{}, []os.FileInfo) {
+	bases := make([]string, 0, 3)
+	addBase := func(p string) {
+		if p == "" {
+			return
+		}
+		for _, existing := range bases {
+			if existing == p {
+				return
+			}
+		}
+		bases = append(bases, p)
+	}
+
+	addBase(srcAbs)
+	if srcReal, err := filepath.EvalSymlinks(srcAbs); err == nil {
+		addBase(srcReal)
+	}
+	if srcDirReal, err := filepath.EvalSymlinks(filepath.Dir(srcAbs)); err == nil {
+		addBase(filepath.Join(srcDirReal, filepath.Base(srcAbs)))
+	}
+
+	paths := make(map[string]struct{}, len(bases)*len(liveDBCompanionSuffixes))
+	infos := make([]os.FileInfo, 0, len(liveDBCompanionSuffixes)+1)
+	if srcInfo != nil {
+		infos = append(infos, srcInfo)
+	}
+
+	for _, base := range bases {
+		for _, suffix := range liveDBCompanionSuffixes {
+			p := base + suffix
+			if _, seen := paths[p]; seen {
+				continue
+			}
+			paths[p] = struct{}{}
+			if info, err := os.Stat(p); err == nil {
+				infos = append(infos, info)
+			}
+		}
+	}
+	return paths, infos
+}
+
+func matchesProtectedPath(p string, protected map[string]struct{}) bool {
+	if _, ok := protected[p]; ok {
+		return true
+	}
+	if dirReal, err := filepath.EvalSymlinks(filepath.Dir(p)); err == nil {
+		if _, ok := protected[filepath.Join(dirReal, filepath.Base(p))]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func sameAsAnyFile(target os.FileInfo, protected []os.FileInfo) bool {
+	if target == nil {
+		return false
+	}
+	for _, info := range protected {
+		if os.SameFile(info, target) {
+			return true
+		}
+	}
+	return false
 }
 
 // linkNoClobber atomically places stagePath at dstAbs without overwriting an
