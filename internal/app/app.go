@@ -548,8 +548,9 @@ func logServerSecurityWarnings(cfg config.Config, log *slog.Logger) {
 	if cfg.SMTPAllowInsecureAuth {
 		log.Warn("MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH is enabled: SMTP AUTH is allowed over plaintext connections; configure SMTP TLS for production")
 	}
-	if strings.HasPrefix(strings.ToLower(cfg.BaseURL), "http://") {
-		log.Warn("MAILCUBBY_BASE_URL uses http://: session cookies will not be marked Secure and HSTS is disabled; use https:// in production", "base_url", cfg.BaseURL)
+	baseURL := strings.TrimSpace(cfg.BaseURL)
+	if strings.HasPrefix(strings.ToLower(baseURL), "http://") {
+		log.Warn("MAILCUBBY_BASE_URL uses http://: session cookies will not be marked Secure and HSTS is disabled; use https:// in production", "base_url", baseURL)
 	}
 }
 

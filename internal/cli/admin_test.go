@@ -3,6 +3,9 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -189,14 +192,57 @@ func TestAdminListUsersCLI(t *testing.T) {
 		return "", false
 	}
 
-	// Empty database reports no users cleanly (FR-115).
+	// Missing app.db exits 1 with a clear error and does not create the directory or DB.
+	missingDir := filepath.Join(t.TempDir(), "uninitialized")
+	missingEnv := func(k string) (string, bool) {
+		if k == "MAILCUBBY_DATA_DIR" {
+			return missingDir, true
+		}
+		return "", false
+	}
 	var stdout, stderr bytes.Buffer
-	code := cli.RunAdmin(t.Context(), []string{"list-users"}, &stdout, &stderr, env)
+	code := cli.RunAdmin(t.Context(), []string{"list-users"}, &stdout, &stderr, missingEnv)
+	if code != 1 {
+		t.Fatalf("missing DB list-users exit code = %d, want 1 (stdout=%q, stderr=%q)", code, stdout.String(), stderr.String())
+	}
+	for _, want := range []string{store.DBFilename, "--data-dir", "MAILCUBBY_DATA_DIR"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("missing DB stderr %q missing %q", stderr.String(), want)
+		}
+	}
+	if _, statErr := os.Stat(missingDir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("list-users created missing data dir %q (stat err: %v)", missingDir, statErr)
+	}
+
+	// app.db path that is a directory exits 1 cleanly.
+	dirAsDB := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dirAsDB, store.DBFilename), 0o700); err != nil {
+		t.Fatalf("mkdir app.db: %v", err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	code = cli.RunAdmin(t.Context(), []string{"list-users", "--data-dir", dirAsDB}, &stdout, &stderr, nil)
+	if code != 1 || !strings.Contains(stderr.String(), "directory") {
+		t.Fatalf("directory app.db list-users = (%d, %q), want (1, contains directory)", code, stderr.String())
+	}
+
+	// Initialized empty database reports no users cleanly (FR-115).
+	stInit, err := store.Open(t.Context(), filepath.Join(dir, store.DBFilename))
+	if err != nil {
+		t.Fatalf("store.Open init: %v", err)
+	}
+	if err := stInit.Close(); err != nil {
+		t.Fatalf("store.Close init: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = cli.RunAdmin(t.Context(), []string{"list-users"}, &stdout, &stderr, env)
 	if code != 0 {
 		t.Fatalf("empty list-users exit code = %d, want 0 (stderr: %q)", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "No users found") {
-		t.Fatalf("empty list-users stdout = %q, want 'No users found'", stdout.String())
+	if strings.TrimSpace(stdout.String()) != "No users found." {
+		t.Fatalf("empty list-users stdout = %q, want %q", stdout.String(), "No users found.")
 	}
 
 	// Seed active, disabled, pending-invite, and disabled-without-password users.
@@ -241,6 +287,18 @@ func TestAdminListUsersCLI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateUser carol: %v", err)
 	}
+	dave, err := st.CreateUser(t.Context(), store.CreateUserParams{
+		Email:             "dave@example.test",
+		Name:              "Dave Disabled Pending",
+		PasswordHash:      nil,
+		IsAdmin:           false,
+		CanCreateProjects: false,
+		DisabledAt:        &disabledAt,
+		Now:               now,
+	})
+	if err != nil {
+		t.Fatalf("CreateUser dave: %v", err)
+	}
 	proj, err := st.CreateProject(t.Context(), store.CreateProjectParams{
 		Slug:     "shop",
 		Name:     "Shop",
@@ -266,8 +324,8 @@ func TestAdminListUsersCLI(t *testing.T) {
 	}
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	if len(lines) != 4 {
-		t.Fatalf("got %d lines, want 4 (header + 3 users):\n%s", len(lines), stdout.String())
+	if len(lines) != 5 {
+		t.Fatalf("got %d lines, want 5 (header + 4 users):\n%s", len(lines), stdout.String())
 	}
 	header := lines[0]
 	for _, col := range []string{"ID", "EMAIL", "NAME", "ADMIN", "CAN_CREATE_PROJECTS", "PROJECTS", "STATUS"} {
@@ -292,6 +350,10 @@ func TestAdminListUsersCLI(t *testing.T) {
 			lineIdx: 3,
 			fields:  []string{strconv.FormatInt(carol.ID, 10), "carol@example.test", "Carol Pending", "no", "0", "pending-invite"},
 		},
+		{
+			lineIdx: 4,
+			fields:  []string{strconv.FormatInt(dave.ID, 10), "dave@example.test", "Dave Disabled Pending", "no", "0", "disabled"},
+		},
 	}
 	for _, want := range wantRows {
 		row := lines[want.lineIdx]
@@ -301,6 +363,9 @@ func TestAdminListUsersCLI(t *testing.T) {
 			}
 		}
 	}
+	if strings.Contains(lines[4], "pending-invite") {
+		t.Errorf("disabled user without password should report disabled, not pending-invite: %q", lines[4])
+	}
 
 	// Extra positional arguments exit 2.
 	stdout.Reset()
@@ -308,6 +373,56 @@ func TestAdminListUsersCLI(t *testing.T) {
 	code = cli.RunAdmin(t.Context(), []string{"list-users", "extra"}, &stdout, &stderr, env)
 	if code != 2 {
 		t.Fatalf("extra arg exit code = %d, want 2", code)
+	}
+}
+
+func TestAdminListUsersCLIPagination(t *testing.T) {
+	t.Parallel()
+
+	const totalUsers = 205
+
+	dir := t.TempDir()
+	now := time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC)
+
+	st, err := store.Open(t.Context(), filepath.Join(dir, store.DBFilename))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	storedHash := "$argon2id$v=19$m=19456,t=2,p=1$fake$hash"
+	if err := st.WithTx(t.Context(), func(tx *store.Tx) error {
+		for i := 1; i <= totalUsers; i++ {
+			if _, err := tx.CreateUser(t.Context(), store.CreateUserParams{
+				Email:        fmt.Sprintf("user-%03d@example.test", i),
+				Name:         fmt.Sprintf("User %03d", i),
+				PasswordHash: &storedHash,
+				Now:          now,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed %d users: %v", totalUsers, err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("store.Close: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := cli.RunAdmin(t.Context(), []string{"list-users", "--data-dir", dir}, &stdout, &stderr, nil)
+	if code != 0 {
+		t.Fatalf("list-users pagination exit code = %d, want 0 (stderr: %q)", code, stderr.String())
+	}
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) != totalUsers+1 {
+		t.Fatalf("got %d lines, want %d (header + %d users)", len(lines), totalUsers+1, totalUsers)
+	}
+	for i := 1; i <= totalUsers; i++ {
+		wantEmail := fmt.Sprintf("user-%03d@example.test", i)
+		if !strings.Contains(lines[i], wantEmail) {
+			t.Fatalf("row %d (%q) does not contain expected email %q", i, lines[i], wantEmail)
+		}
 	}
 }
 
@@ -322,6 +437,34 @@ func TestAdminEnableUserCLI(t *testing.T) {
 			return dir, true
 		}
 		return "", false
+	}
+
+	// Missing app.db exits 1 with a clear error and does not create the directory or DB.
+	missingDir := filepath.Join(t.TempDir(), "uninitialized")
+	var stdout, stderr bytes.Buffer
+	code := cli.RunAdminWithClock(t.Context(), []string{"enable-user", "--email", "locked@example.test", "--data-dir", missingDir}, &stdout, &stderr, nil, clk)
+	if code != 1 {
+		t.Fatalf("missing DB enable-user exit code = %d, want 1 (stdout=%q, stderr=%q)", code, stdout.String(), stderr.String())
+	}
+	for _, want := range []string{store.DBFilename, "--data-dir", "MAILCUBBY_DATA_DIR"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("missing DB stderr %q missing %q", stderr.String(), want)
+		}
+	}
+	if _, statErr := os.Stat(missingDir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("enable-user created missing data dir %q (stat err: %v)", missingDir, statErr)
+	}
+
+	// app.db path that is a directory exits 1 cleanly.
+	dirAsDB := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dirAsDB, store.DBFilename), 0o700); err != nil {
+		t.Fatalf("mkdir app.db: %v", err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	code = cli.RunAdminWithClock(t.Context(), []string{"enable-user", "--email", "locked@example.test", "--data-dir", dirAsDB}, &stdout, &stderr, nil, clk)
+	if code != 1 || !strings.Contains(stderr.String(), "directory") {
+		t.Fatalf("directory app.db enable-user = (%d, %q), want (1, contains directory)", code, stderr.String())
 	}
 
 	st, err := store.Open(t.Context(), filepath.Join(dir, store.DBFilename))
@@ -357,9 +500,10 @@ func TestAdminEnableUserCLI(t *testing.T) {
 		t.Fatalf("store.Close: %v", err)
 	}
 
-	// Happy path: enables disabled user (case-insensitive email) and writes user.enable audit entry (FR-105, FR-115).
-	var stdout, stderr bytes.Buffer
-	code := cli.RunAdminWithClock(t.Context(), []string{"enable-user", "--email", "LOCKED@example.test"}, &stdout, &stderr, env, clk)
+	// Happy path: enables disabled user (trimmed, case-insensitive email) and writes user.enable audit entry (FR-105, FR-115).
+	stdout.Reset()
+	stderr.Reset()
+	code = cli.RunAdminWithClock(t.Context(), []string{"enable-user", "--email", "  LOCKED@example.test  "}, &stdout, &stderr, env, clk)
 	if code != 0 {
 		t.Fatalf("enable-user exit code = %d, want 0 (stderr: %q)", code, stderr.String())
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -318,9 +319,9 @@ func runAdminListUsers(ctx context.Context, args []string, stdout, stderr io.Wri
 		return 2
 	}
 
-	st, err := store.Open(ctx, filepath.Join(*dataDirFlag, store.DBFilename))
+	st, err := openExistingAdminStore(ctx, *dataDirFlag)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "admin list-users: open store: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "admin list-users: %v\n", err)
 		return 1
 	}
 	defer func() { _ = st.Close() }()
@@ -396,9 +397,9 @@ func runAdminEnableUser(ctx context.Context, args []string, stdout, stderr io.Wr
 		clk = clock.NewReal()
 	}
 
-	st, err := store.Open(ctx, filepath.Join(*dataDirFlag, store.DBFilename))
+	st, err := openExistingAdminStore(ctx, *dataDirFlag)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "admin enable-user: open store: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "admin enable-user: %v\n", err)
 		return 1
 	}
 	defer func() { _ = st.Close() }()
@@ -456,6 +457,25 @@ func runAdminEnableUser(ctx context.Context, args []string, stdout, stderr io.Wr
 	}
 	_, _ = fmt.Fprintf(stdout, "enabled user %q\n", canonicalEmail)
 	return 0
+}
+
+func openExistingAdminStore(ctx context.Context, dataDir string) (*store.Store, error) {
+	dbPath := filepath.Join(dataDir, store.DBFilename)
+	info, err := os.Stat(dbPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("database %q does not exist; check --data-dir or MAILCUBBY_DATA_DIR", dbPath)
+		}
+		return nil, fmt.Errorf("stat database %q: %w", dbPath, err)
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("database path %q is a directory; check --data-dir or MAILCUBBY_DATA_DIR", dbPath)
+	}
+	st, err := store.Open(ctx, dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open store: %w", err)
+	}
+	return st, nil
 }
 
 func formatYesNo(v bool) string {
