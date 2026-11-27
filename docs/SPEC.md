@@ -234,11 +234,11 @@ Acceptance is single-use: `accepted_at` is set in the same transaction with a `W
 
 **FR-071 Detail.** Returns metadata, text body, attachment list, tags, a `render_url` for the HTML preview, and the technical fields `envelope`, `parse_warnings` and `headers`. The technical fields are omitted (not `null`) when the caller is a viewer and `viewer_hide_technical` is on.
 
-**FR-072 Views.** The UI offers tabs: Preview (sandboxed HTML), Text, HTML source, Headers, Raw, Attachments, Tech (envelope, TLS, AUTH user, credential label, remote IP, HELO, size, parse warnings). HTML preview supports device widths (mobile 375 px, tablet 768 px, desktop 100%), rotation, zoom, and an email dark-mode toggle. While the Preview or Text tab is active, an attachment strip below the view shows one compact card per attachment (type icon, thumbnail only for the inline-allowlisted raster images of FR-074 via `?inline=1`, filename, size); a card downloads the file with `Content-Disposition: attachment`. Parts with `referenced_by_html: true` (parts the HTML preview displays through `cid:` in an image or CSS context; a `cid:` in an iframe, script, embed or media `src` does not count) are left out of the strip, which is hidden when no card remains; the Attachments tab still lists every part with full details. The strip and the Attachments tab are shown to viewers even when `viewer_hide_technical` is on. Details in `docs/UI.md`.
+**FR-072 Views.** The UI offers tabs: Preview (sandboxed HTML), Text, HTML source, Headers, Raw, Attachments, Tech (envelope, TLS, AUTH user, credential label, remote IP, HELO, size, parse warnings). HTML preview supports device widths (mobile 375 px, tablet 768 px, desktop 100%), rotation, zoom, and an email dark-mode toggle. While the Preview or Text tab is active, an attachment strip below the view shows one compact card per attachment (type icon, thumbnail only for the inline-allowlisted raster images of FR-074 via `?inline=1`, filename, size); non-PDF cards download the file with `Content-Disposition: attachment`. When `MAILCUBBY_RENDER_INLINE_PDF` is enabled (default `true`), PDF cards in the attachment strip are split cards (a preview button plus a sibling download link) and PDF rows in the Attachments tab include a "Preview" action that opens a modal native PDF viewer served from `GET /render/{project}/{id}/attachments/{attachment_id}` (ADR 0009); when disabled, PDFs fall back to download-only cards. Parts with `referenced_by_html: true` (parts the HTML preview displays through `cid:` in an image or CSS context; a `cid:` in an iframe, script, embed or media `src` does not count) are left out of the strip, which is hidden when no card remains; the Attachments tab still lists every part with full details. The strip, the Attachments tab and inline PDF preview remain available to viewers even when `viewer_hide_technical` is on. Details in `docs/UI.md`.
 
 **FR-073 HTML rendering.** Via the render endpoint only (section 12.1). Remote images blocked by default; a per-message toggle loads them when `MAILCUBBY_RENDER_REMOTE_IMAGES=opt-in` (default). `off` removes the toggle.
 
-**FR-074 Downloads.** `.eml` download (`message/rfc822`, attachment disposition, filename from subject, sanitised). Attachment download by attachment ID. Inline display in the UI only for raster images (png, jpeg, gif, webp) via `?inline=1`, which is ignored for any other type. PDFs and all other types are always downloaded (inline PDF viewing is on the roadmap: browser PDF viewers do not render under the attachment CSP sandbox).
+**FR-074 Downloads.** `.eml` download (`message/rfc822`, attachment disposition, filename from subject, sanitised). Attachment download by attachment ID (`GET /api/v1/projects/{project}/messages/{id}/attachments/{attachment_id}`): inline display via `?inline=1` is allowed only for raster images (`image/png`, `image/jpeg`, `image/gif`, `image/webp`) and is ignored for every other type, including PDFs, which always download with `Content-Disposition: attachment` on this endpoint. Inline PDF preview is served exclusively through the dedicated `GET /render/{project}/{id}/attachments/{attachment_id}` endpoint (section 12.2, ADR 0009), controlled by `MAILCUBBY_RENDER_INLINE_PDF`.
 
 **FR-075 Seen state.** Messages start unseen. Opening a message as member or above marks it seen (UI calls `PATCH` after 1 s of display, configurable off in user preferences). Bulk mark seen/unseen.
 
@@ -417,15 +417,15 @@ Base path: `/api/v1` (the UI and API are always served from the root of `MAILCUB
 - `{project}` path parameter is the project slug.
 - Timestamps: RFC 3339 UTC with milliseconds. IDs: messages use ULID strings; other resources use integers.
 - Pagination: `?limit=` (default 50, max 200) and `?cursor=` (opaque string from `next_cursor`). Response `{ "items": [...], "next_cursor": "..." | null }`.
-- Errors: `{ "error": { "code": "snake_case_code", "message": "Human readable", "details": {} } }`. Codes: `bad_request`, `validation_failed` (details per field), `unauthorized`, `forbidden`, `not_found`, `conflict`, `login_required` (409, FR-056), `gone`, `rate_limited`, `payload_too_large`, `internal`.
-- Status codes: `200`, `201` (create), `204` (no body), `400`, `401`, `403`, `404`, `409`, `410`, `413`, `422` (validation), `429` (with `Retry-After`), `500`, `503`.
+- Errors: `{ "error": { "code": "snake_case_code", "message": "Human readable", "details": {} } }`. Codes: `bad_request`, `validation_failed` (details per field), `unauthorized`, `forbidden`, `not_found`, `conflict`, `login_required` (409, FR-056), `gone`, `rate_limited`, `payload_too_large`, `unsupported_media_type`, `internal`.
+- Status codes: `200`, `201` (create), `204` (no body), `400`, `401`, `403`, `404`, `409`, `410`, `413`, `415`, `422` (validation), `429` (with `Retry-After`), `500`, `503`.
 - "Role" column: minimum role. `public` = no auth; `session` = any logged-in user (cookie only); `user` = any logged-in user or token; `viewer`/`member`/`owner` = project role (admin passes all); `admin` = instance admin; `viewer*` = viewer unless `viewer_hide_technical` (then member). In local mode all routes are accessible except those marked `server` (which return 404).
 
 ### 8.2 Meta, setup, auth
 
 | Method | Path | Role | Request | Response |
 |---|---|---|---|---|
-| GET | `/meta` | public | | `{mode, version, instance_name, setup_required, base_url, features{remote_images, recipient_routing}, inbox_domain, smtp{host, port, tls_mode}}` (`smtp` is the public connection info of FR-063; local mode uses it for the setup guide and snippets) |
+| GET | `/meta` | public | | `{mode, version, instance_name, setup_required, base_url, features{remote_images, recipient_routing, inline_pdf}, inbox_domain, smtp{host, port, tls_mode}}` (`smtp` is the public connection info of FR-063; local mode uses it for the setup guide and snippets) |
 | POST | `/setup` | public (setup pending) | `{setup_token, email, name, password, instance_name?}` | `201` user; sets session cookie |
 | POST | `/auth/login` | public, server | `{email, password}` | `200` user; sets cookie |
 | POST | `/auth/logout` | session, server | | `204` |
@@ -529,6 +529,7 @@ Base path: `/api/v1` (the UI and API are always served from the root of `MAILCUB
 | GET | `/healthz` | public | liveness |
 | GET | `/readyz` | public | readiness |
 | GET | `/render/{project}/{id}` | viewer | sandboxed HTML (section 12.1), `?images=1` |
+| GET | `/render/{project}/{id}/attachments/{attachment_id}` | viewer | inline PDF preview (section 12.2, ADR 0009); `415` for non-PDF or invalid `%PDF-` magic; `404` when `MAILCUBBY_RENDER_INLINE_PDF=false` |
 
 ---
 
@@ -568,6 +569,7 @@ Environment variables only (no config file in v1). Variables marked (secret) als
 | `MAILCUBBY_API_WAIT_MAX_TIMEOUT` | `120s` | Max `timeout` for `GET /messages/wait` (FR-078). There is no separate per-user concurrent wait cap; lower this or enforce reverse-proxy connection limits for untrusted tenants. |
 | `MAILCUBBY_SSE_MAX_CONNECTIONS_PER_USER` | `10` | Concurrent SSE streams per user or token. |
 | `MAILCUBBY_RENDER_REMOTE_IMAGES` | `opt-in` | `opt-in` (toggle, blocked by default) or `off`. |
+| `MAILCUBBY_RENDER_INLINE_PDF` | `true` | Enable or disable inline PDF preview via `GET /render/{project}/{id}/attachments/{attachment_id}` (ADR 0009). |
 
 ### 9.3 SMTP
 
@@ -824,11 +826,23 @@ Email HTML is attacker-controlled. It MUST never execute script, reach the app's
 
 ### 12.2 Attachments and raw downloads
 
-- `Content-Disposition: attachment; filename="<ascii fallback>"; filename*=UTF-8''<percent-encoded>`.
-- `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox; default-src 'none'`.
-- `Content-Type`: declared media type (parameters stripped), except types that browsers can execute or render as active content (`text/html`, any `*/xml` or `*+xml` including `text/xml`, `application/xml`, `application/xhtml+xml`, `image/svg+xml`, `application/atom+xml`, `application/rss+xml`, `application/javascript`, `text/javascript`, `application/x-javascript`, `text/ecmascript`, `application/ecmascript`, any `multipart/*`) and any empty or syntactically invalid `Content-Type` values are served as `application/octet-stream`.
-- `?inline=1` only for `image/png`, `image/jpeg`, `image/gif`, `image/webp`; sets `Content-Disposition: inline`. Ignored for every other type (including PDF).
-- Raw source and HTML source are served as `text/plain; charset=utf-8` with nosniff.
+- `GET /api/v1/projects/{project}/messages/{id}/attachments/{attachment_id}` remains download-only by default (`X-Frame-Options: DENY`):
+  - `Content-Disposition: attachment; filename="<ascii fallback>"; filename*=UTF-8''<percent-encoded>`.
+  - `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox; default-src 'none'`.
+  - `Content-Type`: declared media type (parameters stripped), except types that browsers can execute or render as active content (`text/html`, any `*/xml` or `*+xml` including `text/xml`, `application/xml`, `application/xhtml+xml`, `image/svg+xml`, `application/atom+xml`, `application/rss+xml`, `application/javascript`, `text/javascript`, `application/x-javascript`, `text/ecmascript`, `application/ecmascript`, any `multipart/*`) and any empty or syntactically invalid `Content-Type` values are served as `application/octet-stream`.
+  - `?inline=1` only for `image/png`, `image/jpeg`, `image/gif`, `image/webp`; sets `Content-Disposition: inline`. Ignored for every other type (including PDF).
+- Raw source and HTML source are served as `text/plain; charset=utf-8` with `nosniff`.
+- **Inline PDF preview (`GET /render/{project}/{id}/attachments/{attachment_id}`, ADR 0009)**:
+  - Returns `404` when `MAILCUBBY_RENDER_INLINE_PDF=false`.
+  - Accepts only attachments whose coerced media type is `application/pdf` **and** whose decoded bytes begin with `%PDF-` at byte 0; non-PDFs and forged/polyglot payloads return `415 Unsupported Media Type` (`unsupported_media_type`).
+  - Response headers:
+    - `Content-Type: application/pdf`
+    - `Content-Disposition: inline; filename="<ascii fallback>"; filename*=UTF-8''<percent-encoded>`
+    - `X-Content-Type-Options: nosniff`
+    - `Content-Security-Policy: default-src 'none'; object-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'`
+    - `Referrer-Policy: no-referrer`, `Cache-Control: private, no-store`, `Cross-Origin-Resource-Policy: same-origin`, `X-DNS-Prefetch-Control: off`
+    - `X-Frame-Options` is omitted (framing is governed by `frame-ancestors 'self'`).
+  - `/api/v1/projects/{project}/messages/{id}/attachments/{attachment_id}` is unchanged (`X-Frame-Options: DENY`, `Content-Security-Policy: sandbox; default-src 'none'`, `?inline=1` raster images only).
 
 ### 12.3 Application hardening
 
@@ -904,6 +918,6 @@ Listed so v1 design does not block them. Do not implement in v1.
 16. Per-user read state.
 17. Built-in ACME certificates (certmagic) for SMTP and HTTP; v1 uses certificate files only.
 18. Serving the UI and API under a sub-path (`MAILCUBBY_BASE_PATH`); v1 is served from the root of its host.
-19. Inline PDF preview of attachments (needs a PDF-specific CSP that browser viewers accept).
+19. Inline PDF preview of attachments — implemented in v0.2 (ADR 0009, `GET /render/{project}/{id}/attachments/{attachment_id}`, controlled by `MAILCUBBY_RENDER_INLINE_PDF`).
 20. PROXY protocol v1/v2 support for SMTP behind TCP load balancers (`MAILCUBBY_SMTP_PROXY_PROTOCOL` / `MAILCUBBY_SMTP_PROXY_PROTOCOL_TRUSTED`).
 21. Direct HTTPS listener (`MAILCUBBY_HTTP_TLS_CERT` / `MAILCUBBY_HTTP_TLS_KEY`); v1 terminates HTTPS at a reverse proxy (Caddy, Traefik, nginx).
