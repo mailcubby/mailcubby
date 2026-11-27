@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, LogIn, LogOut, MailCheck, MailX, UserPlus } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  LogIn,
+  LogOut,
+  MailCheck,
+  MailX,
+  UserPlus,
+} from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/EmptyState";
@@ -31,6 +39,10 @@ export interface InviteAcceptPageProps {
 function formatRateLimitMessage(retryAfterSeconds: number | undefined): string {
   const minutes = retryAfterSeconds ? Math.max(1, Math.ceil(retryAfterSeconds / 60)) : 15;
   return `Too many attempts, try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
+}
+
+function emailsMatch(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
 export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
@@ -267,6 +279,9 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
 
   const isInstanceInvite = !preview.project;
   const expiresLocal = formatExactTimestamp(preview.expires_at).local;
+  const emailMismatch = Boolean(
+    !isInstanceInvite && currentUser && !emailsMatch(currentUser.email, preview.email),
+  );
 
   return (
     <main className="flex min-h-full flex-col items-center justify-center gap-4 px-4 py-10">
@@ -365,12 +380,36 @@ export function InviteAcceptPage({ token }: InviteAcceptPageProps) {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              <div className="rounded-md border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                Signed in as{" "}
-                <strong className="font-medium text-foreground">{currentUser.name}</strong> (
-                <span className="font-mono">{currentUser.email}</span>). Accepting will add this
-                project to your current account.
-              </div>
+              {emailMismatch ? (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning-subtle px-3 py-2.5 text-xs text-warning-foreground"
+                >
+                  <AlertTriangle
+                    className="mt-0.5 size-3.5 shrink-0 text-warning"
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <p className="font-medium">Different email address</p>
+                    <p className="mt-0.5 break-words">
+                      This invitation was sent to{" "}
+                      <strong className="font-mono font-medium">{preview.email}</strong>, but you
+                      are signed in as{" "}
+                      <strong className="font-mono font-medium">{currentUser.email}</strong>.
+                      Accepting will add{" "}
+                      <strong className="font-mono font-medium">{currentUser.email}</strong> to this
+                      project. Sign out first if you meant to accept with another account.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-md border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                  Signed in as{" "}
+                  <strong className="font-medium text-foreground">{currentUser.name}</strong> (
+                  <span className="font-mono">{currentUser.email}</span>). Accepting will add this
+                  project to your current account.
+                </div>
+              )}
 
               {errorMessage ? (
                 <div
