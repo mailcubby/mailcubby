@@ -66,6 +66,7 @@ See section 14 for the roadmap.
 - SMTP requires AUTH with a project SMTP credential, unless the message is accepted by recipient routing into a project that enabled it (section 7).
 - Startup fails with a clear error if `MAILCUBBY_BASE_URL` or `MAILCUBBY_APP_KEY` (or `MAILCUBBY_APP_KEY_FILE`) is missing.
 - Startup fails if no SMTP TLS certificate is configured and `MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH` is not `true` (AUTH is only allowed after TLS in server mode).
+- On startup Mailcubby logs a warning if `MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH=true` (SMTP AUTH is allowed over plaintext connections) or if `MAILCUBBY_BASE_URL` uses `http://` (session cookies are not marked `Secure` and HSTS is disabled).
 - First run: if no users exist, the instance is in **setup pending** state (section 6.4).
 
 ---
@@ -339,6 +340,8 @@ Unknown operators are treated as plain text. The parser MUST produce parameteris
 | `mailcubby healthcheck [--url]` | Exit 0 if `/readyz` returns 200 within 2 s, else exit 1 (for Docker `HEALTHCHECK` in a distroless image, no shell). Default URL: `http://127.0.0.1:<port of MAILCUBBY_HTTP_ADDR>/readyz`. |
 | `mailcubby migrate status` | Show applied migrations. Migrations run automatically on `serve`. |
 | `mailcubby admin create-user --email --name [--admin]` | Print an invite link for a new user. |
+| `mailcubby admin list-users` | List all users (ID, email, name, flags, project count, status). |
+| `mailcubby admin enable-user --email` | Re-enable a disabled user and write a `user.enable` audit entry. |
 | `mailcubby admin reset-password --email` | Print a single-use reset link. |
 | `mailcubby sendmail [-t] [-f from] [--smtp host:port] [--user u --password p] [to...]` | Read a message on stdin and submit it via SMTP (default `localhost:1025`, or `MAILCUBBY_SENDMAIL_SMTP`) as a sendmail replacement for PHP `sendmail_path`. Recipients from arguments, or from headers with `-t`. Flags commonly passed by PHP and MTAs (`-i`, `-oi`, `-odi`, `-bm`, `-F name`) are accepted and ignored. Exit code 0 on `250`, non-zero with the SMTP reply on stderr otherwise. |
 

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -170,6 +171,7 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 			return nil, fmt.Errorf("app: ensure default project %q: %w", cfg.DefaultProject, err)
 		}
 	case config.ModeServer:
+		logServerSecurityWarnings(cfg, log)
 		if err := initServerSetup(ctx, cfg, st, auth.NewHasher(), clk, log); err != nil {
 			_ = st.Close()
 			return nil, err
@@ -538,6 +540,17 @@ func (a *App) Housekeeping() *retention.Housekeeping {
 // Config returns the resolved application configuration.
 func (a *App) Config() config.Config {
 	return a.cfg
+}
+
+// logServerSecurityWarnings logs startup warnings for insecure server-mode
+// settings (SPEC 5.2): plaintext SMTP AUTH and non-HTTPS MAILCUBBY_BASE_URL.
+func logServerSecurityWarnings(cfg config.Config, log *slog.Logger) {
+	if cfg.SMTPAllowInsecureAuth {
+		log.Warn("MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH is enabled: SMTP AUTH is allowed over plaintext connections; configure SMTP TLS for production")
+	}
+	if strings.HasPrefix(strings.ToLower(cfg.BaseURL), "http://") {
+		log.Warn("MAILCUBBY_BASE_URL uses http://: session cookies will not be marked Secure and HSTS is disabled; use https:// in production", "base_url", cfg.BaseURL)
+	}
 }
 
 // initServerSetup implements SPEC FR-040: headless bootstrap when

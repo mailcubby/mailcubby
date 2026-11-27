@@ -437,7 +437,21 @@ func TestLoadValidationErrors(t *testing.T) {
 			env: map[string]string{
 				"MAILCUBBY_APP_KEY": base64.StdEncoding.EncodeToString([]byte("short")),
 			},
-			wantVars: []string{"MAILCUBBY_APP_KEY"},
+			wantVars: []string{"MAILCUBBY_APP_KEY", "mailcubby keygen"},
+		},
+		{
+			name: "long app key",
+			env: map[string]string{
+				"MAILCUBBY_APP_KEY": base64.StdEncoding.EncodeToString(make([]byte, 48)),
+			},
+			wantVars: []string{"MAILCUBBY_APP_KEY", "mailcubby keygen"},
+		},
+		{
+			name: "invalid base64 app key",
+			env: map[string]string{
+				"MAILCUBBY_APP_KEY": "not!valid!base64!!!",
+			},
+			wantVars: []string{"MAILCUBBY_APP_KEY", "mailcubby keygen"},
 		},
 		{
 			name: "joined multiple errors",
