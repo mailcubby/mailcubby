@@ -36,7 +36,7 @@ services:
       - caddy-config:/config
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.9-alpine
     restart: unless-stopped
     user: "65532:65532"
     depends_on:

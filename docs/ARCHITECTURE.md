@@ -356,7 +356,18 @@ COPY --from=build --chown=65532:65532 /out/data /data
 ENV MAILCUBBY_DATA_DIR=/data
 VOLUME /data
 EXPOSE 1025 8025
-HEALTHCHECK --interval=30s --timeout=3s CMD ["/mailcubby", "healthcheck"]
+ARG VERSION=dev
+ARG COMMIT=none
+ARG DATE=unknown
+LABEL org.opencontainers.image.title="mailcubby" \
+      org.opencontainers.image.description="Self-hosted multi-tenant email testing server" \
+      org.opencontainers.image.source="https://github.com/mailcubby/mailcubby" \
+      org.opencontainers.image.url="https://github.com/mailcubby/mailcubby" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}" \
+      org.opencontainers.image.created="${DATE}" \
+      org.opencontainers.image.licenses="LicenseRef-PolyForm-Shield-1.0.0"
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s CMD ["/mailcubby", "healthcheck"]
 ENTRYPOINT ["/mailcubby"]
 CMD ["serve"]
 ```
