@@ -234,7 +234,7 @@ The `250` reply is sent only after the transaction commits (FR-010).
 |-- cmd/mailcubby/             main.go, subcommands
 |-- internal/
 |   |-- app/                  wiring, lifecycle, errgroup
-|   |-- cli/                  admin/keygen/healthcheck/sendmail subcommands
+|   |-- cli/                  admin/backup/keygen/healthcheck/migrate/sendmail subcommands
 |   |-- config/               env parsing, validation
 |   |-- smtpd/                go-smtp backend, session, routing, LOGIN sasl, limitListener
 |   |-- ingest/               spool, parse (enmime), metadata, tags, sample message
@@ -393,7 +393,7 @@ Internet --587--> mailcubby:1025 (STARTTLS, cert files from Caddy's volume, read
 ### 9.4 Operations
 
 - Logs: `log/slog` to stdout, `text` or `json`. Each HTTP request logs method, route pattern, status, duration, request ID, principal kind; each SMTP session logs remote IP, auth user, recipients count, result code, message IDs.
-- Backups: documented in README (SQLite `.backup` + blobs copy, or stop and copy the volume).
+- Backups: documented in README (`mailcubby backup --out <path|->` online SQLite `VACUUM INTO` + `blobs/` copy, or stop and copy the volume).
 - Upgrades: migrations run automatically; downgrades are not supported (restore from backup).
 
 ## 10. Threat model

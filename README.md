@@ -367,13 +367,27 @@ docker compose -f deploy/compose.server.yml start mailcubby
 
 ### Online backup (without downtime)
 
-SQLite runs in WAL mode, so never copy `app.db` with `cp` while Mailcubby is running. Use SQLite's online `.backup` command and then sync `blobs/`:
+SQLite runs in WAL mode, so never copy `app.db` with `cp` while Mailcubby is running. Use `mailcubby backup` (which runs SQLite's online `VACUUM INTO` and works inside the distroless Docker image without `sqlite3` or a shell), then copy `blobs/`.
+
+With Docker Compose (streams `app.db` to the host with no extra bind mount, then archives `blobs/` from the volume):
 
 ```sh
 mkdir -p /backups/mailcubby
-sqlite3 /path/to/data/app.db ".backup '/backups/mailcubby/app.db'"
+(umask 077 && docker compose -f deploy/compose.server.yml exec -T mailcubby \
+  /mailcubby backup --out - > /backups/mailcubby/app.db)
+docker run --rm -v mailcubby_mailcubby-data:/data:ro -v /backups/mailcubby:/backup alpine:3.21 \
+  tar -cf /backup/blobs.tar -C /data blobs
+```
+
+With the standalone binary (or a bind-mounted data directory):
+
+```sh
+mkdir -p /backups/mailcubby
+mailcubby backup --data-dir /path/to/data --out /backups/mailcubby/app.db
 rsync -a /path/to/data/blobs/ /backups/mailcubby/blobs/
 ```
+
+`mailcubby backup --out <path>` writes atomically with mode `0600` and refuses to overwrite an existing file unless `--overwrite` is passed. Because `blobs/` already holds zstd-compressed `.eml.zst` files, plain `tar -cf` avoids spending CPU re-compressing them.
 
 To restore, stop Mailcubby, replace `app.db` (remove any old `app.db-wal`/`app.db-shm`) and `blobs/` with permissions owned by UID `65532` (in Docker), and start Mailcubby again.
 
@@ -454,6 +468,7 @@ sendmail_path = "/usr/local/bin/mailcubby sendmail -t --smtp localhost:1025 --us
 | `mailcubby keygen` | Generate a new 32-byte base64 `MAILCUBBY_APP_KEY`. |
 | `mailcubby healthcheck [--url]` | Exit 0 if `/readyz` returns 200 within 2 s (used by Docker `HEALTHCHECK`). |
 | `mailcubby migrate status` | Display applied and pending database migrations. |
+| `mailcubby backup --out <path\|-> [--data-dir path] [--overwrite]` | Create a consistent online SQLite backup of `app.db` (file or stdout). |
 | `mailcubby admin create-user --email --name [--admin]` | Create a user and print a one-time invite link. |
 | `mailcubby admin reset-password --email` | Print a one-time 1-hour password reset link. |
 | `mailcubby sendmail [-t] [-f from] [--smtp host:port] [--user u --password p] [to...]` | Submit an email from stdin over SMTP. |
