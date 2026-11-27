@@ -1,7 +1,16 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { AlertCircle, MailX } from "lucide-react";
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  type KeyboardEvent,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,9 +25,9 @@ import { PreviewTab } from "@/features/message/PreviewTab";
 import { RawTab } from "@/features/message/RawTab";
 import { TechTab } from "@/features/message/TechTab";
 import { TextTab } from "@/features/message/TextTab";
-import { ApiError, getApiErrorMessage } from "@/lib/api";
+import { ApiError, type AttachmentSummary, getApiErrorMessage } from "@/lib/api";
 import { useMarkReadDelayPreference, useSingleKeyShortcutsPreference } from "@/lib/preferences";
-import { messageDetailQueryOptions } from "@/lib/queries";
+import { messageDetailQueryOptions, metaQueryOptions } from "@/lib/queries";
 import { type KeyShortcutBinding, useKeyShortcuts } from "@/lib/shortcuts";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { cn } from "@/lib/utils";
@@ -44,6 +53,12 @@ const NUMBER_KEY_TO_TAB: ReadonlyArray<{ key: string; tab: MessageTab }> = [
 ];
 
 const prefetchedRenderUrls = new Set<string>();
+
+const PdfPreviewDialog = lazy(() =>
+  import("@/features/message/PdfPreviewDialog").then((m) => ({
+    default: m.PdfPreviewDialog,
+  })),
+);
 
 function isSaveDataEnabled(): boolean {
   if (typeof navigator === "undefined") {
@@ -81,6 +96,14 @@ export function MessageView() {
   );
   const autoMarkedRef = useRef<string | null>(null);
   const tabRefs = useRef<Partial<Record<MessageTab, HTMLButtonElement | null>>>({});
+  const [previewPdfState, setPreviewPdfState] = useState<{
+    messageId: string;
+    attachment: AttachmentSummary;
+  } | null>(null);
+  const [pdfDialogLoaded, setPdfDialogLoaded] = useState(false);
+
+  const { data: meta } = useQuery(metaQueryOptions());
+  const inlinePdfEnabled = meta?.features.inline_pdf ?? false;
 
   const {
     data: message,
@@ -88,6 +111,24 @@ export function MessageView() {
     error,
     refetch,
   } = useQuery(messageDetailQueryOptions(projectSlug, messageId));
+
+  const activePreviewPdf =
+    message && previewPdfState?.messageId === message.id ? previewPdfState.attachment : null;
+
+  // Clear preview state when switching projects or messages so navigating back
+  // later never spontaneously re-opens a previously unmounted PDF modal.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset when route params change.
+  useEffect(() => {
+    setPreviewPdfState(null);
+  }, [projectSlug, messageId]);
+
+  const handlePreviewPdf = useCallback(
+    (attachment: AttachmentSummary) => {
+      setPdfDialogLoaded(true);
+      setPreviewPdfState({ messageId, attachment });
+    },
+    [messageId],
+  );
 
   // Mark message seen after configured delay when opened by a member/owner (FR-075, UI 3.7).
   useEffect(() => {
@@ -360,6 +401,8 @@ export function MessageView() {
             projectSlug={projectSlug}
             messageId={message.id}
             attachments={message.attachments}
+            inlinePdfEnabled={inlinePdfEnabled}
+            onPreviewPdf={handlePreviewPdf}
           />
         ) : null}
         {activeTab === "tech" ? <TechTab message={message} /> : null}
@@ -371,7 +414,25 @@ export function MessageView() {
           projectSlug={projectSlug}
           messageId={message.id}
           attachments={message.attachments}
+          inlinePdfEnabled={inlinePdfEnabled}
+          onPreviewPdf={handlePreviewPdf}
         />
+      ) : null}
+
+      {pdfDialogLoaded ? (
+        <Suspense fallback={null}>
+          <PdfPreviewDialog
+            open={activePreviewPdf !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setPreviewPdfState(null);
+              }
+            }}
+            projectSlug={projectSlug}
+            messageId={message.id}
+            attachment={activePreviewPdf}
+          />
+        </Suspense>
       ) : null}
     </article>
   );

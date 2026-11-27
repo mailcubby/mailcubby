@@ -28,9 +28,11 @@ test.describe("Phase 14c: attachment strip in the message view (FR-072)", () => 
     await expect(strip.getByRole("link")).toHaveCount(2);
 
     const png = strip.getByRole("link", { name: /^Download chart\.png / });
-    const pdf = strip.getByRole("link", { name: /^Download monthly-report\.pdf / });
+    const pdfPreview = strip.getByRole("button", { name: /^Preview monthly-report\.pdf / });
+    const pdfDownload = strip.getByRole("link", { name: "Download monthly-report.pdf" });
     await expect(png).toBeVisible();
-    await expect(pdf).toBeVisible();
+    await expect(pdfPreview).toBeVisible();
+    await expect(pdfDownload).toBeVisible();
 
     // PNG thumbnail is loaded from the ?inline=1 endpoint (allowed by the app CSP img-src 'self').
     const thumb = png.locator("img");
@@ -39,15 +41,17 @@ test.describe("Phase 14c: attachment strip in the message view (FR-072)", () => 
       .poll(() => thumb.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth))
       .toBeGreaterThan(0);
 
-    // PDF gets an icon only, never an inline rendering.
-    await expect(pdf.locator("img")).toHaveCount(0);
-    // Phase 15c: the type icon plus the card's trailing download icon.
-    await expect(pdf.locator("svg")).toHaveCount(2);
+    // PDF card shows an icon (no thumbnail) and splits preview + download cleanly (no nested interactive elements).
+    await expect(pdfPreview.locator("img")).toHaveCount(0);
+    await expect(pdfPreview.locator("svg")).toHaveCount(2);
     await expect(page.locator("embed, object")).toHaveCount(0);
 
-    // Clicking a card downloads the file with the right name.
-    const [pdfDownload] = await Promise.all([page.waitForEvent("download"), pdf.click()]);
-    expect(pdfDownload.suggestedFilename()).toBe("monthly-report.pdf");
+    // Clicking the download actions downloads each file with the right name.
+    const [pdfDownloadEvent] = await Promise.all([
+      page.waitForEvent("download"),
+      pdfDownload.click(),
+    ]);
+    expect(pdfDownloadEvent.suggestedFilename()).toBe("monthly-report.pdf");
     const [pngDownload] = await Promise.all([page.waitForEvent("download"), png.click()]);
     expect(pngDownload.suggestedFilename()).toBe("chart.png");
 

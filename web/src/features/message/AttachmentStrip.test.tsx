@@ -1,7 +1,11 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { AttachmentStrip } from "@/features/message/AttachmentStrip";
-import { getAttachmentKind } from "@/features/message/attachments";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AttachmentStrip, type AttachmentStripProps } from "@/features/message/AttachmentStrip";
+import {
+  attachmentPdfRenderUrl,
+  getAttachmentKind,
+  isPdfMime,
+} from "@/features/message/attachments";
 import type { AttachmentSummary } from "@/lib/api";
 import { formatBytes } from "@/lib/format";
 
@@ -19,8 +23,13 @@ function att(
   };
 }
 
-function renderStrip(attachments: AttachmentSummary[]) {
-  return render(<AttachmentStrip projectSlug="shop" messageId="01MSG" attachments={attachments} />);
+function renderStrip(
+  attachments: AttachmentSummary[],
+  extra?: Partial<Pick<AttachmentStripProps, "inlinePdfEnabled" | "onPreviewPdf">>,
+) {
+  return render(
+    <AttachmentStrip projectSlug="shop" messageId="01MSG" attachments={attachments} {...extra} />,
+  );
 }
 
 describe("AttachmentStrip (FR-072)", () => {
@@ -90,6 +99,47 @@ describe("AttachmentStrip (FR-072)", () => {
     expect(svg.getAttribute("data-kind")).toBe("image");
   });
 
+  it("renders PDF attachments as split cards (preview button + sibling download link) when inline PDF is enabled", () => {
+    const onPreviewPdf = vi.fn();
+    const pdfAtt = att({
+      id: 1,
+      filename: "invoice.pdf",
+      content_type: "application/pdf",
+      size_bytes: 2048,
+    });
+    const pngAtt = att({
+      id: 2,
+      filename: "photo.png",
+      content_type: "image/png",
+      size_bytes: 4096,
+    });
+
+    renderStrip([pdfAtt, pngAtt], { inlinePdfEnabled: true, onPreviewPdf });
+
+    const strip = screen.getByRole("region", { name: "Attachment downloads" });
+    const previewBtn = within(strip).getByRole("button", {
+      name: `Preview invoice.pdf ${formatBytes(2048)}`,
+    });
+    const downloadLink = within(strip).getByRole("link", { name: "Download invoice.pdf" });
+
+    // No nested interactive elements: button and link are siblings inside the split card.
+    expect(previewBtn.contains(downloadLink)).toBe(false);
+    expect(downloadLink.contains(previewBtn)).toBe(false);
+    expect(downloadLink.getAttribute("href")).toBe(
+      "/api/v1/projects/shop/messages/01MSG/attachments/1",
+    );
+    expect(downloadLink.getAttribute("download")).toBe("invoice.pdf");
+
+    fireEvent.click(previewBtn);
+    expect(onPreviewPdf).toHaveBeenCalledTimes(1);
+    expect(onPreviewPdf).toHaveBeenCalledWith(pdfAtt);
+
+    // Non-PDF attachments remain single download cards.
+    expect(
+      within(strip).getByRole("link", { name: `Download photo.png ${formatBytes(4096)}` }),
+    ).toBeTruthy();
+  });
+
   it("falls back to a generated filename and singular label", () => {
     renderStrip([att({ id: 7, filename: "" })]);
     const link = screen.getByRole("link", { name: /attachment-7/ });
@@ -98,10 +148,11 @@ describe("AttachmentStrip (FR-072)", () => {
   });
 });
 
-describe("getAttachmentKind", () => {
+describe("getAttachmentKind and PDF helpers", () => {
   it.each([
     ["image/png", "image"],
     ["application/pdf", "pdf"],
+    ['application/pdf; name="doc.pdf"', "pdf"],
     ["text/calendar; method=REQUEST", "calendar"],
     ["application/zip", "archive"],
     ["application/x-7z-compressed", "archive"],
@@ -112,5 +163,12 @@ describe("getAttachmentKind", () => {
     ["", "file"],
   ])("%s -> %s", (contentType, kind) => {
     expect(getAttachmentKind(contentType)).toBe(kind);
+    expect(isPdfMime(contentType)).toBe(kind === "pdf");
+  });
+
+  it("builds the dedicated PDF render URL with encoded segments", () => {
+    expect(attachmentPdfRenderUrl("my-shop", "01MSG", 42)).toBe(
+      "/render/my-shop/01MSG/attachments/42",
+    );
   });
 });

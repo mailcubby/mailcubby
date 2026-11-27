@@ -7,9 +7,13 @@ export interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  titleClassName?: string;
   description?: string;
+  headerActions?: ReactNode;
   children: ReactNode;
   className?: string;
+  containerClassName?: string;
+  bodyClassName?: string;
   closeOnBackdropClick?: boolean;
 }
 
@@ -23,9 +27,13 @@ export function Dialog({
   open,
   onOpenChange,
   title,
+  titleClassName,
   description,
+  headerActions,
   children,
   className,
+  containerClassName,
+  bodyClassName,
   closeOnBackdropClick = true,
 }: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
@@ -106,10 +114,17 @@ export function Dialog({
       )}
     >
       {open ? (
-        <div className="flex flex-col">
-          <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
-            <div className="min-w-0">
-              <h2 id={titleId} className="text-[15px] font-semibold leading-snug text-foreground">
+        <div className={cn("flex flex-col", containerClassName)}>
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
+            <div className="min-w-0 flex-1">
+              <h2
+                id={titleId}
+                title={titleClassName ? title : undefined}
+                className={cn(
+                  "text-[15px] font-semibold leading-snug text-foreground",
+                  titleClassName,
+                )}
+              >
                 {title}
               </h2>
               {description ? (
@@ -118,17 +133,29 @@ export function Dialog({
                 </p>
               ) : null}
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Close dialog"
-              onClick={() => onOpenChange(false)}
-              className="-mr-1 -mt-1 size-7"
-            >
-              <X className="size-4" aria-hidden="true" />
-            </Button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {headerActions}
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Close dialog"
+                onClick={() => {
+                  const dialog = dialogRef.current;
+                  if (dialog?.open) {
+                    // Close through native dialog.close() while focus is still inside the dialog
+                    // so the browser restores focus to the trigger and fires `close` exactly once.
+                    dialog.close();
+                  } else {
+                    onOpenChange(false);
+                  }
+                }}
+                className={cn("-mr-1 size-7", !headerActions && "-mt-1")}
+              >
+                <X className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
           </div>
-          <div className="px-5 py-4">{children}</div>
+          <div className={cn("px-5 py-4", bodyClassName)}>{children}</div>
         </div>
       ) : null}
     </dialog>
