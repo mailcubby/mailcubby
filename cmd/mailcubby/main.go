@@ -74,7 +74,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  healthcheck  Check HTTP /readyz endpoint (exit 0 if healthy)")
 	_, _ = fmt.Fprintln(w, "  migrate      Inspect database migration status")
 	_, _ = fmt.Fprintln(w, "  backup       Create an online backup of app.db")
-	_, _ = fmt.Fprintln(w, "  admin        Administrative commands (create-user, reset-password)")
+	_, _ = fmt.Fprintln(w, "  admin        Administrative commands (create-user, list-users, enable-user, reset-password)")
 	_, _ = fmt.Fprintln(w, "  sendmail     Submit a message from stdin over SMTP")
 	_, _ = fmt.Fprintln(w, "  version      Print version, commit, and build date")
 	_, _ = fmt.Fprintln(w, "")

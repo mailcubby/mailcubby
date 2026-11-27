@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -40,6 +41,14 @@ func TestParseAppKey(t *testing.T) {
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("ParseAppKey(%q) succeeded, want error", tc.in)
+				}
+				if !strings.Contains(err.Error(), "mailcubby keygen") {
+					t.Fatalf("ParseAppKey(%q) error = %q, want hint mentioning mailcubby keygen", tc.in, err.Error())
+				}
+				if trimmed := strings.TrimSpace(tc.in); trimmed != "" {
+					if strings.Contains(err.Error(), trimmed) || strings.Contains(err.Error(), tc.in) {
+						t.Fatalf("ParseAppKey error leaked invalid key input: %q", err.Error())
+					}
 				}
 				return
 			}

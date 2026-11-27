@@ -34,7 +34,7 @@ const (
 func ParseAppKey(encoded string) ([]byte, error) {
 	s := strings.TrimSpace(encoded)
 	if s == "" {
-		return nil, errors.New("secrets: empty app key")
+		return nil, errors.New("secrets: empty app key (generate one with: mailcubby keygen)")
 	}
 	encodings := []*base64.Encoding{
 		base64.StdEncoding,
@@ -46,12 +46,12 @@ func ParseAppKey(encoded string) ([]byte, error) {
 		b, err := enc.DecodeString(s)
 		if err == nil {
 			if len(b) != KeySize {
-				return nil, fmt.Errorf("secrets: app key must be %d bytes, got %d", KeySize, len(b))
+				return nil, fmt.Errorf("secrets: app key must be %d bytes, got %d (generate one with: mailcubby keygen)", KeySize, len(b))
 			}
 			return b, nil
 		}
 	}
-	return nil, errors.New("secrets: app key must be valid base64 (standard or URL) encoding of 32 bytes")
+	return nil, errors.New("secrets: app key must be valid base64 (standard or URL) encoding of 32 bytes (generate one with: mailcubby keygen)")
 }
 
 // GenerateAppKey generates a cryptographically random 32-byte key and returns

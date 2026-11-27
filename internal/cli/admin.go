@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 	"time"
 	"unicode/utf8"
 
@@ -22,6 +24,7 @@ import (
 const (
 	defaultAdminInviteTTL = 7 * 24 * time.Hour
 	maxAdminUserNameRunes = 80
+	adminListPageSize     = 200
 )
 
 // RunAdmin implements the "mailcubby admin <subcommand>" CLI entrypoint (SPEC FR-115).
@@ -39,6 +42,10 @@ func RunAdminWithClock(ctx context.Context, args []string, stdout, stderr io.Wri
 	switch args[0] {
 	case "create-user":
 		return runAdminCreateUser(ctx, args[1:], stdout, stderr, lookupEnv, clk)
+	case "list-users":
+		return runAdminListUsers(ctx, args[1:], stdout, stderr, lookupEnv)
+	case "enable-user":
+		return runAdminEnableUser(ctx, args[1:], stdout, stderr, lookupEnv, clk)
 	case "reset-password":
 		return runAdminResetPassword(ctx, args[1:], stdout, stderr, lookupEnv, clk)
 	case "help", "-h", "--help":
@@ -56,6 +63,8 @@ func printAdminUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Subcommands:")
 	_, _ = fmt.Fprintln(w, "  create-user --email <email> --name <name> [--admin]  Create a user and print an invite link")
+	_, _ = fmt.Fprintln(w, "  list-users                                           List all users and their status")
+	_, _ = fmt.Fprintln(w, "  enable-user --email <email>                          Re-enable a disabled user")
 	_, _ = fmt.Fprintln(w, "  reset-password --email <email>                       Generate a single-use password reset link (valid 1h)")
 }
 
@@ -289,4 +298,203 @@ func runAdminResetPassword(ctx context.Context, args []string, stdout, stderr io
 
 	_, _ = fmt.Fprintf(stdout, "%s/reset/%s\n", baseURL, token)
 	return 0
+}
+
+func runAdminListUsers(ctx context.Context, args []string, stdout, stderr io.Writer, lookupEnv func(string) (string, bool)) int {
+	dataDirDefault := defaultDataDir
+	if lookupEnv != nil {
+		if v, ok := lookupEnv("MAILCUBBY_DATA_DIR"); ok && strings.TrimSpace(v) != "" {
+			dataDirDefault = strings.TrimSpace(v)
+		}
+	}
+
+	fs := flag.NewFlagSet("admin list-users", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	dataDirFlag := fs.String("data-dir", dataDirDefault, "data directory containing app.db")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() > 0 {
+		_, _ = fmt.Fprintln(stderr, "admin list-users takes no positional arguments")
+		return 2
+	}
+
+	st, err := openExistingAdminStore(ctx, *dataDirFlag)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "admin list-users: %v\n", err)
+		return 1
+	}
+	defer func() { _ = st.Close() }()
+
+	var users []store.AdminUser
+	var afterID int64
+	for {
+		page, err := st.ListUsersAdmin(ctx, afterID, "", adminListPageSize)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "admin list-users: list users: %v\n", err)
+			return 1
+		}
+		users = append(users, page...)
+		if len(page) < adminListPageSize {
+			break
+		}
+		afterID = page[len(page)-1].User.ID
+	}
+
+	if len(users) == 0 {
+		_, _ = fmt.Fprintln(stdout, "No users found.")
+		return 0
+	}
+
+	tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "ID\tEMAIL\tNAME\tADMIN\tCAN_CREATE_PROJECTS\tPROJECTS\tSTATUS")
+	for _, au := range users {
+		u := au.User
+		_, _ = fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%d\t%s\n",
+			u.ID,
+			sanitizeTableCell(u.Email),
+			sanitizeTableCell(u.Name),
+			formatYesNo(u.IsAdmin),
+			formatYesNo(u.CanCreateProjects),
+			au.ProjectCount,
+			formatUserStatus(u),
+		)
+	}
+	if err := tw.Flush(); err != nil {
+		_, _ = fmt.Fprintf(stderr, "admin list-users: flush output: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func runAdminEnableUser(ctx context.Context, args []string, stdout, stderr io.Writer, lookupEnv func(string) (string, bool), clk clock.Clock) int {
+	dataDirDefault := defaultDataDir
+	if lookupEnv != nil {
+		if v, ok := lookupEnv("MAILCUBBY_DATA_DIR"); ok && strings.TrimSpace(v) != "" {
+			dataDirDefault = strings.TrimSpace(v)
+		}
+	}
+
+	fs := flag.NewFlagSet("admin enable-user", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	emailFlag := fs.String("email", "", "email address of the user to enable")
+	dataDirFlag := fs.String("data-dir", dataDirDefault, "data directory containing app.db")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() > 0 {
+		_, _ = fmt.Fprintln(stderr, "admin enable-user takes no positional arguments")
+		return 2
+	}
+
+	email := strings.TrimSpace(*emailFlag)
+	if email == "" {
+		_, _ = fmt.Fprintln(stderr, "admin enable-user: --email is required")
+		return 2
+	}
+
+	if clk == nil {
+		clk = clock.NewReal()
+	}
+
+	st, err := openExistingAdminStore(ctx, *dataDirFlag)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "admin enable-user: %v\n", err)
+		return 1
+	}
+	defer func() { _ = st.Close() }()
+
+	now := clk.Now().UTC()
+	var (
+		canonicalEmail string
+		alreadyEnabled bool
+	)
+	if err := st.WithTx(ctx, func(tx *store.Tx) error {
+		user, err := tx.GetUserByEmail(ctx, email)
+		if err != nil {
+			return err
+		}
+		canonicalEmail = user.Email
+		if user.DisabledAt == nil {
+			alreadyEnabled = true
+			return nil
+		}
+		if _, err := tx.UpdateUserAdmin(ctx, store.UpdateUserAdminParams{
+			ID:                user.ID,
+			Name:              user.Name,
+			IsAdmin:           user.IsAdmin,
+			CanCreateProjects: user.CanCreateProjects,
+			DisabledAt:        nil,
+			Now:               now,
+		}); err != nil {
+			return err
+		}
+		actorLabel := "cli"
+		targetType := "user"
+		targetID := strconv.FormatInt(user.ID, 10)
+		_, err = tx.InsertAudit(ctx, store.InsertAuditParams{
+			At:         now,
+			ActorType:  store.AuditActorSystem,
+			ActorLabel: &actorLabel,
+			Action:     "user.enable",
+			TargetType: &targetType,
+			TargetID:   &targetID,
+			Metadata:   map[string]any{"email": user.Email},
+		})
+		return err
+	}); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			_, _ = fmt.Fprintf(stderr, "admin enable-user: user %q not found\n", email)
+			return 1
+		}
+		_, _ = fmt.Fprintf(stderr, "admin enable-user: %v\n", err)
+		return 1
+	}
+
+	if alreadyEnabled {
+		_, _ = fmt.Fprintf(stdout, "user %q is already enabled\n", canonicalEmail)
+		return 0
+	}
+	_, _ = fmt.Fprintf(stdout, "enabled user %q\n", canonicalEmail)
+	return 0
+}
+
+func openExistingAdminStore(ctx context.Context, dataDir string) (*store.Store, error) {
+	dbPath := filepath.Join(dataDir, store.DBFilename)
+	info, err := os.Stat(dbPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("database %q does not exist; check --data-dir or MAILCUBBY_DATA_DIR", dbPath)
+		}
+		return nil, fmt.Errorf("stat database %q: %w", dbPath, err)
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("database path %q is a directory; check --data-dir or MAILCUBBY_DATA_DIR", dbPath)
+	}
+	st, err := store.Open(ctx, dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open store: %w", err)
+	}
+	return st, nil
+}
+
+func formatYesNo(v bool) string {
+	if v {
+		return "yes"
+	}
+	return "no"
+}
+
+func formatUserStatus(u store.User) string {
+	if u.DisabledAt != nil {
+		return "disabled"
+	}
+	if u.PasswordHash == nil || *u.PasswordHash == "" {
+		return "pending-invite"
+	}
+	return "active"
+}
+
+func sanitizeTableCell(s string) string {
+	return strings.NewReplacer("\t", " ", "\r", " ", "\n", " ").Replace(s)
 }

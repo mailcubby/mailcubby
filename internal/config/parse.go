@@ -411,7 +411,7 @@ func validateDomain(d string) error {
 func parseBase64Key32(raw string) ([]byte, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
-		return nil, errors.New("empty key")
+		return nil, errors.New("empty key (generate one with: mailcubby keygen)")
 	}
 	encodings := []*base64.Encoding{
 		base64.StdEncoding,
@@ -423,10 +423,10 @@ func parseBase64Key32(raw string) ([]byte, error) {
 		b, err := enc.DecodeString(s)
 		if err == nil {
 			if len(b) != 32 {
-				return nil, fmt.Errorf("must decode to 32 bytes, got %d", len(b))
+				return nil, fmt.Errorf("must decode to 32 bytes, got %d (generate one with: mailcubby keygen)", len(b))
 			}
 			return b, nil
 		}
 	}
-	return nil, errors.New("must be valid base64 (standard or URL) encoding of 32 bytes")
+	return nil, errors.New("must be valid base64 (standard or URL) encoding of 32 bytes (generate one with: mailcubby keygen)")
 }

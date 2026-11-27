@@ -550,7 +550,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		_, hasKey := get("MAILCUBBY_APP_KEY")
 		_, hasKeyFile := get("MAILCUBBY_APP_KEY_FILE")
 		if len(cfg.AppKey) == 0 && !hasKey && !hasKeyFile {
-			addErr("MAILCUBBY_APP_KEY", errors.New("required in server mode (or set MAILCUBBY_APP_KEY_FILE)"))
+			addErr("MAILCUBBY_APP_KEY", errors.New("required in server mode (or set MAILCUBBY_APP_KEY_FILE; generate one with: mailcubby keygen)"))
 		}
 		if cfg.SMTPTLSCert == "" && cfg.SMTPTLSKey == "" && !cfg.SMTPAllowInsecureAuth {
 			addErr("MAILCUBBY_SMTP_TLS_CERT", errors.New("required in server mode unless MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH=true"))

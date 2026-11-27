@@ -381,10 +381,15 @@ func TestLoadSecretFiles(t *testing.T) {
 func TestLoadValidationErrors(t *testing.T) {
 	t.Parallel()
 
+	shortKey := base64.StdEncoding.EncodeToString([]byte("short"))
+	longKey := base64.StdEncoding.EncodeToString(make([]byte, 48))
+	invalidKey := "not!valid!base64!!!"
+
 	cases := []struct {
-		name     string
-		env      map[string]string
-		wantVars []string
+		name          string
+		env           map[string]string
+		wantVars      []string
+		forbidSubstrs []string
 	}{
 		{
 			name:     "invalid max message bytes",
@@ -399,7 +404,7 @@ func TestLoadValidationErrors(t *testing.T) {
 		{
 			name:     "server mode missing base url, app key, and tls",
 			env:      map[string]string{"MAILCUBBY_MODE": "server"},
-			wantVars: []string{"MAILCUBBY_BASE_URL", "MAILCUBBY_APP_KEY", "MAILCUBBY_SMTP_TLS_CERT", "MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH"},
+			wantVars: []string{"MAILCUBBY_BASE_URL", "MAILCUBBY_APP_KEY", "mailcubby keygen", "MAILCUBBY_SMTP_TLS_CERT", "MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH"},
 		},
 		{
 			name: "server mode without tls or allow insecure auth",
@@ -435,9 +440,26 @@ func TestLoadValidationErrors(t *testing.T) {
 		{
 			name: "short app key",
 			env: map[string]string{
-				"MAILCUBBY_APP_KEY": base64.StdEncoding.EncodeToString([]byte("short")),
+				"MAILCUBBY_APP_KEY": shortKey,
 			},
-			wantVars: []string{"MAILCUBBY_APP_KEY"},
+			wantVars:      []string{"MAILCUBBY_APP_KEY", "mailcubby keygen"},
+			forbidSubstrs: []string{shortKey},
+		},
+		{
+			name: "long app key",
+			env: map[string]string{
+				"MAILCUBBY_APP_KEY": longKey,
+			},
+			wantVars:      []string{"MAILCUBBY_APP_KEY", "mailcubby keygen"},
+			forbidSubstrs: []string{longKey},
+		},
+		{
+			name: "invalid base64 app key",
+			env: map[string]string{
+				"MAILCUBBY_APP_KEY": invalidKey,
+			},
+			wantVars:      []string{"MAILCUBBY_APP_KEY", "mailcubby keygen"},
+			forbidSubstrs: []string{invalidKey},
 		},
 		{
 			name: "joined multiple errors",
@@ -484,7 +506,7 @@ func TestLoadValidationErrors(t *testing.T) {
 				"MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH": "true",
 				"MAILCUBBY_APP_KEY":                  "",
 			},
-			wantVars: []string{"MAILCUBBY_APP_KEY"},
+			wantVars: []string{"MAILCUBBY_APP_KEY", "mailcubby keygen"},
 		},
 		{
 			name: "server mode whitespace app key",
@@ -494,7 +516,7 @@ func TestLoadValidationErrors(t *testing.T) {
 				"MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH": "true",
 				"MAILCUBBY_APP_KEY":                  "   ",
 			},
-			wantVars: []string{"MAILCUBBY_APP_KEY"},
+			wantVars: []string{"MAILCUBBY_APP_KEY", "mailcubby keygen"},
 		},
 		{
 			name: "server mode empty app key and key file",
@@ -505,7 +527,7 @@ func TestLoadValidationErrors(t *testing.T) {
 				"MAILCUBBY_APP_KEY":                  "",
 				"MAILCUBBY_APP_KEY_FILE":             " ",
 			},
-			wantVars: []string{"MAILCUBBY_APP_KEY"},
+			wantVars: []string{"MAILCUBBY_APP_KEY", "mailcubby keygen"},
 		},
 		// Open questions (Phase 1): admin email and password must be set together.
 		{
@@ -544,6 +566,11 @@ func TestLoadValidationErrors(t *testing.T) {
 			for _, v := range tc.wantVars {
 				if !strings.Contains(msg, v) {
 					t.Errorf("error %q does not mention variable %q", msg, v)
+				}
+			}
+			for _, forbid := range tc.forbidSubstrs {
+				if strings.Contains(msg, forbid) {
+					t.Errorf("error %q leaked forbidden substring %q", msg, forbid)
 				}
 			}
 		})

@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -229,6 +231,64 @@ func TestServeHelp(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestTopLevelHelpAndAdminSubcommands(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--help"}, strings.NewReader(""), &stdout, &stderr, func(string) (string, bool) { return "", false })
+	if code != 0 {
+		t.Fatalf("--help exit code = %d, want 0", code)
+	}
+	for _, want := range []string{"create-user", "list-users", "enable-user", "reset-password"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("top-level help missing %q:\n%s", want, stdout.String())
+		}
+	}
+
+	// Missing app.db exits 1 cleanly without creating files or directories.
+	missingDir := filepath.Join(t.TempDir(), "missing")
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"admin", "list-users"}, strings.NewReader(""), &stdout, &stderr, func(k string) (string, bool) {
+		if k == "MAILCUBBY_DATA_DIR" {
+			return missingDir, true
+		}
+		return "", false
+	})
+	if code != 1 {
+		t.Fatalf("admin list-users missing DB exit code = %d, want 1 (stdout=%q, stderr=%q)", code, stdout.String(), stderr.String())
+	}
+	for _, want := range []string{store.DBFilename, "--data-dir", "MAILCUBBY_DATA_DIR"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("admin list-users missing DB stderr %q missing %q", stderr.String(), want)
+		}
+	}
+	if _, statErr := os.Stat(missingDir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("admin list-users created missing dir %q (stat err: %v)", missingDir, statErr)
+	}
+
+	// Verify admin list-users on an initialized empty DB is dispatched through main.run.
+	dir := t.TempDir()
+	st, err := store.Open(t.Context(), filepath.Join(dir, store.DBFilename))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("store.Close: %v", err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"admin", "list-users"}, strings.NewReader(""), &stdout, &stderr, func(k string) (string, bool) {
+		if k == "MAILCUBBY_DATA_DIR" {
+			return dir, true
+		}
+		return "", false
+	})
+	if code != 0 || strings.TrimSpace(stdout.String()) != "No users found." {
+		t.Fatalf("admin list-users via main.run = (%d, stdout=%q, stderr=%q), want (0, %q)", code, stdout.String(), stderr.String(), "No users found.")
 	}
 }
 
