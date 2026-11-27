@@ -510,6 +510,10 @@ func TestAuthorizationMatrix(t *testing.T) {
 			expected: viewerTechOK, viewerTechOff: 200,
 			makeReq: constPath("/api/v1/projects/"+proj.Slug+"/messages/"+msgID+"/html", nil),
 		},
+		"GET /api/v1/projects/{project}/messages/{id}/html-check": {
+			expected: viewerTechOK, viewerTechOff: 200,
+			makeReq: constPath("/api/v1/projects/"+proj.Slug+"/messages/"+msgID+"/html-check", nil),
+		},
 		"GET /api/v1/projects/{project}/messages/{id}/headers": {
 			expected: viewerTechOK, viewerTechOff: 200,
 			makeReq: constPath("/api/v1/projects/"+proj.Slug+"/messages/"+msgID+"/headers", nil),

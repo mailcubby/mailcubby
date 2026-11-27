@@ -13,6 +13,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/blob"
 	"github.com/mailcubby/mailcubby/internal/clock"
+	"github.com/mailcubby/mailcubby/internal/compat"
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
 	"github.com/mailcubby/mailcubby/internal/ingest"
@@ -52,6 +53,7 @@ type Options struct {
 	Logger         *slog.Logger
 	Ingestor       *ingest.Ingestor
 	Renderer       *render.Renderer
+	CompatChecker  *compat.Checker
 	Hasher         PasswordHasher
 	WebHandler     http.Handler
 	ListenersReady func() bool
@@ -65,6 +67,7 @@ type Server struct {
 	bus            *events.Bus
 	ingestor       *ingest.Ingestor
 	renderer       *render.Renderer
+	compatChecker  *compat.Checker
 	hasher         PasswordHasher
 	smtpCipher     *secrets.Cipher
 	clk            clock.Clock
@@ -135,6 +138,15 @@ func New(cfg config.Config, st *store.Store, blobs *blob.Store, bus *events.Bus,
 	if rend == nil && blobs != nil {
 		rend = render.New(blobs)
 	}
+	checker := opts.CompatChecker
+	if checker == nil && blobs != nil {
+		c, err := compat.New(blobs)
+		if err != nil {
+			log.Error("failed to initialize html compatibility checker", "error", err)
+		} else {
+			checker = c
+		}
+	}
 	hasher := opts.Hasher
 	if hasher == nil {
 		hasher = auth.NewHasher()
@@ -160,6 +172,7 @@ func New(cfg config.Config, st *store.Store, blobs *blob.Store, bus *events.Bus,
 		bus:             bus,
 		ingestor:        ing,
 		renderer:        rend,
+		compatChecker:   checker,
 		hasher:          hasher,
 		smtpCipher:      smtpCipher,
 		clk:             clk,
