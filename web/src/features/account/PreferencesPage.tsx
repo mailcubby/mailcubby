@@ -194,7 +194,7 @@ export function PreferencesPage() {
                 Single-key keyboard shortcuts
               </label>
               <p id={shortcutsDescId} className="mt-0.5 text-[13px] text-muted-foreground">
-                Enable single-character shortcuts such as j/k, e, u, and 1–7. Modifier shortcuts
+                Enable single-character shortcuts such as j/k, e, u, and 1–9. Modifier shortcuts
                 (Cmd/Ctrl+K) stay active either way.
               </p>
             </div>
