@@ -22,7 +22,8 @@ In Google Antigravity, `AGENTS.md` is loaded automatically; type `/next-phase` (
 | M2 Local feature-complete | 5 | Search and tags |
 | M3 Multi-tenant server | 6 to 9 | Login, projects, roles, invites, per-project SMTP credentials, settings UI, API tokens |
 | M4 Production-ready | 10 to 12 | Retention, security hardening, TLS, packaging |
-| M5 v0.1.0 | 13 to 14 | Release |
+| M5 v0.1.0 | 13 to 15 | Release (published 2026-11-26) |
+| M6 v0.2.0 | 16a to 16e | Inline PDF preview, offline HTML compatibility check, link checker |
 
 ---
 
@@ -405,7 +406,7 @@ Tasks:
 - [x] Upgrade test: data dir created by the previous tag migrates cleanly (skip with a note if no previous tag exists — skipped: no previous git tag exists yet; `00001+00002 -> 00003` forward migration with populated data verified in `internal/store/migration_projects_autoincrement_test.go`).
 - [x] Security review of the diff since Phase 11; dependency updates to latest patch versions (stop condition: list them for the owner); `govulncheck` clean. Done 2026-11-26: `govulncheck@v1.10.0` clean (vuln DB 2026-11-24), `pnpm audit` clean, security review of the diff since Phase 11 (`b8079de..c6c52d6`, Phases 12 to 15) cleared with no findings; the owner-approved patch upgrades are applied (see Open questions 2026-11-26).
 - [x] `CHANGELOG.md`, GitHub release notes draft.
-- [ ] GitHub org, GHCR namespace and `mailcubby.dev` domain registered and matching the docs; tag `v0.1.0` pushed (owner).
+- [x] GitHub org, GHCR namespace and `mailcubby.dev` domain registered and matching the docs; tag `v0.1.0` pushed (owner; published 2026-11-26 — GitHub release, GHCR multi-arch image, and Homebrew tap).
 
 Acceptance:
 - All checkboxes in this file are ticked or marked owner/blocked with a reason; `make check` and `make e2e` green; CI and release workflows green, images published, README quick starts work from the published image (owner).
@@ -582,27 +583,101 @@ Acceptance:
 
 ---
 
-## Backlog (after v0.1.0)
+## Phase 16: v0.2 message inspection features
 
-Not scheduled. When an item is picked up it becomes a phase above. Items marked "SPEC 14.n" are in the SPEC roadmap.
+**Goal**: add inline PDF preview, offline HTML client compatibility checks (`caniemail`), and an SSRF-hardened link checker with zero new Go/npm dependencies and zero SQLite schema migrations. Each part is sized for one autonomous agent session and one PR.
 
-### v0.1.x (small, no design change)
+### Phase 16a: Inline PDF preview (backend + frontend + e2e)
 
-- `mailcubby backup` command for an online SQLite backup that works in the distroless image and compose volumes (audit V6).
-- Docs: password reset does not revoke API tokens; long-poll `/messages/wait` limits; `MAILCUBBY_TRUSTED_PROXIES` scope in compose (audit S5, S6, S7).
-- Invite accepted by a user whose email differs from the invite: warning in the accept UI (audit S8).
-- Attachment content types: map `*+xml`, `*/xml` and invalid values to `application/octet-stream` (audit S9).
-- Startup warnings for insecure SMTP AUTH and an `http://` base URL; hint at `keygen` when the app key has the wrong length; CLI `list-users` / `enable-user` (audit V8).
-- Server mode as a plain binary: systemd unit and docs (audit V4).
-- Framework snippets, a `curl` example for `/messages/wait` and a `host.docker.internal` note in the README; `sendmail` dial timeout; quieter access log (audit L4, L5).
-- OCI labels in `deploy/Dockerfile`, healthcheck `start_period`, pinned Caddy image (audit I7).
+Implements SPEC 14.19 under ADR 0009.
 
-### v0.2 (features)
+Tasks:
+- [ ] Config: add `MAILCUBBY_RENDER_INLINE_PDF` (bool, default `true` in local and server modes) in `internal/config` and expose `features.inline_pdf` in `GET /api/v1/meta`.
+- [ ] Backend: add `GET /render/{project}/{id}/attachments/{attachment_id}` (`PermViewer`, accessible to viewers even when `viewer_hide_technical=true`) in `internal/api/routes.go` and `internal/api/handlers_render.go` (or dedicated attachment render handler). Return `404` when `MAILCUBBY_RENDER_INLINE_PDF=false`; validate coerced media type is `application/pdf` **and** decoded bytes start with `%PDF-` at offset 0 (otherwise `415 Unsupported Media Type`). Serve with ADR 0009 headers (`Content-Disposition: inline`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; object-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'`, `Referrer-Policy: no-referrer`, `Cache-Control: private, no-store`, `Cross-Origin-Resource-Policy: same-origin`, `X-DNS-Prefetch-Control: off`, no `X-Frame-Options`). Keep `/api/v1/.../attachments/{attachment_id}` unchanged.
+- [ ] Update `internal/api/openapi.yaml`, regenerate `web/src/api/schema.d.ts`, update `TestAuthorizationMatrix`, two-tenant `isolation_test.go`, and `TestRouteClassSecurityHeaders` (`headers_test.go`).
+- [ ] Frontend: add lazy-loaded `PdfPreviewDialog` (native `<Dialog>` + `<iframe referrerPolicy="no-referrer">` without `sandbox`, header actions for "Open in new tab" and "Download", mobile fallback note); add "Preview" action for PDF rows in `AttachmentsTab`; turn PDF cards in `AttachmentStrip` into split cards (preview button + sibling download link, no nested interactive elements) when `meta.features.inline_pdf` is `true`.
+- [ ] Docs: update `docs/SPEC.md` (FR-072, FR-074, sections 8.1, 8.2, 8.9, 9.2, 12.2, 14.19), `docs/ARCHITECTURE.md` (sections 3.11 and 10.3), `docs/UI.md`, and `AGENTS.md` security rule 5 cross-referencing ADR 0009.
+- [ ] Tests: Go unit/integration tests (valid PDF, forged HTML/SVG as `application/pdf` -> `415`, non-PDF -> `415`, feature disabled -> `404`, tenant isolation, authz matrix, exact headers); Vitest tests for `AttachmentStrip` / `PdfPreviewDialog`; Playwright e2e (previewing `send-test` PDF as local operator and as viewer with `viewer_hide_technical=true`, hostile HTML-disguised-as-PDF executes zero script, axe WCAG 2.1 AA in light and dark).
 
-1. HTML compatibility check (caniemail data, offline). Most useful for agencies building templates. SPEC 14.2.
-2. Link checker, opt-in per instance, with SSRF protection (no private, loopback or link-local targets, timeouts, size caps) because the server fetches URLs found in untrusted email. SPEC 14.2.
-3. Inline PDF preview of attachments. SPEC 14.19.
-4. Webhooks on `message.created` and the MCP endpoint for AI agents. SPEC 14.4, 14.5.
+Files: `internal/config/`, `internal/api/`, `testdata/hostile/`, `web/src/features/message/`, `web/src/api/`, `web/e2e/`, `docs/SPEC.md`, `docs/ARCHITECTURE.md`, `docs/UI.md`, `AGENTS.md`.
+
+Acceptance:
+- `GET /render/{project}/{id}/attachments/{attachment_id}` serves a valid PDF inline with the exact ADR 0009 headers, returns `415` for HTML/SVG disguised as `application/pdf`, and returns `404` when `MAILCUBBY_RENDER_INLINE_PDF=false`.
+- `TestAuthorizationMatrix`, `isolation_test.go`, `headers_test.go`, `make check`, and `make e2e` pass (including axe clean in light and dark on the PDF preview dialog).
+
+### Phase 16b: HTML compatibility check — backend (`internal/compat`)
+
+Implements the offline `caniemail` analysis engine (SPEC 14.2).
+
+Tasks:
+- [ ] Dataset & generator: commit a compacted, zstd-compressed snapshot of `caniemail.com/api/data.json` (MIT license with attribution notice; generating the initial snapshot requires one-time network access, after which builds and tests run fully offline) under `internal/compat/data/caniemail.json.zst` (~15–30 KB compressed, curated ~18 current email clients including Outlook Classic vs New) plus a maintainer update script (`scripts/update-caniemail` or `internal/compat/cmd/gen`) and a test asserting the compressed dataset stays under 100 KB.
+- [ ] `internal/compat`: implement `Checker` (no mutable globals; decompressed immutable dataset + 64-entry LRU cache keyed by `{projectID, msgID}`), bounded `golang.org/x/net/html` walker (ignoring MSO conditional comments `<!--[if mso]>...<![endif]-->`), linear-time O(N) hand-written CSS tokenizer/parser (zero backtracking regexes, strict byte/node/declaration caps), declarative rule registry mapping HTML elements/attributes/image formats and CSS at-rules/selectors/properties/values/units to `caniemail` slugs, and weighted compatibility scoring.
+- [ ] API: add `GET /api/v1/projects/{project}/messages/{id}/html-check` (`PermViewerTech` / `viewer*`; returns `404` when message has no HTML part), update `internal/api/openapi.yaml`, regenerate `web/src/api/schema.d.ts`, update `TestAuthorizationMatrix` and two-tenant `isolation_test.go`.
+- [ ] Docs: update `docs/SPEC.md` (new FR, section 8.4) and `docs/ARCHITECTURE.md` (new `internal/compat` component and package tree).
+- [ ] Tests: unit test verifying every rule slug exists in the embedded dataset; fixture tests for common email HTML/CSS patterns (flexbox, grid, `@media`, `prefers-color-scheme`, MSO conditionals, `border-radius`, SVG, WebP); fuzz test on the HTML/CSS analyzer (`FuzzAnalyzeHTML`, no panics, bounded runtime); API authz & isolation tests.
+
+Files: `internal/compat/**`, `internal/api/`, `web/src/api/`, `docs/SPEC.md`, `docs/ARCHITECTURE.md`.
+
+Acceptance:
+- Compressed dataset is under 100 KB; every rule slug resolves in the dataset; fuzz test runs cleanly without panics.
+- `GET /api/v1/projects/{project}/messages/{id}/html-check` returns deterministic compatibility scores and per-client support, returns `404` for text-only messages, enforces `viewer_hide_technical`, and passes `make check` + `make test-race`.
+
+### Phase 16c: HTML compatibility check — frontend (`HtmlCheckTab`)
+
+Implements the UI for HTML compatibility checks (SPEC 14.2).
+
+Tasks:
+- [ ] Add `queryKeys.messageHtmlCheck(slug, id)` (`staleTime: Infinity`) and lazy-loaded `HtmlCheckTab` in `web/src/features/message/` wired as tab **HTML check** (shortcut key `9`, URL `?tab=check`, hidden when `!message.has_html` or `hideTechnical`).
+- [ ] UI: score summary bar (Supported / Partial / Unsupported using semantic Studio tokens with text + percentage, never color-only), client family filter pills (All / Gmail / Outlook / Apple Mail / Yahoo / Other), "Only show issues" toggle (default on), expandable feature rows (accessible disclosure with `aria-expanded`, category badge, occurrence count, external `caniemail.com` link with `rel="noopener noreferrer"`, and per-client support grid with notes), and structured `EmptyState` when all detected features are supported.
+- [ ] Update keyboard shortcuts help overlay (`1`–`9` or tab list) and `docs/UI.md`.
+- [ ] Tests: Vitest tests for filtering, "Only show issues", and disclosure expansion; Playwright e2e verifying tab `9`, filtering, hidden for viewers with `viewer_hide_technical=true`, zero `dangerouslySetInnerHTML`, bundle budget (`check:bundle` < 250 KB gzip), and axe WCAG 2.1 AA in light and dark.
+
+Files: `web/src/features/message/`, `web/src/routes/p.$project.m.$messageId.tsx`, `web/src/lib/queryKeys.ts`, `web/src/lib/shortcuts.ts`, `web/e2e/`, `docs/UI.md`.
+
+Acceptance:
+- Playwright opens the `HTML check` tab (and switches with key `9`), sees compatibility results and client filters, confirms it is hidden for restricted viewers, and passes axe in both themes; `make check` and `make e2e` pass.
+
+### Phase 16d: Link checker — backend (`internal/linkcheck`)
+
+Implements offline link extraction and SSRF-hardened active link checking (SPEC 14.2) under ADR 0010.
+
+Tasks:
+- [ ] Config: add `MAILCUBBY_LINK_CHECK_ENABLED` (default `true` in local mode, `false` in server mode), `MAILCUBBY_LINK_CHECK_TIMEOUT` (`5s`, max `30s`), `MAILCUBBY_LINK_CHECK_MAX_LINKS` (`50`, max `200`), `MAILCUBBY_LINK_CHECK_ALLOWED_PORTS` (`80,443`), `MAILCUBBY_LINK_CHECK_ALLOW_CIDRS` (empty) in `internal/config`; expose `features.link_check` in `GET /api/v1/meta`.
+- [ ] `internal/linkcheck`: implement offline extractor (HTML `<a href>`/`<area href>`, plain-text URLs, `List-Unsubscribe` header, deduplication, static warnings) and active checker enforcing all ADR 0010 SSRF/DNS-rebinding defenses (`Proxy: nil`, custom `DialContext` with `LookupNetIP`, trailing-dot hostname normalization, IPv6 zone-ID rejection, `ip.Unmap()`, full private/loopback/link-local/IMDS/site-local/ULA/CGNAT/NAT64/6to4/Teredo/IPv4-compatible/translated denylist, `ALLOW_CIDRS` override, direct literal IP dial preserving TLS SNI/`Host`, `CheckRedirect` max 5, `HEAD` + `GET Range: bytes=0-0` fallback on `405`/`501`, 1 KiB discard cap, `errgroup.SetLimit(5)` + global semaphore 16, tenant-scoped 64-entry 5-minute TTL LRU cache keyed by `{projectID, msgID}` via injected `clock.Clock`, zero logging of checked URLs or raw `*url.Error` strings).
+- [ ] API: add `GET /api/v1/projects/{project}/messages/{id}/links` (`PermViewerTech`) and `POST /api/v1/projects/{project}/messages/{id}/links/check` (`PermMember`, dedicated `10/m` server-mode rate limit, optional `{ urls?: string[] }` validated against extracted message links -> `400` for arbitrary URLs, `403 feature_disabled` when disabled). Update `internal/api/openapi.yaml`, regenerate `web/src/api/schema.d.ts`, update `TestAuthorizationMatrix`, two-tenant `isolation_test.go`, and `TestIntegrationLogRedactionNoSecrets`.
+- [ ] Docs: update `docs/SPEC.md` (new FR, FR-050 permission matrix, sections 3, 8.1, 8.2, 8.4, 9.2, 12.4, 14.2) and `docs/ARCHITECTURE.md` (`internal/linkcheck` component, package tree, threat model sections 10.3/10.4).
+- [ ] Tests: comprehensive unit tests for IP blocklist (IPv4, IPv6, IPv4-mapped IPv6, NAT64, 6to4, Teredo, IMDS), simulated DNS rebinding via fake resolver, redirect-to-loopback/private IP blocking, `ALLOW_CIDRS` allowlist, `HEAD` -> `GET` fallback on `405`, arbitrary-URL `400` rejection, `feature_disabled` `403`, rate limit `429`, log redaction (no checked URLs in logs), authz matrix (`viewer` and `token-read` get `403` on `POST .../links/check`), and tenant isolation.
+
+Files: `internal/config/`, `internal/linkcheck/**`, `internal/api/`, `internal/app/`, `web/src/api/`, `docs/SPEC.md`, `docs/ARCHITECTURE.md`.
+
+Acceptance:
+- Every blocked IP range, IPv4-mapped IPv6 bypass, DNS rebinding scenario, and private redirect is rejected as `blocked`; arbitrary caller-supplied URLs return `400`; viewers and `read` tokens receive `403` on `POST .../links/check`; zero checked URLs appear in captured logs; `make check` and `make test-race` pass.
+
+### Phase 16e: Link checker — frontend (`LinksTab`) and v0.2 polish
+
+Implements the UI for link extraction and checking (SPEC 14.2) and closes v0.2.
+
+Tasks:
+- [ ] Add `queryKeys.messageLinks(slug, id)` and lazy-loaded `LinksTab` in `web/src/features/message/` wired as tab **Links** (shortcut key `8`, URL `?tab=links`, hidden when `hideTechnical`).
+- [ ] UI: offline extracted link table (URL, anchor text, source badges, count, static warnings, copy URL, safe "Open in new tab" disabled for non-`http(s)` schemes); toolbar with "Check all links" + per-row check button (visible only when `meta.features.link_check === true` and `effectiveRole !== "viewer"`), concise single-use-token caution note, quiet info banner when disabled on server instances, semantic status badges (`200 OK`, redirect chain, `4xx`/`5xx`, `Blocked (private IP)`, timeout/DNS/TLS error), and `aria-live="polite"` summary announcement.
+- [ ] Update `docs/UI.md`, `README.md` (v0.2 features & new env vars), and `CHANGELOG.md` (`[Unreleased]` / v0.2 notes).
+- [ ] Tests: Vitest tests for `LinksTab` states (offline list, enabled vs disabled, viewer vs member, per-row check, static warnings); Playwright e2e (local mode + server mode with `MAILCUBBY_LINK_CHECK_ENABLED=true` and local test target via `MAILCUBBY_LINK_CHECK_ALLOW_CIDRS` and `MAILCUBBY_LINK_CHECK_ALLOWED_PORTS`, verifying offline extraction, active check, blocked private target, viewer cannot trigger check, and axe WCAG 2.1 AA in light and dark).
+- [ ] Final verification: `make check`, `make test-race`, `make e2e`, `./scripts/check-spec-frs.sh`, and `pnpm --dir web check:bundle` (< 250 KB gzip).
+
+Files: `web/src/features/message/`, `web/src/routes/p.$project.m.$messageId.tsx`, `web/src/lib/queryKeys.ts`, `web/e2e/`, `docs/UI.md`, `README.md`, `CHANGELOG.md`.
+
+Acceptance:
+- Playwright verifies offline link listing, explicit active checking, SSRF-blocked status badge, disabled state in default server mode, viewer restrictions, and axe clean in light and dark; `make check`, `make test-race`, and `make e2e` are green.
+
+---
+
+## Backlog (after v0.2.0)
+
+Not scheduled. When an item is picked up it becomes a phase above. Items marked "SPEC 14.n" are in the SPEC roadmap. (All v0.1.x backlog items — audit V4, V6, V8, S5–S9, L4–L5, I7 — and the SSE latency benchmark fix shipped after v0.1.0 in PRs #16 to #24.)
+
+### v0.2+ / Next (features)
+
+1. Webhooks on `message.created` and the MCP endpoint for AI agents. SPEC 14.4, 14.5.
 
 ### Later
 
@@ -776,3 +851,4 @@ Agents: record spec ambiguities and the decision taken here, newest last, with p
 - 2026-11-26, Phase 15 follow-ups: the setup wizard card is `max-w-2xl` (672 px) on every step, which supersedes the 15e final-review note that left it widening on step 5. `max-w-xl` (576 px) was measured first and truncated the generated SMTP username on step 5 at 1280 px; `server-onboarding-settings-tokens.spec.ts` now asserts the same card width on steps 1 and 5 and that no connection value is truncated (default and WordPress tabs). Long snippet lines still scroll inside the focusable code block, as before.
 - 2026-11-26, Phase 15 follow-ups: the projects home keeps the empty `aria-busy` pane (no skeleton) while the single-project redirect decides; UI.md 4.6 now names it as the one exception to "skeletons, not spinners". A project card skeleton there is exactly the projects-page flash that 15c recorded and 15e removed, and the pane lasts one request. A Vitest case pins it (no skeleton during the first load, then the redirect). Also in the follow-ups: the invite page's signed-in "Go to projects" on an unavailable invite follows the same rule as "Back to projects" ("Go to inbox"), and a non-404 failure on a single-project user's only project shows only a primary "Try again" (with `RefreshCw`, like the other refresh actions); other load errors keep the back link and "Retry", so no existing selector changed.
 - 2026-11-26, release (owner decision): the first release is **v0.1.0**, not v1.0.0, because the project is pre-alpha with no users. v1.0.0 will be tagged once the REST API, configuration and data format are declared stable; until then a 0.x minor version may change them, with upgrade steps in `CHANGELOG.md`. The `v1.0.0-rc.1` rehearsal (2026-11-25) published a GitHub pre-release with its tag and archives, and (per `.goreleaser.yaml`) only the GHCR tag `1.0.0-rc.1` (pre-releases get no `1.0` or `latest`). The owner deleted the rc.1 GitHub release and its tag on 2026-11-26 (`gh release delete v1.0.0-rc.1 --cleanup-tag`); the GHCR `1.0.0-rc.1` image tags remain and the owner will remove them (needs a token with `delete:packages`). No Homebrew formula was ever published (`skip_upload: auto` skips pre-releases; `mailcubby/homebrew-tap` holds only its README), so nobody needs `brew reinstall`, and v0.1.0 is the first real run of the tap upload and the `HOMEBREW_TAP_GITHUB_TOKEN` check in `release.yml`. `release.yml` derives the notes file from the tag, so `docs/release-notes-v0.1.0.md` is picked up without a workflow change.
+- 2026-11-27, v0.2 planning (owner decisions): approved Phases 16a to 16e with zero new Go/npm dependencies and zero SQLite schema migrations: (1) inline PDF preview via dedicated `GET /render/{project}/{id}/attachments/{attachment_id}` with PDF-specific non-sandbox CSP, byte-0 `%PDF-` magic-byte check, `nosniff`, `default-src 'none'`, and `MAILCUBBY_RENDER_INLINE_PDF=true` default (ADR 0009); (2) offline HTML compatibility check using a compacted zstd-compressed `caniemail.com` snapshot (MIT license, ~15–30 KB compressed, manual maintainer update script) embedded in `internal/compat/data/`; (3) link checker with offline extraction (`GET .../links`, `PermViewerTech`) always on, active `POST .../links/check` (`PermMember`, DialContext SSRF/DNS-rebinding defenses, ADR 0010) controlled by `MAILCUBBY_LINK_CHECK_ENABLED` defaulting to `true` in local mode and `false` in server mode; (4) two separate lazy-loaded message view tabs: `Links` (`8`) and `HTML check` (`9`).
