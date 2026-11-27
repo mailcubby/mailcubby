@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -11,9 +12,14 @@ import (
 	"net/netip"
 	"net/smtp"
 	"strings"
+	"time"
 )
 
-const defaultSendmailSMTP = "localhost:1025"
+const (
+	defaultSendmailSMTP         = "localhost:1025"
+	defaultSendmailDialTimeout  = 10 * time.Second
+	defaultSendmailTotalTimeout = 30 * time.Second
+)
 
 type sendmailOptions struct {
 	smtpAddr          string
@@ -78,7 +84,7 @@ func RunSendmail(args []string, stdin io.Reader, stdout, stderr io.Writer, looku
 		auth = &sendmailPlainAuth{user: opts.user, pass: opts.password}
 	}
 
-	if err := submitSMTP(opts.smtpAddr, auth, opts.allowInsecureAuth, from, rcpts, raw, stderr); err != nil {
+	if err := submitSMTP(context.Background(), opts.smtpAddr, auth, opts.allowInsecureAuth, from, rcpts, raw, stderr, defaultSendmailDialTimeout, defaultSendmailTotalTimeout); err != nil {
 		_, _ = fmt.Fprintf(stderr, "sendmail: %v\n", err)
 		return 1
 	}
@@ -292,17 +298,42 @@ func isLoopbackSMTPHost(addr string) bool {
 	return false
 }
 
-func submitSMTP(addr string, auth smtp.Auth, allowInsecureAuth bool, from string, rcpts []string, raw []byte, stderr io.Writer) error {
-	c, err := smtp.Dial(addr)
+func submitSMTP(ctx context.Context, addr string, auth smtp.Auth, allowInsecureAuth bool, from string, rcpts []string, raw []byte, stderr io.Writer, dialTimeout, totalTimeout time.Duration) error {
+	if totalTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, totalTimeout)
+		defer cancel()
+	}
+
+	dialCtx := ctx
+	if dialTimeout > 0 {
+		var dialCancel context.CancelFunc
+		dialCtx, dialCancel = context.WithTimeout(ctx, dialTimeout)
+		defer dialCancel()
+	}
+
+	dialer := &net.Dialer{Timeout: dialTimeout}
+	conn, err := dialer.DialContext(dialCtx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", addr, err)
 	}
-	defer func() { _ = c.Close() }()
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := conn.SetDeadline(deadline); err != nil {
+			_ = conn.Close()
+			return fmt.Errorf("set deadline %s: %w", addr, err)
+		}
+	}
 
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		host = addr
 	}
+	c, err := smtp.NewClient(conn, host)
+	if err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("smtp greeting %s: %w", addr, err)
+	}
+	defer func() { _ = c.Close() }()
 	tlsActive := false
 	if ok, _ := c.Extension("STARTTLS"); ok {
 		if err := c.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
