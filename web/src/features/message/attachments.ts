@@ -76,6 +76,11 @@ export function getAttachmentIcon(contentType: string): LucideIcon {
   return ICONS[getAttachmentKind(contentType)];
 }
 
+/** isPdfMime reports whether a MIME content type is application/pdf. */
+export function isPdfMime(contentType: string): boolean {
+  return getAttachmentKind(contentType) === "pdf";
+}
+
 /** attachmentUrl returns the download URL of an attachment (FR-074). */
 export function attachmentUrl(
   projectSlug: string,
@@ -83,4 +88,16 @@ export function attachmentUrl(
   attachmentId: number,
 ): string {
   return `/api/v1/projects/${encodeURIComponent(projectSlug)}/messages/${encodeURIComponent(messageId)}/attachments/${attachmentId}`;
+}
+
+/**
+ * attachmentPdfRenderUrl returns the dedicated inline PDF render URL served
+ * under the ADR 0009 PDF-specific CSP (FR-074, SPEC 12.2).
+ */
+export function attachmentPdfRenderUrl(
+  projectSlug: string,
+  messageId: string,
+  attachmentId: number,
+): string {
+  return `/render/${encodeURIComponent(projectSlug)}/${encodeURIComponent(messageId)}/attachments/${attachmentId}`;
 }

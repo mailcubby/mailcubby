@@ -1,8 +1,9 @@
-import { Download, Paperclip } from "lucide-react";
+import { Download, Eye, Paperclip } from "lucide-react";
 import {
   attachmentUrl,
   getAttachmentIcon,
   getAttachmentKind,
+  isPdfMime,
 } from "@/features/message/attachments";
 import type { AttachmentSummary } from "@/lib/api";
 import { formatBytes, formatCount, isRasterImageMime } from "@/lib/format";
@@ -11,16 +12,26 @@ export interface AttachmentStripProps {
   projectSlug: string;
   messageId: string;
   attachments: ReadonlyArray<AttachmentSummary>;
+  inlinePdfEnabled?: boolean;
+  onPreviewPdf?: (attachment: AttachmentSummary) => void;
 }
 
 /**
- * AttachmentStrip shows one compact download card per attachment below the
- * Preview and Text views (FR-072, docs/UI.md 3.5). Parts the HTML preview
- * already shows through cid: (`referenced_by_html`) stay in the Attachments
- * tab only. Thumbnails use `?inline=1`, which the server honours only for
- * allowlisted raster images (FR-074); every other type gets an icon.
+ * AttachmentStrip shows one compact card per attachment below the Preview and
+ * Text views (FR-072, docs/UI.md 3.5). Parts the HTML preview already shows
+ * through cid: (`referenced_by_html`) stay in the Attachments tab only.
+ * Thumbnails use `?inline=1`, which the server honours only for allowlisted
+ * raster images (FR-074). When `inlinePdfEnabled` is true (ADR 0009), PDF cards
+ * render as split cards (a Preview button and a sibling Download link, with no
+ * nested interactive elements).
  */
-export function AttachmentStrip({ projectSlug, messageId, attachments }: AttachmentStripProps) {
+export function AttachmentStrip({
+  projectSlug,
+  messageId,
+  attachments,
+  inlinePdfEnabled = false,
+  onPreviewPdf,
+}: AttachmentStripProps) {
   const items = attachments.filter((att) => !att.referenced_by_html);
   if (items.length === 0) {
     return null;
@@ -44,6 +55,52 @@ export function AttachmentStrip({ projectSlug, messageId, attachments }: Attachm
           const url = attachmentUrl(projectSlug, messageId, att.id);
           const filename = att.filename || `attachment-${att.id}`;
           const size = formatBytes(att.size_bytes);
+          const canPreviewPdf = inlinePdfEnabled && isPdfMime(att.content_type) && onPreviewPdf;
+
+          if (canPreviewPdf) {
+            return (
+              <li key={att.id}>
+                <div
+                  data-kind="pdf"
+                  className="flex w-56 items-stretch overflow-hidden rounded-md border border-border bg-surface transition-colors hover:border-input"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onPreviewPdf(att)}
+                    title={`Preview ${filename}`}
+                    className="group flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 p-2 text-left transition-colors hover:bg-muted focus-visible:-outline-offset-2"
+                  >
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-secondary text-muted-foreground">
+                      <Icon className="size-4" aria-hidden="true" />
+                    </span>
+                    {/* Accessible name "Preview <filename> <size>" contains the visible text (WCAG 2.5.3). */}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-medium text-foreground">
+                        <span className="sr-only">Preview</span> {filename}
+                      </span>{" "}
+                      <span className="block text-[11px] tabular-nums text-muted-foreground">
+                        {size}
+                      </span>
+                    </span>
+                    <Eye
+                      className="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
+                      aria-hidden="true"
+                    />
+                  </button>
+                  <a
+                    href={url}
+                    download={filename}
+                    aria-label={`Download ${filename}`}
+                    title={`Download ${filename}`}
+                    className="flex shrink-0 items-center justify-center border-l border-border px-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:-outline-offset-2"
+                  >
+                    <Download className="size-3.5" aria-hidden="true" />
+                  </a>
+                </div>
+              </li>
+            );
+          }
+
           return (
             <li key={att.id}>
               <a

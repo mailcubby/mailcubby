@@ -116,6 +116,7 @@ type Config struct {
 	APIWaitMaxTimeout        time.Duration
 	SSEMaxConnectionsPerUser int
 	RenderRemoteImages       RenderRemoteImages
+	RenderInlinePDF          bool
 
 	// SMTP (SPEC 9.3)
 	SMTPAddr       string
@@ -218,6 +219,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		APIWaitMaxTimeout:        defaultAPIWaitMaxTimeout,
 		SSEMaxConnectionsPerUser: defaultSSEMaxConnectionsPerUser,
 		RenderRemoteImages:       RenderRemoteImagesOptIn,
+		RenderInlinePDF:          true,
 		SMTPAddr:                 defaultSMTPAddr,
 		SMTPHostname:             defaultSMTPHostname,
 		SMTPMaxMessageBytes:      defaultSMTPMaxMessageBytes,
@@ -401,6 +403,15 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 			cfg.RenderRemoteImages = RenderRemoteImagesOff
 		default:
 			addErr("MAILCUBBY_RENDER_REMOTE_IMAGES", fmt.Errorf("invalid value %q: expected opt-in or off", v))
+		}
+	}
+
+	if v, ok := get("MAILCUBBY_RENDER_INLINE_PDF"); ok {
+		b, err := ParseBool(v)
+		if err != nil {
+			addErr("MAILCUBBY_RENDER_INLINE_PDF", err)
+		} else {
+			cfg.RenderInlinePDF = b
 		}
 	}
 

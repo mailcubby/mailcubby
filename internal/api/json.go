@@ -43,6 +43,8 @@ const (
 	ErrCodeGone ErrorCode = "gone"
 	// ErrCodePayloadTooLarge indicates the request body exceeded the size limit (413).
 	ErrCodePayloadTooLarge ErrorCode = "payload_too_large"
+	// ErrCodeUnsupportedMediaType indicates an attachment cannot be rendered inline (415).
+	ErrCodeUnsupportedMediaType ErrorCode = "unsupported_media_type"
 	// ErrCodeRateLimited indicates a rate limit was exceeded (429).
 	ErrCodeRateLimited ErrorCode = "rate_limited"
 	// ErrCodeInternal indicates an unexpected server error (500).

@@ -1,7 +1,8 @@
-import { Download, Paperclip } from "lucide-react";
+import { Download, Eye, Paperclip } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
-import { attachmentUrl, getAttachmentIcon } from "@/features/message/attachments";
+import { Button, buttonClassName } from "@/components/ui/button";
+import { attachmentUrl, getAttachmentIcon, isPdfMime } from "@/features/message/attachments";
 import type { AttachmentSummary } from "@/lib/api";
 import { formatBytes, isRasterImageMime } from "@/lib/format";
 
@@ -9,9 +10,17 @@ export interface AttachmentsTabProps {
   projectSlug: string;
   messageId: string;
   attachments: ReadonlyArray<AttachmentSummary>;
+  inlinePdfEnabled?: boolean;
+  onPreviewPdf?: (attachment: AttachmentSummary) => void;
 }
 
-export function AttachmentsTab({ projectSlug, messageId, attachments }: AttachmentsTabProps) {
+export function AttachmentsTab({
+  projectSlug,
+  messageId,
+  attachments,
+  inlinePdfEnabled = false,
+  onPreviewPdf,
+}: AttachmentsTabProps) {
   if (attachments.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -31,6 +40,7 @@ export function AttachmentsTab({ projectSlug, messageId, attachments }: Attachme
         {attachments.map((att) => {
           const Icon = getAttachmentIcon(att.content_type);
           const isRaster = isRasterImageMime(att.content_type);
+          const canPreviewPdf = inlinePdfEnabled && isPdfMime(att.content_type) && onPreviewPdf;
           const baseUrl = attachmentUrl(projectSlug, messageId, att.id);
           const inlineUrl = `${baseUrl}?inline=1`;
           const filename = att.filename || `attachment-${att.id}`;
@@ -71,14 +81,33 @@ export function AttachmentsTab({ projectSlug, messageId, attachments }: Attachme
                 </div>
               </div>
 
-              <a
-                href={baseUrl}
-                download={filename}
-                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                <Download className="size-3.5" aria-hidden="true" />
-                <span>Download</span>
-              </a>
+              <div className="flex shrink-0 items-center gap-2">
+                {canPreviewPdf ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label={`Preview ${filename}`}
+                    onClick={() => onPreviewPdf(att)}
+                    className="gap-1.5"
+                  >
+                    <Eye className="size-3.5" aria-hidden="true" />
+                    <span>Preview</span>
+                  </Button>
+                ) : null}
+                <a
+                  href={baseUrl}
+                  download={filename}
+                  aria-label={`Download ${filename}`}
+                  className={buttonClassName({
+                    variant: "outline",
+                    size: "sm",
+                    className: "gap-1.5",
+                  })}
+                >
+                  <Download className="size-3.5" aria-hidden="true" />
+                  <span>Download</span>
+                </a>
+              </div>
             </li>
           );
         })}

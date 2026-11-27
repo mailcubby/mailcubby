@@ -181,22 +181,46 @@ test.describe("Phase 14c: attachment strip for viewers (FR-072)", () => {
         await expect(viewerPage.getByRole("tab", { name: "Raw" })).toHaveCount(0);
         await expect(viewerPage.getByRole("tab", { name: "Tech" })).toHaveCount(0);
 
-        // 3. The strip shows the PDF and leaves out the cid: logo shown in the preview.
+        // 3. The strip shows the PDF split card (preview + download) and leaves out the cid: logo.
         const strip = viewerPage.getByRole("region", { name: "Attachment downloads" });
         await expect(strip).toBeVisible();
         await expect(strip.getByRole("link")).toHaveCount(1);
-        const pdf = strip.getByRole("link", { name: /^Download sample\.pdf / });
-        await expect(pdf).toBeVisible();
+        const pdfPreview = strip.getByRole("button", { name: /^Preview sample\.pdf / });
+        const pdfDownload = strip.getByRole("link", { name: "Download sample.pdf" });
+        await expect(pdfPreview).toBeVisible();
+        await expect(pdfDownload).toBeVisible();
         await expect(strip.getByRole("link", { name: /logo\.png/ })).toHaveCount(0);
 
-        const [download] = await Promise.all([viewerPage.waitForEvent("download"), pdf.click()]);
+        const [download] = await Promise.all([
+          viewerPage.waitForEvent("download"),
+          pdfDownload.click(),
+        ]);
         expect(download.suggestedFilename()).toBe("sample.pdf");
 
-        // 4. The Attachments tab still lists every part, including the inline logo.
+        // Phase 16a (ADR 0009): viewer with viewer_hide_technical=true can preview PDFs inline.
+        const [pdfRes] = await Promise.all([
+          viewerPage.waitForResponse((res) =>
+            /\/render\/[^/]+\/[^/]+\/attachments\/\d+$/.test(new URL(res.url()).pathname),
+          ),
+          pdfPreview.click(),
+        ]);
+        expect(pdfRes.status()).toBe(200);
+        expect(pdfRes.headers()["content-type"]).toBe("application/pdf");
+        const dialog = viewerPage.locator("dialog[open]");
+        await expect(dialog).toBeVisible();
+        const pdfFrame = dialog.locator('iframe[title="PDF preview: sample.pdf"]');
+        await expect(pdfFrame).toBeVisible();
+        expect(await pdfFrame.getAttribute("sandbox")).toBeNull();
+        expect(await pdfFrame.getAttribute("referrerpolicy")).toBe("no-referrer");
+        await viewerPage.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0);
+
+        // 4. The Attachments tab still lists every part, including the inline logo and PDF Preview.
         await viewerPage.getByRole("tab", { name: /Attachments/ }).click();
         const panel = viewerPage.getByRole("tabpanel");
         await expect(panel.getByText("logo.png", { exact: true })).toBeVisible();
         await expect(panel.getByText("sample.pdf", { exact: true })).toBeVisible();
+        await expect(panel.getByRole("button", { name: "Preview sample.pdf" })).toBeVisible();
       } finally {
         await viewerContext.close();
       }

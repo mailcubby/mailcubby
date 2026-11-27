@@ -61,7 +61,7 @@ func TestTwoTenantIsolation(t *testing.T) {
 	cookieA, csrfA := loginAndGetCSRF(t, h, userA.Email, pass)
 	cookieB, csrfB := loginAndGetCSRF(t, h, userB.Email, pass)
 
-	seedTenantResources := func(slug string, cookie *http.Cookie, csrf string, tagName, invEmail, credLabel string) (msgID string, attID, tagID, invID, credID int64, credUsername string) {
+	seedTenantResources := func(slug string, cookie *http.Cookie, csrf string, tagName, invEmail, credLabel string) (msgID string, attID, pdfAttID, tagID, invID, credID int64, credUsername string) {
 		t.Helper()
 		rec := doReq(t, h, http.MethodPost, "/api/v1/projects/"+slug+"/send-test", nil, cookie, csrfHeaders(csrf))
 		if rec.Code != http.StatusCreated {
@@ -76,7 +76,8 @@ func TestTwoTenantIsolation(t *testing.T) {
 		detRec := doReq(t, h, http.MethodGet, "/api/v1/projects/"+slug+"/messages/"+msgID, nil, cookie, nil)
 		var det struct {
 			Attachments []struct {
-				ID int64 `json:"id"`
+				ID          int64  `json:"id"`
+				ContentType string `json:"content_type"`
 			} `json:"attachments"`
 		}
 		_ = json.Unmarshal(detRec.Body.Bytes(), &det)
@@ -84,6 +85,15 @@ func TestTwoTenantIsolation(t *testing.T) {
 			t.Fatalf("expected attachment in sample message for %s", slug)
 		}
 		attID = det.Attachments[0].ID
+		for _, a := range det.Attachments {
+			if strings.HasPrefix(strings.ToLower(a.ContentType), "application/pdf") {
+				pdfAttID = a.ID
+				break
+			}
+		}
+		if pdfAttID == 0 {
+			t.Fatalf("expected PDF attachment in sample message for %s", slug)
+		}
 
 		tagRec := doReq(t, h, http.MethodPost, "/api/v1/projects/"+slug+"/tags", map[string]any{"name": tagName}, cookie, csrfHeaders(csrf))
 		if tagRec.Code != http.StatusCreated {
@@ -127,8 +137,8 @@ func TestTwoTenantIsolation(t *testing.T) {
 		return
 	}
 
-	msgA, _, _, _, _, _ := seedTenantResources("tenant-a", cookieA, csrfA, "tag-alpha", "inva@tenant-a.test", "cred-alpha")
-	msgB, attB, tagB, invB, credB, credUserB := seedTenantResources("tenant-b", cookieB, csrfB, "tag-beta", "invb@tenant-b.test", "cred-beta")
+	msgA, _, _, _, _, _, _ := seedTenantResources("tenant-a", cookieA, csrfA, "tag-alpha", "inva@tenant-a.test", "cred-alpha")
+	msgB, attB, pdfAttB, tagB, invB, credB, credUserB := seedTenantResources("tenant-b", cookieB, csrfB, "tag-beta", "invb@tenant-b.test", "cred-beta")
 
 	// 1. Direct access by User A to Tenant B's slug must return 404 across all routes.
 	bRoutes := []struct {
@@ -172,6 +182,7 @@ func TestTwoTenantIsolation(t *testing.T) {
 		{http.MethodDelete, "/api/v1/projects/tenant-b/smtp-credentials/" + strconv.FormatInt(credB, 10), nil},
 		{http.MethodGet, "/api/v1/events?project=tenant-b", nil},
 		{http.MethodGet, "/render/tenant-b/" + msgB, nil},
+		{http.MethodGet, "/render/tenant-b/" + msgB + "/attachments/" + strconv.FormatInt(pdfAttB, 10), nil},
 	}
 
 	for _, tc := range bRoutes {
@@ -201,6 +212,8 @@ func TestTwoTenantIsolation(t *testing.T) {
 		{http.MethodGet, "/api/v1/projects/tenant-a/messages/" + msgA + "/attachments/" + strconv.FormatInt(attB, 10), nil},
 		{http.MethodGet, "/api/v1/projects/tenant-a/messages/" + msgB + "/attachments/" + strconv.FormatInt(attB, 10), nil},
 		{http.MethodGet, "/render/tenant-a/" + msgB, nil},
+		{http.MethodGet, "/render/tenant-a/" + msgA + "/attachments/" + strconv.FormatInt(pdfAttB, 10), nil},
+		{http.MethodGet, "/render/tenant-a/" + msgB + "/attachments/" + strconv.FormatInt(pdfAttB, 10), nil},
 		{http.MethodPatch, "/api/v1/projects/tenant-a/tags/" + strconv.FormatInt(tagB, 10), map[string]any{"name": "stolen"}},
 		{http.MethodDelete, "/api/v1/projects/tenant-a/tags/" + strconv.FormatInt(tagB, 10), nil},
 		{http.MethodPatch, "/api/v1/projects/tenant-a/members/" + strconv.FormatInt(memberB.ID, 10), map[string]any{"role": "viewer"}},

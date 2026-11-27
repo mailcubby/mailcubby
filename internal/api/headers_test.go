@@ -32,6 +32,8 @@ const (
 	wantRenderCSPImages = "sandbox allow-popups allow-popups-to-escape-sandbox; " +
 		"default-src 'none'; img-src data: cid: https:; style-src 'unsafe-inline'; " +
 		"font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+	wantRenderPDFCSP = "default-src 'none'; object-src 'self'; style-src 'unsafe-inline'; " +
+		"base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
 	wantAttachmentCSP     = "sandbox; default-src 'none'"
 	wantPermissionsPolicy = "camera=(), microphone=(), geolocation=()"
 )
@@ -131,13 +133,14 @@ func TestRouteClassSecurityHeaders(t *testing.T) {
 	}
 	msgID := refs[0].ID.String()
 
-	makeSrv := func(baseURL string, hsts bool, remoteImages config.RenderRemoteImages) *api.Server {
+	makeSrv := func(baseURL string, hsts bool, remoteImages config.RenderRemoteImages, inlinePDF bool) *api.Server {
 		cfg := config.Config{
 			Mode:                     config.ModeLocal,
 			BaseURL:                  baseURL,
 			HSTS:                     hsts,
 			DefaultProject:           "default",
 			RenderRemoteImages:       remoteImages,
+			RenderInlinePDF:          inlinePDF,
 			APIWaitMaxTimeout:        30 * time.Second,
 			SSEMaxConnectionsPerUser: 10,
 		}
@@ -146,9 +149,10 @@ func TestRouteClassSecurityHeaders(t *testing.T) {
 		return srv
 	}
 
-	httpSrv := makeSrv("http://localhost:8025", true, config.RenderRemoteImagesOptIn)
-	httpsSrv := makeSrv("https://mail.example.test", true, config.RenderRemoteImagesOptIn)
-	remoteOffSrv := makeSrv("http://localhost:8025", false, config.RenderRemoteImagesOff)
+	httpSrv := makeSrv("http://localhost:8025", true, config.RenderRemoteImagesOptIn, true)
+	httpsSrv := makeSrv("https://mail.example.test", true, config.RenderRemoteImagesOptIn, true)
+	remoteOffSrv := makeSrv("http://localhost:8025", false, config.RenderRemoteImagesOff, true)
+	pdfOffSrv := makeSrv("http://localhost:8025", false, config.RenderRemoteImagesOptIn, false)
 
 	// Fetch attachment IDs from message detail.
 	detailRec := doReq(t, httpSrv.Handler(), http.MethodGet, "/api/v1/projects/hdrs/messages/"+msgID, nil, nil, nil)
@@ -206,6 +210,47 @@ func TestRouteClassSecurityHeaders(t *testing.T) {
 		// When MAILCUBBY_RENDER_REMOTE_IMAGES=off, ?images=1 must stay blocked.
 		recOff := doReq(t, remoteOffSrv.Handler(), http.MethodGet, "/render/hdrs/"+msgID+"?images=1", nil, nil, nil)
 		assertHeader(t, recOff.Header(), "Content-Security-Policy", wantRenderCSPBlocked)
+	})
+
+	t.Run("pdf attachment render route class (ADR 0009)", func(t *testing.T) {
+		pdfID := attByName["doc.pdf"]
+		pdfPath := "/render/hdrs/" + msgID + "/attachments/" + strconv.FormatInt(pdfID, 10)
+		rec := doReq(t, httpSrv.Handler(), http.MethodGet, pdfPath, nil, nil, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d, want 200; body=%s", pdfPath, rec.Code, rec.Body.String())
+		}
+		assertHeader(t, rec.Header(), "Content-Type", "application/pdf")
+		assertHeader(t, rec.Header(), "Content-Disposition", `inline; filename="doc.pdf"; filename*=UTF-8''doc.pdf`)
+		assertHeader(t, rec.Header(), "Content-Security-Policy", wantRenderPDFCSP)
+		assertHeader(t, rec.Header(), "X-Content-Type-Options", "nosniff")
+		assertHeader(t, rec.Header(), "Referrer-Policy", "no-referrer")
+		assertHeader(t, rec.Header(), "Cache-Control", "private, no-store")
+		assertHeader(t, rec.Header(), "Cross-Origin-Resource-Policy", "same-origin")
+		assertHeader(t, rec.Header(), "X-DNS-Prefetch-Control", "off")
+		assertHeaderAbsent(t, rec.Header(), "X-Frame-Options")
+		assertHeaderAbsent(t, rec.Header(), "Permissions-Policy")
+		assertHeaderAbsent(t, rec.Header(), "Strict-Transport-Security")
+
+		recHTTPS := doReq(t, httpsSrv.Handler(), http.MethodGet, pdfPath, nil, nil, nil)
+		if recHTTPS.Code != http.StatusOK {
+			t.Fatalf("GET %s (HTTPS) status = %d, want 200", pdfPath, recHTTPS.Code)
+		}
+		assertHeader(t, recHTTPS.Header(), "Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+		// Non-PDF attachments must be rejected with 415 Unsupported Media Type.
+		for _, nonPDF := range []string{"pic.png", "evil.html", "evil.svg"} {
+			nonPDFPath := "/render/hdrs/" + msgID + "/attachments/" + strconv.FormatInt(attByName[nonPDF], 10)
+			nonPDFRec := doReq(t, httpSrv.Handler(), http.MethodGet, nonPDFPath, nil, nil, nil)
+			if nonPDFRec.Code != http.StatusUnsupportedMediaType {
+				t.Errorf("GET %s (%s) status = %d, want 415", nonPDFPath, nonPDF, nonPDFRec.Code)
+			}
+		}
+
+		// Kill-switch MAILCUBBY_RENDER_INLINE_PDF=false returns 404.
+		recDisabled := doReq(t, pdfOffSrv.Handler(), http.MethodGet, pdfPath, nil, nil, nil)
+		if recDisabled.Code != http.StatusNotFound {
+			t.Errorf("GET %s (inline PDF disabled) status = %d, want 404", pdfPath, recDisabled.Code)
+		}
 	})
 
 	t.Run("attachment and eml route class", func(t *testing.T) {
