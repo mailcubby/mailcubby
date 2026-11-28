@@ -32,7 +32,7 @@ An agency that runs a staging catcher for many client websites today must either
 - Delivering mail to real recipients (release/relay). Mailcubby never sends mail outward in v1.
 - Being a production mail server, mailbox host or IMAP server.
 - Horizontal scaling or high availability. One process, one SQLite database.
-- Spam scoring, HTML client compatibility reports, link checking.
+- Spam scoring. (HTML client compatibility reports and link checking were added in v0.2 as FR-079 and FR-120.)
 - Email sending of invites or password resets (links are copied manually; there is no outbound mail).
 - Full Mailpit API compatibility.
 
@@ -173,10 +173,10 @@ Roles are per project: `owner`, `member`, `viewer`. Instance admins (`users.is_a
 | Action | viewer | member | owner | admin |
 |---|---|---|---|---|
 | See project in list, read message list and message content (HTML preview, text, attachments) | yes | yes | yes | yes |
-| Raw source, headers, HTML source, `.eml` download, HTML compatibility check, Tech tab | yes, unless `viewer_hide_technical` | yes | yes | yes |
+| Raw source, headers, HTML source, `.eml` download, HTML compatibility check, extracted links, Tech tab | yes, unless `viewer_hide_technical` | yes | yes | yes |
 | Mark seen/unseen | no | yes | yes | yes |
 | Add/remove tags on messages, create/edit/delete tags | no | yes | yes | yes |
-| Delete messages, delete all, send test email | no | yes | yes | yes |
+| Delete messages, delete all, send test email, active link checks | no | yes | yes | yes |
 | See SMTP host, port, usernames | no | yes | yes | yes |
 | Reveal SMTP passwords | no | if `members_can_reveal_smtp` | yes | yes |
 | Create, rotate, disable, delete SMTP credentials | no | no | yes | yes |
@@ -355,6 +355,15 @@ Admin and backup commands open the same SQLite database (safe with WAL while `se
 
 The CLI uses the stdlib `flag` package, so long options are written `--name value` or `-name value`; `sendmail` parses its arguments by hand because sendmail-style flags (`-oi`, `-t`) do not fit `flag`.
 
+### 6.18 Link extraction and checking
+
+**FR-120 Link extraction and checking.** Mailcubby separates link inspection into always-on offline extraction and explicit user-triggered active HTTP checking (ADR 0010):
+- **Offline extraction (`GET /api/v1/projects/{project}/messages/{id}/links`)**: extracts and deduplicates links from HTML (`<a href>`, `<area href>`), genuine `text/plain` bodies (excluding HTML-derived text), and `List-Unsubscribe` headers entirely offline from the stored blob. Returns anchor text, sources (`html`, `text`, `header`), occurrence counts, scheme, `checkable` flag (`http`/`https` only), and static warnings (`javascript_url`, `data_url`, `credentials_in_url`, `http_insecure`, `missing_href`). Requires `viewer*` (`PermViewerTech`).
+- **Active checking (`POST /api/v1/projects/{project}/messages/{id}/links/check`)**: never runs automatically on ingest or on `GET`. Controlled by `MAILCUBBY_LINK_CHECK_ENABLED` (default `true` in `local` mode, `false` in `server` mode; exposed as `features.link_check` in `GET /api/v1/meta`). When disabled, returns `403` (`feature_disabled`). Requires `member` (`PermMember`; viewers and `read` tokens receive `403`). Optional JSON body `{ "urls": [...] }` checks a subset of links; every supplied URL MUST exist in that message's extracted link set (arbitrary caller-supplied URLs return `400 bad_request`).
+- **SSRF and DNS-rebinding defenses**: `Proxy: nil`, custom `DialContext` resolving via `LookupNetIP`, trailing-dot hostname normalization, IPv6 zone-ID rejection, `ip.Unmap()`, full denylist of unspecified/loopback/RFC 1918/link-local/IMDS/site-local/ULA/CGNAT/multicast/broadcast/documentation/benchmark and IPv4-embedding prefixes (NAT64, 6to4, Teredo, IPv4-compatible, IPv4-translated), `MAILCUBBY_LINK_CHECK_ALLOW_CIDRS` override, direct literal IP dialing preserving `Host` and TLS SNI (`InsecureSkipVerify: false`), max 5 redirects (each re-validated), `HEAD` with `GET Range: bytes=0-0` fallback on `405`/`501`, max 1 KiB response body discard, `MAILCUBBY_LINK_CHECK_TIMEOUT` per URL (`5s`, max `30s`), `30s` overall timeout, `MAILCUBBY_LINK_CHECK_MAX_LINKS` (`50`, max `200`; remainder reported as `skipped_limit`), concurrency capped at 5 per request and 16 globally, tenant-scoped 64-entry 5-minute TTL LRU cache keyed by `{project_id, message_id}`, server-mode `10/m` per-session/token rate limit, and zero logging of checked URLs or raw `*url.Error` strings.
+- AC: every blocked IP range, IPv4-mapped IPv6 bypass, simulated DNS rebinding, and redirect to private/loopback IP is rejected as `blocked`.
+- AC: arbitrary caller-supplied URLs return `400`; viewers and `read` tokens get `403` on `POST .../links/check`; disabled server mode returns `403 feature_disabled`; zero checked URLs appear in captured logs.
+
 ---
 
 ## 7. SMTP routing rules
@@ -422,7 +431,7 @@ Base path: `/api/v1` (the UI and API are always served from the root of `MAILCUB
 - `{project}` path parameter is the project slug.
 - Timestamps: RFC 3339 UTC with milliseconds. IDs: messages use ULID strings; other resources use integers.
 - Pagination: `?limit=` (default 50, max 200) and `?cursor=` (opaque string from `next_cursor`). Response `{ "items": [...], "next_cursor": "..." | null }`.
-- Errors: `{ "error": { "code": "snake_case_code", "message": "Human readable", "details": {} } }`. Codes: `bad_request`, `validation_failed` (details per field), `unauthorized`, `forbidden`, `not_found`, `conflict`, `login_required` (409, FR-056), `gone`, `rate_limited`, `payload_too_large`, `unsupported_media_type`, `internal`.
+- Errors: `{ "error": { "code": "snake_case_code", "message": "Human readable", "details": {} } }`. Codes: `bad_request`, `validation_failed` (details per field), `unauthorized`, `forbidden`, `feature_disabled`, `not_found`, `conflict`, `login_required` (409, FR-056), `gone`, `rate_limited`, `payload_too_large`, `unsupported_media_type`, `internal`.
 - Status codes: `200`, `201` (create), `204` (no body), `400`, `401`, `403`, `404`, `409`, `410`, `413`, `415`, `422` (validation), `429` (with `Retry-After`), `500`, `503`.
 - "Role" column: minimum role. `public` = no auth; `session` = any logged-in user (cookie only); `user` = any logged-in user or token; `viewer`/`member`/`owner` = project role (admin passes all); `admin` = instance admin; `viewer*` = viewer unless `viewer_hide_technical` (then member). In local mode all routes are accessible except those marked `server` (which return 404).
 
@@ -430,7 +439,7 @@ Base path: `/api/v1` (the UI and API are always served from the root of `MAILCUB
 
 | Method | Path | Role | Request | Response |
 |---|---|---|---|---|
-| GET | `/meta` | public | | `{mode, version, instance_name, setup_required, base_url, features{remote_images, recipient_routing, inline_pdf}, inbox_domain, smtp{host, port, tls_mode}}` (`smtp` is the public connection info of FR-063; local mode uses it for the setup guide and snippets) |
+| GET | `/meta` | public | | `{mode, version, instance_name, setup_required, base_url, features{remote_images, recipient_routing, inline_pdf, link_check}, inbox_domain, smtp{host, port, tls_mode}}` (`smtp` is the public connection info of FR-063; local mode uses it for the setup guide and snippets) |
 | POST | `/setup` | public (setup pending) | `{setup_token, email, name, password, instance_name?}` | `201` user; sets session cookie |
 | POST | `/auth/login` | public, server | `{email, password}` | `200` user; sets cookie |
 | POST | `/auth/logout` | session, server | | `204` |
@@ -469,6 +478,8 @@ Base path: `/api/v1` (the UI and API are always served from the root of `MAILCUB
 | GET | `/projects/{project}/messages/{id}/eml` | viewer* | | `message/rfc822` attachment |
 | GET | `/projects/{project}/messages/{id}/html` | viewer* | | `text/plain; charset=utf-8` HTML source |
 | GET | `/projects/{project}/messages/{id}/html-check` | viewer* | | `HTMLCheckReport` (FR-079; `404` when no HTML part) |
+| GET | `/projects/{project}/messages/{id}/links` | viewer* | | `MessageLinksResponse` (offline extracted links and static warnings, FR-120) |
+| POST | `/projects/{project}/messages/{id}/links/check` | member | `{urls?[]}` | `LinkCheckResponse` (active SSRF-hardened check, FR-120; `403 feature_disabled` when disabled) |
 | GET | `/projects/{project}/messages/{id}/headers` | viewer* | | `[{name, value}]` in original order |
 | GET | `/projects/{project}/messages/{id}/attachments/{attachment_id}` | viewer | `?inline=1` (raster images only) | file (section 12.2) |
 | POST | `/projects/{project}/send-test` | member | | `201 MessageSummary` |
@@ -576,6 +587,11 @@ Environment variables only (no config file in v1). Variables marked (secret) als
 | `MAILCUBBY_SSE_MAX_CONNECTIONS_PER_USER` | `10` | Concurrent SSE streams per user or token. |
 | `MAILCUBBY_RENDER_REMOTE_IMAGES` | `opt-in` | `opt-in` (toggle, blocked by default) or `off`. |
 | `MAILCUBBY_RENDER_INLINE_PDF` | `true` | Enable or disable inline PDF preview via `GET /render/{project}/{id}/attachments/{attachment_id}` (ADR 0009). |
+| `MAILCUBBY_LINK_CHECK_ENABLED` | `true` (local), `false` (server) | Enable or disable active HTTP link checking via `POST /api/v1/projects/{project}/messages/{id}/links/check` (FR-120, ADR 0010). Offline extraction (`GET .../links`) is always enabled. |
+| `MAILCUBBY_LINK_CHECK_TIMEOUT` | `5s` | Per-URL timeout for active link checks, at most `30s`. |
+| `MAILCUBBY_LINK_CHECK_MAX_LINKS` | `50` | Maximum unique URLs actively checked per request (`1..200`); excess URLs are reported as `skipped_limit`. |
+| `MAILCUBBY_LINK_CHECK_ALLOWED_PORTS` | `80,443` | Comma-separated TCP ports allowed for active link checks (`1..65535`). |
+| `MAILCUBBY_LINK_CHECK_ALLOW_CIDRS` | empty | Comma-separated CIDRs exempted from the link checker's private/local IP denylist (for explicit staging subnets; ADR 0010). |
 
 ### 9.3 SMTP
 
@@ -867,6 +883,7 @@ In-memory (single process), sliding windows; state is lost on restart, which is 
 - HTTP login: `MAILCUBBY_LOGIN_RATE_LIMIT` per (IP, email) and 5x that per IP; `429` with `Retry-After`. Only failed attempts count, but each attempt is reserved atomically before the password is verified and given back only on success, so concurrent requests cannot exceed the limit. An email longer than 254 bytes gets `400 bad_request` before rate limiting, hashing or auditing.
 - Invite preview/accept and password reset: 20 requests per 15 min per IP.
 - API: `MAILCUBBY_API_RATE_LIMIT` per token or session (token bucket, server mode only). Long-poll `GET /messages/wait` requests are subject to this per-request rate limit and to `MAILCUBBY_API_WAIT_MAX_TIMEOUT` (default `120s`), with no separate per-user concurrent wait cap (FR-078).
+- Active link checking (`POST /api/v1/projects/{project}/messages/{id}/links/check`): dedicated `10/m` sliding-window limit per session or API token in server mode (`429` with `Retry-After`; local mode is exempt; FR-120, ADR 0010).
 - Client IP is the socket address, or `X-Forwarded-For` (rightmost untrusted hop) only when the peer is in `MAILCUBBY_TRUSTED_PROXIES`. `deploy/compose.server.yml` defaults `MAILCUBBY_TRUSTED_PROXIES` to the RFC 1918 private ranges (`172.16.0.0/12,10.0.0.0/8,192.168.0.0/16`) so Docker's dynamically assigned bridge subnets match automatically; this is safe in that Compose stack only because Mailcubby's HTTP port (`:8025`) is not published and is reachable exclusively on the internal Docker bridge behind Caddy (which overwrites untrusted client `X-Forwarded-For` headers). If Mailcubby's HTTP port is directly reachable from other hosts on a private network (or shared with untrusted containers), operators SHOULD narrow `MAILCUBBY_TRUSTED_PROXIES` to the specific reverse proxy subnet or IP so other private-network hosts cannot spoof `X-Forwarded-For`.
 
 ### 12.5 Tenant isolation
@@ -907,7 +924,7 @@ See FR-105. Admin and owner screens show the log.
 Listed so v1 design does not block them. Do not implement in v1.
 
 1. **Release / relay**: forward a captured message to a real address through a configured upstream SMTP (per project allowlist).
-2. **HTML compatibility check** (`caniemail` data — implemented in v0.2 as FR-079 `GET /api/v1/projects/{project}/messages/{id}/html-check` and the `HTML check` UI tab) and **link checker** (Phases 16d–16e).
+2. **HTML compatibility check** (`caniemail` data — implemented in v0.2 as FR-079 `GET /api/v1/projects/{project}/messages/{id}/html-check` and the `HTML check` UI tab) and **link checker** (backend implemented in v0.2 as FR-120 / ADR 0010 `GET .../links` and `POST .../links/check`; UI tab in Phase 16e).
 3. **Spam check** (SpamAssassin / rspamd integration).
 4. **Webhooks** per project on `message.created`.
 5. **MCP endpoint** so AI agents can query inboxes (list, search, read, wait).

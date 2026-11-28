@@ -102,6 +102,9 @@ jobs:
       - name: Fuzz HTML compatibility analyzer (30s)
         run: go test -fuzz=FuzzAnalyzeHTML -fuzztime=30s ./internal/compat
 
+      - name: Fuzz link extractor (30s)
+        run: go test -fuzz=FuzzExtractLinks -fuzztime=30s ./internal/linkcheck
+
   vuln:
     runs-on: ubuntu-latest
     steps:
