@@ -183,7 +183,7 @@ docker run --rm \
 Or with Docker Compose:
 
 ```sh
-git clone --depth 1 --branch v0.1.0 https://github.com/mailcubby/mailcubby
+git clone --depth 1 --branch v0.2.0 https://github.com/mailcubby/mailcubby
 cd mailcubby
 docker compose -f deploy/compose.local.yml up -d
 ```
@@ -286,7 +286,7 @@ Server mode requires HTTPS (terminated by a reverse proxy), a 32-byte `MAILCUBBY
 #### 2. Get the compose files and create `deploy/.env`
 
 ```sh
-git clone --depth 1 --branch v0.1.0 https://github.com/mailcubby/mailcubby
+git clone --depth 1 --branch v0.2.0 https://github.com/mailcubby/mailcubby
 cd mailcubby
 ```
 
@@ -304,7 +304,7 @@ MAILCUBBY_APP_KEY=<output-from-keygen>
 # Optional: enables recipient routing (*@<project>.inbox.example.com)
 # MAILCUBBY_INBOX_DOMAIN=inbox.example.com
 # Optional: pin the image version (default: latest)
-# MAILCUBBY_VERSION=0.1.0
+# MAILCUBBY_VERSION=0.2.0
 ```
 
 #### 3. Start Caddy and Mailcubby
