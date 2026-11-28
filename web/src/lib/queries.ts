@@ -165,6 +165,25 @@ export function messageHtmlCheckQueryOptions(project: string, messageId: string)
   });
 }
 
+export function messageLinksQueryOptions(project: string, messageId: string) {
+  return queryOptions({
+    queryKey: queryKeys.messageLinks(project, messageId),
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/projects/{project}/messages/{id}/links", {
+          params: { path: { project, id: messageId } },
+        }),
+      ),
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: (count, err) => {
+      if (err instanceof ApiError && err.status < 500) {
+        return false;
+      }
+      return count < 1;
+    },
+  });
+}
+
 export function adminProjectsQueryOptions() {
   return queryOptions({
     queryKey: queryKeys.adminProjects(),

@@ -37,6 +37,7 @@ const SHORTCUT_GROUPS: ReadonlyArray<ShortcutGroup> = [
     title: "Message views",
     items: [
       { keys: ["1–7"], description: "Switch message tab (Preview through Tech)" },
+      { keys: ["8"], description: "Switch to Links tab" },
       { keys: ["9"], description: "Switch to HTML check tab" },
       { keys: ["d"], description: "Cycle preview device (Desktop, Tablet, Mobile)" },
       { keys: ["i"], description: "Toggle remote images" },
