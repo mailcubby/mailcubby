@@ -1,7 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { MessageView } from "@/features/message/MessageView";
 
-export type MessageTab = "preview" | "text" | "source" | "headers" | "raw" | "attachments" | "tech";
+export type MessageTab =
+  | "preview"
+  | "text"
+  | "source"
+  | "headers"
+  | "raw"
+  | "attachments"
+  | "tech"
+  | "check";
 
 const VALID_TABS = new Set<MessageTab>([
   "preview",
@@ -11,6 +19,7 @@ const VALID_TABS = new Set<MessageTab>([
   "raw",
   "attachments",
   "tech",
+  "check",
 ]);
 
 export function isMessageTab(value: unknown): value is MessageTab {

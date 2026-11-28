@@ -50,6 +50,7 @@ const NUMBER_KEY_TO_TAB: ReadonlyArray<{ key: string; tab: MessageTab }> = [
   { key: "5", tab: "raw" },
   { key: "6", tab: "attachments" },
   { key: "7", tab: "tech" },
+  { key: "9", tab: "check" },
 ];
 
 const prefetchedRenderUrls = new Set<string>();
@@ -59,6 +60,24 @@ const PdfPreviewDialog = lazy(() =>
     default: m.PdfPreviewDialog,
   })),
 );
+
+const HtmlCheckTab = lazy(() =>
+  import("@/features/message/HtmlCheckTab").then((m) => ({
+    default: m.HtmlCheckTab,
+  })),
+);
+
+function HtmlCheckTabFallback() {
+  return (
+    <div aria-busy="true" className="h-full overflow-auto bg-background p-4">
+      <div className="mx-auto flex max-w-3xl flex-col gap-4">
+        <Skeleton className="h-28 w-full rounded-lg" />
+        <Skeleton className="h-9 w-full rounded-md" />
+        <Skeleton className="h-44 w-full rounded-lg" />
+      </div>
+    </div>
+  );
+}
 
 function isSaveDataEnabled(): boolean {
   if (typeof navigator === "undefined") {
@@ -179,6 +198,7 @@ export function MessageView() {
     }
   }, [queryClient, projectSlug, nextMessage, previousMessage]);
 
+  const hasHtml = Boolean(message?.has_html);
   const hasPreview = Boolean(message?.has_html && message?.render_url);
   const hideTechnical = effectiveRole === "viewer" && project.settings.viewer_hide_technical;
 
@@ -196,9 +216,12 @@ export function MessageView() {
     list.push({ id: "attachments", label: "Attachments" });
     if (!hideTechnical) {
       list.push({ id: "tech", label: "Tech" });
+      if (hasHtml) {
+        list.push({ id: "check", label: "HTML check" });
+      }
     }
     return list;
-  }, [hasPreview, hideTechnical]);
+  }, [hasHtml, hasPreview, hideTechnical]);
 
   const requestedTab = search.tab ?? savedTab;
   const activeTab: MessageTab = availableTabs.some((t) => t.id === requestedTab)
@@ -218,7 +241,7 @@ export function MessageView() {
     [navigate, projectSlug, messageId, setSavedTab],
   );
 
-  // Number keys 1 to 7 switch message tabs; `t` opens the tag editor (UI 3.5 & 4 item 2).
+  // Number keys 1 to 7 and 9 switch message tabs (8 reserved for Links); `t` opens the tag editor (UI 3.5 & 4 item 2).
   const tabShortcutBindings = useMemo<KeyShortcutBinding[]>(
     () => [
       ...NUMBER_KEY_TO_TAB.map(({ key, tab }) => ({
@@ -406,6 +429,11 @@ export function MessageView() {
           />
         ) : null}
         {activeTab === "tech" ? <TechTab message={message} /> : null}
+        {activeTab === "check" ? (
+          <Suspense fallback={<HtmlCheckTabFallback />}>
+            <HtmlCheckTab key={message.id} projectSlug={projectSlug} messageId={message.id} />
+          </Suspense>
+        ) : null}
       </div>
 
       {/* FR-072: the attachment strip accompanies the reading views (Preview, Text) only. */}
