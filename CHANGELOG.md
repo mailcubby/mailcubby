@@ -4,6 +4,31 @@ All notable changes to Mailcubby are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and Mailcubby adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Target release: **v0.2.0** (no new Go/npm dependencies and no SQLite schema migrations — existing v0.1.0 data directories upgrade without migration steps).
+
+### Added
+
+#### Message Inspection
+- **Inline PDF preview** (ADR 0009, #26): dedicated `GET /render/{project}/{id}/attachments/{attachment_id}` endpoint with coerced `application/pdf` + byte-0 `%PDF-` magic validation (`415` on forged or polyglot attachments), PDF-specific non-sandbox CSP, `MAILCUBBY_RENDER_INLINE_PDF` kill switch (default `true`), lazy-loaded `PdfPreviewDialog`, and split PDF cards in the attachment strip and Attachments tab (available to viewers even when `viewer_hide_technical` is enabled).
+- **Offline HTML/CSS compatibility check** (FR-079, #27, #28): `internal/compat` analyzer powered by a compacted zstd-compressed `caniemail.com` MIT dataset (~19 KB, 18 curated email clients distinguishing Outlook Classic from Outlook.com / New Outlook), `GET /api/v1/projects/{project}/messages/{id}/html-check`, and lazy-loaded **HTML check** tab (shortcut `9`, `?tab=check`) with weighted compatibility breakdown, client family filters, "Only show issues" toggle, and expandable feature disclosures.
+- **Link checker** (FR-120, ADR 0010, #29): always-on offline link extraction (`GET /api/v1/projects/{project}/messages/{id}/links`) across HTML, genuine plain text, and `List-Unsubscribe` headers with static warnings (`javascript_url`, `data_url`, `credentials_in_url`, `http_insecure`, `missing_href`); opt-in SSRF-hardened active HTTP link checking (`POST /api/v1/projects/{project}/messages/{id}/links/check`, `member+`, `10/m` server-mode rate limit, custom `DialContext` blocking private/loopback/IMDS/NAT64/6to4/Teredo ranges and DNS rebinding); configuration variables `MAILCUBBY_LINK_CHECK_ENABLED` (`true` in local mode, `false` in server mode), `MAILCUBBY_LINK_CHECK_TIMEOUT`, `MAILCUBBY_LINK_CHECK_MAX_LINKS`, `MAILCUBBY_LINK_CHECK_ALLOWED_PORTS`, and `MAILCUBBY_LINK_CHECK_ALLOW_CIDRS`; and lazy-loaded **Links** tab (shortcut `8`, `?tab=links`) with per-row and bulk checks, single-use-token caution note, semantic status badges, safe external link handling, and `aria-live="polite"` announcements.
+
+#### CLI, Operations & UX
+- **Online SQLite backup** (`mailcubby backup --out <path|->`, #23): consistent WAL-safe backups via `VACUUM INTO` that work inside the distroless image without `sqlite3` or a shell.
+- **Admin CLI & startup warnings** (#24): `mailcubby admin list-users` and `mailcubby admin enable-user` subcommands, plus startup warnings when `MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH=true` or `MAILCUBBY_BASE_URL` uses `http://`.
+- **Server-mode systemd unit** (`deploy/systemd/mailcubby-server.service`, #20) and hardened Dockerfiles with a pinned Caddy image (#19).
+- **Invite email mismatch warning** (#17): warns signed-in users on the invite accept page when the invite email differs from their signed-in account.
+
+### Changed
+- `mailcubby sendmail` enforces a 30 s dial/command timeout and static asset requests log quietly (#22).
+- Documented password-reset personal API token scope, `/messages/wait` concurrency limits, and `MAILCUBBY_TRUSTED_PROXIES` narrowing (#21).
+- Moved the SSE latency NFR-002 check from a flaky unit test to `BenchmarkSSELatencyNFR002` (#16).
+
+### Security
+- Coerce XML (`*/xml`, `*+xml`) and empty/malformed attachment `Content-Type` headers to `application/octet-stream` on attachment downloads (#18).
+
 ## [0.1.0] - 2026-11-26
 
 First release of **Mailcubby**, a self-hosted, multi-tenant email testing server shipped as a single static Go binary with an embedded React UI.

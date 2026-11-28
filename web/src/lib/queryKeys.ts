@@ -39,6 +39,7 @@ export const queryKeys = {
   messageHtml: (slug: string, id: string) => ["projects", slug, "messages", id, "html"] as const,
   messageHtmlCheck: (slug: string, id: string) =>
     ["projects", slug, "messages", id, "html-check"] as const,
+  messageLinks: (slug: string, id: string) => ["projects", slug, "messages", id, "links"] as const,
   messageHeaders: (slug: string, id: string) =>
     ["projects", slug, "messages", id, "headers"] as const,
   adminUsers: (params?: AdminUsersQueryParams) => ["admin", "users", params ?? {}] as const,

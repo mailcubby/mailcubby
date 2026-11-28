@@ -31,14 +31,14 @@ Typical use case: an agency runs one Mailcubby instance for the staging environm
 - **Server mode**: projects, per-project encrypted SMTP credentials (copy, reveal, rotate, disable), users, invites, roles (`owner`, `member`, `viewer`), audit log, instance admin.
 - **Recipient routing**: `anything@<project>.<inbox-domain>` and `<project>+tag@<inbox-domain>`.
 - **Fast inbox UI**: three resizable panes, virtualised message list, keyboard-first shortcuts, command palette (`Cmd/Ctrl+K`), realtime updates via SSE, dark and light themes.
-- **Safe message views**: strictly sandboxed HTML preview (mobile/tablet/desktop, rotation, zoom, dark mode, opt-in remote images), plain text, syntax-highlighted HTML source and headers, raw source, attachments, `.eml` download, envelope/TLS tech details.
+- **Safe message views**: strictly sandboxed HTML preview (mobile/tablet/desktop, rotation, zoom, dark mode, opt-in remote images), plain text, syntax-highlighted HTML source and headers, raw source, attachments with inline PDF preview, `.eml` download, envelope/TLS tech details, offline HTML/CSS email-client compatibility reports (`caniemail.com`), and link inspection (always-on offline extraction + opt-in SSRF-hardened active link checking).
 - **Full-text search (FTS5)**: diacritic-insensitive search with operators (`from:`, `to:`, `subject:`, `has:attachment`, `has:html`, `has:text`, `before:`, `after:`, `is:unread`, `is:read`, `tag:`, `credential:`, `-` negation).
 - **Tags**: manual tags plus automatic tags from the `X-Tags` header (Mailpit compatible) and plus-addressing (`local+tag@domain`).
 - **REST API v1 (OpenAPI 3.1)**: personal API tokens (`read`/`write`, optional project scope) and a blocking `/messages/wait` endpoint for automated tests.
 - **Retention & quotas**: age, count and size policies per project and globally, instance byte cap, per-project ingest rate limit, automatic orphan blob GC and incremental SQLite vacuum.
 - **Integration snippets**: Laravel, Symfony, Node.js (Nodemailer), WordPress (WP Mail SMTP), Django, Rails, `swaks`, and PHP `sendmail_path`.
 
-Planned for later releases (not in v0.1.0): outbound release/relay, HTML compatibility/link checks, spam scoring, webhooks, MCP endpoint, OIDC/SSO, PostgreSQL, S3 blob storage, POP3, chaos mode, Prometheus metrics. See `docs/SPEC.md` section 14.
+Planned for later releases: outbound release/relay, spam scoring, webhooks, MCP endpoint, OIDC/SSO, PostgreSQL, S3 blob storage, POP3, chaos mode, Prometheus metrics. See `docs/SPEC.md` section 14.
 
 ---
 
@@ -469,6 +469,12 @@ All configuration is via `MAILCUBBY_*` environment variables (see `.env.example`
 | `MAILCUBBY_RETENTION_MAX_AGE` | `30d` | Default per-project age retention (`0` disables). |
 | `MAILCUBBY_RETENTION_MAX_MESSAGES` | `5000` | Default per-project message cap (`0` disables). |
 | `MAILCUBBY_RETENTION_MAX_BYTES` | `1GiB` | Default per-project raw size cap (`0` disables). |
+| `MAILCUBBY_RENDER_INLINE_PDF` | `true` | Enable inline PDF preview via `/render/{project}/{id}/attachments/{attachment_id}` (`false` falls back to download-only). |
+| `MAILCUBBY_LINK_CHECK_ENABLED` | `true` (local), `false` (server) | Enable opt-in SSRF-hardened active link checking (`POST .../links/check`). Offline link extraction (`GET .../links`) is always enabled. |
+| `MAILCUBBY_LINK_CHECK_TIMEOUT` | `5s` | Per-URL timeout for active link checks (max `30s`). |
+| `MAILCUBBY_LINK_CHECK_MAX_LINKS` | `50` | Maximum unique URLs checked per request (`1`–`200`). |
+| `MAILCUBBY_LINK_CHECK_ALLOWED_PORTS` | `80,443` | Comma-separated TCP ports allowed for active link checks. |
+| `MAILCUBBY_LINK_CHECK_ALLOW_CIDRS` | (empty) | Comma-separated CIDRs exempted from the link checker's private/local IP denylist (for explicit staging subnets). |
 
 ---
 

@@ -69,7 +69,7 @@ Project colour tokens: `slate, red, orange, amber, lime, green, teal, cyan, blue
 | `/reset/$token` | Set new password |
 | `/` | Projects home |
 | `/p/$project` | Project inbox (list + empty reading pane) |
-| `/p/$project/m/$messageId` | Inbox with message open (`?tab=preview|text|source|headers|raw|attachments|tech|check`) |
+| `/p/$project/m/$messageId` | Inbox with message open (`?tab=preview|text|source|headers|raw|attachments|tech|links|check`) |
 | `/p/$project/settings/$section` | Project settings (`general`, `smtp`, `members`, `retention`, `routing`, `api`) |
 | `/account/$section` | Account (`profile`, `security`, `tokens`, `preferences`) |
 | `/admin/$section` | Admin (`users`, `projects`, `settings`, `audit`, `stats`) |
@@ -152,6 +152,7 @@ Every empty, error and not-found state uses one component, `EmptyState` (`web/sr
 | Reading pane, filters match nothing | Nothing to show | none |
 | Reading pane, message missing | Message not found | Retry (load errors only) |
 | Attachments tab, no parts | No attachments | none |
+| Links tab, no extracted links | No links found | none |
 | HTML check tab, all features supported | All detected features are supported | Show all N features (when filtered by "Only show issues") |
 
 Elsewhere (audit V7), page-level states are centred in the content area under the app header (`web/src/components/PageStates.tsx`), and card states sit in the card body:
@@ -176,7 +177,7 @@ Elsewhere (audit V7), page-level states are centred in the content area under th
 
 **Tabs and toolbar**: the tab row is the pane's primary navigation (40 px, 13 px medium, accent underline on the selected tab). The preview toolbar sits below it on the canvas, not on a bar of its own, with 12 px controls: the device segmented control on a `--muted` track, the zoom select, ghost toggles for rotate and "Email dark" (secondary fill when on), and the remote-images notice. The preview frame is a 12 px rounded, bordered card on the canvas; the iframe inside it is unchanged.
 
-**Tabs** (number keys `1` to `7` and `9`; `8` is reserved for the Links tab):
+**Tabs** (number keys `1` to `9`):
 
 | Key | Tab | Content |
 |---|---|---|
@@ -187,6 +188,7 @@ Elsewhere (audit V7), page-level states are centred in the content area under th
 | 5 | Raw | Full raw source (`/raw`), virtualised plain text for large messages, copy, download `.eml`. |
 | 6 | Attachments | List with icon by type, filename, size, content type, inline/attachment badge, `cid:` Content-ID, a "shown in preview" badge for parts the HTML preview inlines (`referenced_by_html`), download; thumbnails for raster images (`?inline=1`). When `meta.features.inline_pdf` is `true`, PDF rows also offer a "Preview" button beside "Download" that opens the lazy-loaded `PdfPreviewDialog` (native modal `<dialog>` embedding `<iframe referrerPolicy="no-referrer">` without `sandbox` pointed at `/render/{project}/{id}/attachments/{attachment_id}`, with "Open in new tab" and "Download" actions in the header and footer plus a mobile fallback note); when `false`, PDFs fall back to download-only. Every other type is downloaded. Count badge on tab (counts every part). |
 | 7 | Tech | Envelope (MAIL FROM, RCPT TO), remote IP, HELO, TLS yes/no, AUTH user, credential, Message-ID, Date header vs received time, raw size, parse warnings. |
+| 8 | Links | Lazy-loaded offline extracted links table (`GET .../links`, FR-120) with URL, anchor text, source badges (`HTML`, `Text`, `Header`), occurrence count, static warnings (`javascript: URL`, `data: URL`, `Credentials in URL`, `Insecure HTTP`, `Missing href`), copy URL, and safe "Open in new tab" (`rel="noopener noreferrer"`, disabled for non-`http(s)` schemes). When `meta.features.link_check` is `true` and the caller is a member or above, shows "Check all links", per-row "Check" buttons, a single-use-token caution note (password resets, magic links, one-click unsubscribe), semantic status badges (`200 OK`, redirect chains with final URL, `4xx`/`5xx`, `Blocked (private IP)`, timeout/DNS/TLS errors), and an `aria-live="polite"` summary announcement. When disabled on server instances, displays a quiet info banner naming `MAILCUBBY_LINK_CHECK_ENABLED=true`. Hidden for viewers with `viewer_hide_technical`; viewers never see active check controls. |
 | 9 | HTML check | Lazy-loaded offline email client compatibility report (`GET .../html-check`, `caniemail.com` MIT snapshot). Score summary bar (Supported / Partial / Unsupported using semantic Studio tokens with text + percentage, never colour-only), client family filter pills (`All`, `Gmail`, `Outlook`, `Apple Mail`, `Yahoo`, `Other`), "Only show issues" toggle (default on), expandable disclosure feature rows (`aria-expanded`, category badge, occurrence count, external `caniemail.com` link with `rel="noopener noreferrer"`, per-client support grid with notes), and structured `EmptyState` when all detected features are supported. Hidden when the message has no HTML part or for viewers with `viewer_hide_technical`. |
 
 Viewers with `viewer_hide_technical` see only Preview, Text and Attachments. The last selected tab and device are remembered.
@@ -261,7 +263,7 @@ Viewers get a simplified UI: no delete or tag actions, no SMTP or settings secti
    | `x` | select message; `Shift+j/k` extends selection |
    | `/` | focus search |
    | `t` | edit tags |
-   | `1` to `7`, `9` | switch message tab (`8` reserved for Links; `9` HTML check) |
+   | `1` to `9` | switch message tab (`8` Links, `9` HTML check) |
    | `d` | cycle device (desktop, tablet, mobile) |
    | `i` | toggle remote images |
    | `[` | toggle sidebar |

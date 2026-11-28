@@ -9,6 +9,7 @@ export type MessageTab =
   | "raw"
   | "attachments"
   | "tech"
+  | "links"
   | "check";
 
 const VALID_TABS = new Set<MessageTab>([
@@ -19,6 +20,7 @@ const VALID_TABS = new Set<MessageTab>([
   "raw",
   "attachments",
   "tech",
+  "links",
   "check",
 ]);
 

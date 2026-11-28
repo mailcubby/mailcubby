@@ -50,6 +50,7 @@ const NUMBER_KEY_TO_TAB: ReadonlyArray<{ key: string; tab: MessageTab }> = [
   { key: "5", tab: "raw" },
   { key: "6", tab: "attachments" },
   { key: "7", tab: "tech" },
+  { key: "8", tab: "links" },
   { key: "9", tab: "check" },
 ];
 
@@ -61,11 +62,28 @@ const PdfPreviewDialog = lazy(() =>
   })),
 );
 
+const LinksTab = lazy(() =>
+  import("@/features/message/LinksTab").then((m) => ({
+    default: m.LinksTab,
+  })),
+);
+
 const HtmlCheckTab = lazy(() =>
   import("@/features/message/HtmlCheckTab").then((m) => ({
     default: m.HtmlCheckTab,
   })),
 );
+
+function LinksTabFallback() {
+  return (
+    <div aria-busy="true" className="h-full overflow-auto bg-background p-4">
+      <div className="mx-auto flex max-w-4xl flex-col gap-4">
+        <Skeleton className="h-24 w-full rounded-lg" />
+        <Skeleton className="h-52 w-full rounded-lg" />
+      </div>
+    </div>
+  );
+}
 
 function HtmlCheckTabFallback() {
   return (
@@ -123,6 +141,8 @@ export function MessageView() {
 
   const { data: meta } = useQuery(metaQueryOptions());
   const inlinePdfEnabled = meta?.features.inline_pdf ?? false;
+  const linkCheckEnabled = meta?.features.link_check;
+  const instanceMode = meta?.mode;
 
   const {
     data: message,
@@ -216,6 +236,7 @@ export function MessageView() {
     list.push({ id: "attachments", label: "Attachments" });
     if (!hideTechnical) {
       list.push({ id: "tech", label: "Tech" });
+      list.push({ id: "links", label: "Links" });
       if (hasHtml) {
         list.push({ id: "check", label: "HTML check" });
       }
@@ -241,7 +262,7 @@ export function MessageView() {
     [navigate, projectSlug, messageId, setSavedTab],
   );
 
-  // Number keys 1 to 7 and 9 switch message tabs (8 reserved for Links); `t` opens the tag editor (UI 3.5 & 4 item 2).
+  // Number keys 1 to 9 switch message tabs; `t` opens the tag editor (UI 3.5 & 4 item 2).
   const tabShortcutBindings = useMemo<KeyShortcutBinding[]>(
     () => [
       ...NUMBER_KEY_TO_TAB.map(({ key, tab }) => ({
@@ -429,6 +450,18 @@ export function MessageView() {
           />
         ) : null}
         {activeTab === "tech" ? <TechTab message={message} /> : null}
+        {activeTab === "links" ? (
+          <Suspense fallback={<LinksTabFallback />}>
+            <LinksTab
+              key={`${projectSlug}:${message.id}`}
+              projectSlug={projectSlug}
+              messageId={message.id}
+              effectiveRole={effectiveRole}
+              linkCheckEnabled={linkCheckEnabled}
+              mode={instanceMode}
+            />
+          </Suspense>
+        ) : null}
         {activeTab === "check" ? (
           <Suspense fallback={<HtmlCheckTabFallback />}>
             <HtmlCheckTab key={message.id} projectSlug={projectSlug} messageId={message.id} />
