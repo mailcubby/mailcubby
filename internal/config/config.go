@@ -60,6 +60,10 @@ const (
 	defaultAPIRateWindow            = time.Minute
 	defaultAPIWaitMaxTimeout        = 120 * time.Second
 	defaultSSEMaxConnectionsPerUser = 10
+	defaultLinkCheckTimeout         = 5 * time.Second
+	maxLinkCheckTimeout             = 30 * time.Second
+	defaultLinkCheckMaxLinks        = 50
+	maxLinkCheckMaxLinks            = 200
 	defaultSMTPAddr                 = ":1025"
 	defaultSMTPHostname             = "mailcubby"
 	defaultSMTPPublicHost           = "localhost"
@@ -117,6 +121,11 @@ type Config struct {
 	SSEMaxConnectionsPerUser int
 	RenderRemoteImages       RenderRemoteImages
 	RenderInlinePDF          bool
+	LinkCheckEnabled         bool
+	LinkCheckTimeout         time.Duration
+	LinkCheckMaxLinks        int
+	LinkCheckAllowedPorts    []int
+	LinkCheckAllowCIDRs      []netip.Prefix
 
 	// SMTP (SPEC 9.3)
 	SMTPAddr       string
@@ -220,6 +229,9 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		SSEMaxConnectionsPerUser: defaultSSEMaxConnectionsPerUser,
 		RenderRemoteImages:       RenderRemoteImagesOptIn,
 		RenderInlinePDF:          true,
+		LinkCheckTimeout:         defaultLinkCheckTimeout,
+		LinkCheckMaxLinks:        defaultLinkCheckMaxLinks,
+		LinkCheckAllowedPorts:    []int{80, 443},
 		SMTPAddr:                 defaultSMTPAddr,
 		SMTPHostname:             defaultSMTPHostname,
 		SMTPMaxMessageBytes:      defaultSMTPMaxMessageBytes,
@@ -412,6 +424,56 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 			addErr("MAILCUBBY_RENDER_INLINE_PDF", err)
 		} else {
 			cfg.RenderInlinePDF = b
+		}
+	}
+
+	// Mode-dependent HTTP defaults (SPEC 9.2, ADR 0010)
+	cfg.LinkCheckEnabled = cfg.Mode != ModeServer
+	if v, ok := get("MAILCUBBY_LINK_CHECK_ENABLED"); ok {
+		b, err := ParseBool(v)
+		if err != nil {
+			addErr("MAILCUBBY_LINK_CHECK_ENABLED", err)
+		} else {
+			cfg.LinkCheckEnabled = b
+		}
+	}
+
+	if v, ok := get("MAILCUBBY_LINK_CHECK_TIMEOUT"); ok {
+		d, err := ParseDuration(v)
+		switch {
+		case err != nil:
+			addErr("MAILCUBBY_LINK_CHECK_TIMEOUT", err)
+		case d <= 0 || d > maxLinkCheckTimeout:
+			addErr("MAILCUBBY_LINK_CHECK_TIMEOUT", fmt.Errorf("must be greater than 0 and at most %s", maxLinkCheckTimeout))
+		default:
+			cfg.LinkCheckTimeout = d
+		}
+	}
+
+	if v, ok := get("MAILCUBBY_LINK_CHECK_MAX_LINKS"); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > maxLinkCheckMaxLinks {
+			addErr("MAILCUBBY_LINK_CHECK_MAX_LINKS", fmt.Errorf("invalid count %q: expected integer in 1..%d", v, maxLinkCheckMaxLinks))
+		} else {
+			cfg.LinkCheckMaxLinks = n
+		}
+	}
+
+	if v, ok := get("MAILCUBBY_LINK_CHECK_ALLOWED_PORTS"); ok {
+		ports, err := ParsePortList(v)
+		if err != nil {
+			addErr("MAILCUBBY_LINK_CHECK_ALLOWED_PORTS", err)
+		} else {
+			cfg.LinkCheckAllowedPorts = ports
+		}
+	}
+
+	if v, ok := get("MAILCUBBY_LINK_CHECK_ALLOW_CIDRS"); ok {
+		prefixes, err := ParseCIDRList(v)
+		if err != nil {
+			addErr("MAILCUBBY_LINK_CHECK_ALLOW_CIDRS", err)
+		} else {
+			cfg.LinkCheckAllowCIDRs = prefixes
 		}
 	}
 

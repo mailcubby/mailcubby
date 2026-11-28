@@ -292,6 +292,15 @@ func TestLoadLocalDefaults(t *testing.T) {
 	if cfg.ZstdLevel != 3 || !cfg.HSTS || cfg.RenderRemoteImages != RenderRemoteImagesOptIn || !cfg.RenderInlinePDF {
 		t.Errorf("Other defaults mismatch: zstd=%d hsts=%v remote=%q inline_pdf=%v", cfg.ZstdLevel, cfg.HSTS, cfg.RenderRemoteImages, cfg.RenderInlinePDF)
 	}
+	if !cfg.LinkCheckEnabled || cfg.LinkCheckTimeout != 5*time.Second || cfg.LinkCheckMaxLinks != 50 {
+		t.Errorf("LinkCheck defaults mismatch: enabled=%v timeout=%v max=%d", cfg.LinkCheckEnabled, cfg.LinkCheckTimeout, cfg.LinkCheckMaxLinks)
+	}
+	if len(cfg.LinkCheckAllowedPorts) != 2 || cfg.LinkCheckAllowedPorts[0] != 80 || cfg.LinkCheckAllowedPorts[1] != 443 {
+		t.Errorf("LinkCheckAllowedPorts = %v, want [80 443]", cfg.LinkCheckAllowedPorts)
+	}
+	if len(cfg.LinkCheckAllowCIDRs) != 0 {
+		t.Errorf("LinkCheckAllowCIDRs = %v, want empty", cfg.LinkCheckAllowCIDRs)
+	}
 }
 
 func TestLoadServerDefaultsAndOverrides(t *testing.T) {
@@ -338,6 +347,9 @@ func TestLoadServerDefaultsAndOverrides(t *testing.T) {
 	}
 	if !cfg.RenderInlinePDF {
 		t.Errorf("RenderInlinePDF = false, want true by default in server mode")
+	}
+	if cfg.LinkCheckEnabled {
+		t.Errorf("LinkCheckEnabled = true, want false by default in server mode")
 	}
 	wantProxies := []netip.Prefix{
 		netip.MustParsePrefix("10.0.0.0/8"),
@@ -652,4 +664,98 @@ func TestLoadRenderInlinePDF(t *testing.T) {
 			}
 		})
 	}
+}
+
+// SPEC 9.2, ADR 0010, FR-120: link checker configuration defaults, overrides, and validation.
+func TestLoadLinkCheckConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("overrides in server mode", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := Load(mapLookup(map[string]string{
+			"MAILCUBBY_MODE":                     "server",
+			"MAILCUBBY_BASE_URL":                 "https://mail.example.com",
+			"MAILCUBBY_APP_KEY":                  testAppKeyBase64(),
+			"MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH": "true",
+			"MAILCUBBY_LINK_CHECK_ENABLED":       "true",
+			"MAILCUBBY_LINK_CHECK_TIMEOUT":       "15s",
+			"MAILCUBBY_LINK_CHECK_MAX_LINKS":     "120",
+			"MAILCUBBY_LINK_CHECK_ALLOWED_PORTS": "80, 443, 8080, 80",
+			"MAILCUBBY_LINK_CHECK_ALLOW_CIDRS":   "10.20.0.5/16, fd00::1/8",
+		}))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if !cfg.LinkCheckEnabled {
+			t.Errorf("LinkCheckEnabled = false, want true")
+		}
+		if cfg.LinkCheckTimeout != 15*time.Second {
+			t.Errorf("LinkCheckTimeout = %v, want 15s", cfg.LinkCheckTimeout)
+		}
+		if cfg.LinkCheckMaxLinks != 120 {
+			t.Errorf("LinkCheckMaxLinks = %d, want 120", cfg.LinkCheckMaxLinks)
+		}
+		wantPorts := []int{80, 443, 8080}
+		if len(cfg.LinkCheckAllowedPorts) != len(wantPorts) {
+			t.Fatalf("LinkCheckAllowedPorts = %v, want %v", cfg.LinkCheckAllowedPorts, wantPorts)
+		}
+		for i, p := range wantPorts {
+			if cfg.LinkCheckAllowedPorts[i] != p {
+				t.Errorf("LinkCheckAllowedPorts[%d] = %d, want %d", i, cfg.LinkCheckAllowedPorts[i], p)
+			}
+		}
+		wantCIDRs := []netip.Prefix{
+			netip.MustParsePrefix("10.20.0.0/16"),
+			netip.MustParsePrefix("fd00::/8"),
+		}
+		if len(cfg.LinkCheckAllowCIDRs) != len(wantCIDRs) || cfg.LinkCheckAllowCIDRs[0] != wantCIDRs[0] || cfg.LinkCheckAllowCIDRs[1] != wantCIDRs[1] {
+			t.Errorf("LinkCheckAllowCIDRs = %v, want %v", cfg.LinkCheckAllowCIDRs, wantCIDRs)
+		}
+	})
+
+	t.Run("disable in local mode", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := Load(mapLookup(map[string]string{
+			"MAILCUBBY_LINK_CHECK_ENABLED": "false",
+		}))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.LinkCheckEnabled {
+			t.Errorf("LinkCheckEnabled = true, want false")
+		}
+	})
+
+	t.Run("validation errors", func(t *testing.T) {
+		t.Parallel()
+		badCases := []struct {
+			name    string
+			env     map[string]string
+			wantVar string
+		}{
+			{name: "invalid enabled", env: map[string]string{"MAILCUBBY_LINK_CHECK_ENABLED": "yes"}, wantVar: "MAILCUBBY_LINK_CHECK_ENABLED"},
+			{name: "timeout zero", env: map[string]string{"MAILCUBBY_LINK_CHECK_TIMEOUT": "0s"}, wantVar: "MAILCUBBY_LINK_CHECK_TIMEOUT"},
+			{name: "timeout above 30s", env: map[string]string{"MAILCUBBY_LINK_CHECK_TIMEOUT": "31s"}, wantVar: "MAILCUBBY_LINK_CHECK_TIMEOUT"},
+			{name: "timeout invalid", env: map[string]string{"MAILCUBBY_LINK_CHECK_TIMEOUT": "fast"}, wantVar: "MAILCUBBY_LINK_CHECK_TIMEOUT"},
+			{name: "max links zero", env: map[string]string{"MAILCUBBY_LINK_CHECK_MAX_LINKS": "0"}, wantVar: "MAILCUBBY_LINK_CHECK_MAX_LINKS"},
+			{name: "max links above 200", env: map[string]string{"MAILCUBBY_LINK_CHECK_MAX_LINKS": "201"}, wantVar: "MAILCUBBY_LINK_CHECK_MAX_LINKS"},
+			{name: "max links non-int", env: map[string]string{"MAILCUBBY_LINK_CHECK_MAX_LINKS": "many"}, wantVar: "MAILCUBBY_LINK_CHECK_MAX_LINKS"},
+			{name: "port zero", env: map[string]string{"MAILCUBBY_LINK_CHECK_ALLOWED_PORTS": "0"}, wantVar: "MAILCUBBY_LINK_CHECK_ALLOWED_PORTS"},
+			{name: "port over 65535", env: map[string]string{"MAILCUBBY_LINK_CHECK_ALLOWED_PORTS": "80,70000"}, wantVar: "MAILCUBBY_LINK_CHECK_ALLOWED_PORTS"},
+			{name: "port empty segment", env: map[string]string{"MAILCUBBY_LINK_CHECK_ALLOWED_PORTS": "80,,443"}, wantVar: "MAILCUBBY_LINK_CHECK_ALLOWED_PORTS"},
+			{name: "invalid cidr", env: map[string]string{"MAILCUBBY_LINK_CHECK_ALLOW_CIDRS": "10.0.0.1"}, wantVar: "MAILCUBBY_LINK_CHECK_ALLOW_CIDRS"},
+		}
+		for _, tc := range badCases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				_, err := Load(mapLookup(tc.env))
+				if err == nil {
+					t.Fatalf("Load(%v) succeeded, want error mentioning %s", tc.env, tc.wantVar)
+				}
+				if !strings.Contains(err.Error(), tc.wantVar) {
+					t.Errorf("error %q does not mention %s", err.Error(), tc.wantVar)
+				}
+			})
+		}
+	})
 }
