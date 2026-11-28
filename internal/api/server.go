@@ -17,6 +17,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
 	"github.com/mailcubby/mailcubby/internal/ingest"
+	"github.com/mailcubby/mailcubby/internal/linkcheck"
 	"github.com/mailcubby/mailcubby/internal/ratelimit"
 	"github.com/mailcubby/mailcubby/internal/render"
 	"github.com/mailcubby/mailcubby/internal/secrets"
@@ -24,18 +25,20 @@ import (
 )
 
 const (
-	httpReadHeaderTimeout = 10 * time.Second
-	httpReadTimeout       = 60 * time.Second
-	httpWriteTimeout      = 60 * time.Second
-	httpIdleTimeout       = 120 * time.Second
-	httpMaxHeaderBytes    = 64 << 10
-	sparklineCacheTTL     = 30 * time.Second
-	resetRateLimitCount   = 20
-	resetRateLimitWindow  = 15 * time.Minute
-	inviteRateLimitCount  = 20
-	inviteRateLimitWindow = 15 * time.Minute
-	loginIPRateMultiplier = 5
-	maxAdminAccessEntries = 10000
+	httpReadHeaderTimeout    = 10 * time.Second
+	httpReadTimeout          = 60 * time.Second
+	httpWriteTimeout         = 60 * time.Second
+	httpIdleTimeout          = 120 * time.Second
+	httpMaxHeaderBytes       = 64 << 10
+	sparklineCacheTTL        = 30 * time.Second
+	resetRateLimitCount      = 20
+	resetRateLimitWindow     = 15 * time.Minute
+	inviteRateLimitCount     = 20
+	inviteRateLimitWindow    = 15 * time.Minute
+	linkCheckRateLimitCount  = 10
+	linkCheckRateLimitWindow = time.Minute
+	loginIPRateMultiplier    = 5
+	maxAdminAccessEntries    = 10000
 )
 
 // PasswordHasher performs argon2id password hashing and verification (SPEC FR-042).
@@ -54,6 +57,7 @@ type Options struct {
 	Ingestor       *ingest.Ingestor
 	Renderer       *render.Renderer
 	CompatChecker  *compat.Checker
+	LinkChecker    *linkcheck.Checker
 	Hasher         PasswordHasher
 	WebHandler     http.Handler
 	ListenersReady func() bool
@@ -68,6 +72,7 @@ type Server struct {
 	ingestor       *ingest.Ingestor
 	renderer       *render.Renderer
 	compatChecker  *compat.Checker
+	linkChecker    *linkcheck.Checker
 	hasher         PasswordHasher
 	smtpCipher     *secrets.Cipher
 	clk            clock.Clock
@@ -80,11 +85,12 @@ type Server struct {
 	// (FR-045); nil in server mode, which uses Origin + CSRF token checks.
 	crossOrigin *http.CrossOriginProtection
 
-	loginKeyLimiter *ratelimit.SlidingWindow
-	loginIPLimiter  *ratelimit.SlidingWindow
-	resetIPLimiter  *ratelimit.SlidingWindow
-	inviteIPLimiter *ratelimit.SlidingWindow
-	apiLimiter      *ratelimit.TokenBucket
+	loginKeyLimiter  *ratelimit.SlidingWindow
+	loginIPLimiter   *ratelimit.SlidingWindow
+	resetIPLimiter   *ratelimit.SlidingWindow
+	inviteIPLimiter  *ratelimit.SlidingWindow
+	linkCheckLimiter *ratelimit.SlidingWindow
+	apiLimiter       *ratelimit.TokenBucket
 
 	routes  []Route
 	handler http.Handler
@@ -147,6 +153,16 @@ func New(cfg config.Config, st *store.Store, blobs *blob.Store, bus *events.Bus,
 			checker = c
 		}
 	}
+	lchecker := opts.LinkChecker
+	if lchecker == nil && blobs != nil {
+		lchecker = linkcheck.New(blobs, linkcheck.Config{
+			Timeout:      cfg.LinkCheckTimeout,
+			MaxLinks:     cfg.LinkCheckMaxLinks,
+			AllowedPorts: cfg.LinkCheckAllowedPorts,
+			AllowCIDRs:   cfg.LinkCheckAllowCIDRs,
+			Version:      ver,
+		}, clk, log)
+	}
 	hasher := opts.Hasher
 	if hasher == nil {
 		hasher = auth.NewHasher()
@@ -166,30 +182,32 @@ func New(cfg config.Config, st *store.Store, blobs *blob.Store, bus *events.Bus,
 	loginWindow := cfg.LoginRateLimit.Window
 
 	s := &Server{
-		cfg:             cfg,
-		store:           st,
-		blobs:           blobs,
-		bus:             bus,
-		ingestor:        ing,
-		renderer:        rend,
-		compatChecker:   checker,
-		hasher:          hasher,
-		smtpCipher:      smtpCipher,
-		clk:             clk,
-		startedAt:       clk.Now().UTC(),
-		log:             log,
-		version:         ver,
-		webHandler:      opts.WebHandler,
-		listenersReady:  opts.ListenersReady,
-		loginKeyLimiter: ratelimit.NewSlidingWindow(loginLimit, loginWindow, clk),
-		loginIPLimiter:  ratelimit.NewSlidingWindow(loginLimit*loginIPRateMultiplier, loginWindow, clk),
-		resetIPLimiter:  ratelimit.NewSlidingWindow(resetRateLimitCount, resetRateLimitWindow, clk),
-		inviteIPLimiter: ratelimit.NewSlidingWindow(inviteRateLimitCount, inviteRateLimitWindow, clk),
-		apiLimiter:      ratelimit.NewTokenBucket(cfg.APIRateLimit.Count, cfg.APIRateLimit.Window, clk),
-		sse:             newSSETracker(cfg.SSEMaxConnectionsPerUser),
-		adminAccessSeen: make(map[adminAccessKey]struct{}),
-		sparkCache:      make(map[int64]sparklineEntry),
-		shutdownCh:      make(chan struct{}),
+		cfg:              cfg,
+		store:            st,
+		blobs:            blobs,
+		bus:              bus,
+		ingestor:         ing,
+		renderer:         rend,
+		compatChecker:    checker,
+		linkChecker:      lchecker,
+		hasher:           hasher,
+		smtpCipher:       smtpCipher,
+		clk:              clk,
+		startedAt:        clk.Now().UTC(),
+		log:              log,
+		version:          ver,
+		webHandler:       opts.WebHandler,
+		listenersReady:   opts.ListenersReady,
+		loginKeyLimiter:  ratelimit.NewSlidingWindow(loginLimit, loginWindow, clk),
+		loginIPLimiter:   ratelimit.NewSlidingWindow(loginLimit*loginIPRateMultiplier, loginWindow, clk),
+		resetIPLimiter:   ratelimit.NewSlidingWindow(resetRateLimitCount, resetRateLimitWindow, clk),
+		inviteIPLimiter:  ratelimit.NewSlidingWindow(inviteRateLimitCount, inviteRateLimitWindow, clk),
+		linkCheckLimiter: ratelimit.NewSlidingWindow(linkCheckRateLimitCount, linkCheckRateLimitWindow, clk),
+		apiLimiter:       ratelimit.NewTokenBucket(cfg.APIRateLimit.Count, cfg.APIRateLimit.Window, clk),
+		sse:              newSSETracker(cfg.SSEMaxConnectionsPerUser),
+		adminAccessSeen:  make(map[adminAccessKey]struct{}),
+		sparkCache:       make(map[int64]sparklineEntry),
+		shutdownCh:       make(chan struct{}),
 	}
 	if cfg.Mode == config.ModeLocal {
 		s.crossOrigin = http.NewCrossOriginProtection()

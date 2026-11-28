@@ -246,6 +246,12 @@ func ParseBool(raw string) (bool, error) {
 
 // ParseTrustedProxies parses a comma-separated list of CIDR prefixes.
 func ParseTrustedProxies(raw string) ([]netip.Prefix, error) {
+	return ParseCIDRList(raw)
+}
+
+// ParseCIDRList parses a comma-separated list of CIDR prefixes, returning each
+// prefix in canonical masked form.
+func ParseCIDRList(raw string) ([]netip.Prefix, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
 		return nil, nil
@@ -262,6 +268,34 @@ func ParseTrustedProxies(raw string) ([]netip.Prefix, error) {
 			return nil, fmt.Errorf("invalid CIDR %q: %w", p, err)
 		}
 		out = append(out, prefix.Masked())
+	}
+	return out, nil
+}
+
+// ParsePortList parses a comma-separated list of TCP/UDP port numbers in 1..65535,
+// rejecting empty entries and deduplicating ports while preserving order.
+func ParsePortList(raw string) ([]int, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return nil, errors.New("empty port list")
+	}
+	parts := strings.Split(s, ",")
+	seen := make(map[int]struct{}, len(parts))
+	out := make([]int, 0, len(parts))
+	for _, part := range parts {
+		p := strings.TrimSpace(part)
+		if p == "" {
+			return nil, fmt.Errorf("invalid port list %q: empty entry", raw)
+		}
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 || n > 65535 {
+			return nil, fmt.Errorf("invalid port %q: expected integer in 1..65535", p)
+		}
+		if _, dup := seen[n]; dup {
+			continue
+		}
+		seen[n] = struct{}{}
+		out = append(out, n)
 	}
 	return out, nil
 }

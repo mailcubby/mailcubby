@@ -28,6 +28,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/config"
 	"github.com/mailcubby/mailcubby/internal/events"
 	"github.com/mailcubby/mailcubby/internal/ingest"
+	"github.com/mailcubby/mailcubby/internal/linkcheck"
 	"github.com/mailcubby/mailcubby/internal/ratelimit"
 	"github.com/mailcubby/mailcubby/internal/render"
 	"github.com/mailcubby/mailcubby/internal/retention"
@@ -278,6 +279,13 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 			_ = st.Close()
 			return nil, fmt.Errorf("app: init compat checker: %w", err)
 		}
+		linkChecker := linkcheck.New(blobs, linkcheck.Config{
+			Timeout:      cfg.LinkCheckTimeout,
+			MaxLinks:     cfg.LinkCheckMaxLinks,
+			AllowedPorts: cfg.LinkCheckAllowedPorts,
+			AllowCIDRs:   cfg.LinkCheckAllowCIDRs,
+			Version:      ver,
+		}, clk, log)
 		a.apiSrv = api.New(cfg, st, blobs, bus, api.Options{
 			Version:        ver,
 			Clock:          clk,
@@ -285,6 +293,7 @@ func Open(ctx context.Context, cfg config.Config, opts Options) (*App, error) {
 			Ingestor:       ing,
 			Renderer:       renderer,
 			CompatChecker:  compatChecker,
+			LinkChecker:    linkChecker,
 			WebHandler:     web.Handler(),
 			ListenersReady: a.listenersReady.Load,
 		})

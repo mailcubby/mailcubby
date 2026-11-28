@@ -67,6 +67,11 @@ type serverTestEnv struct {
 
 func newServerModeEnv(t *testing.T) *serverTestEnv {
 	t.Helper()
+	return newServerModeEnvWithOverrides(t, nil)
+}
+
+func newServerModeEnvWithOverrides(t *testing.T, overrides map[string]string) *serverTestEnv {
+	t.Helper()
 
 	dataDir := t.TempDir()
 	envMap := map[string]string{
@@ -75,6 +80,9 @@ func newServerModeEnv(t *testing.T) *serverTestEnv {
 		"MAILCUBBY_BASE_URL":                 testBaseURL,
 		"MAILCUBBY_APP_KEY":                  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 		"MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH": "true",
+	}
+	for k, v := range overrides {
+		envMap[k] = v
 	}
 
 	cfg, err := config.Load(func(k string) (string, bool) {

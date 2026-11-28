@@ -62,6 +62,7 @@ func TestIntegrationLogRedactionNoSecrets(t *testing.T) {
 		badSMTPValue    = "BadSecret-SMTPAttempt-4466!"
 		secretQueryTerm = "UltraSecretQueryString9988"
 		secretMailBody  = "Confidential-Email-Body-Payload-3377"
+		secretLinkToken = "SecretLinkCheckToken-11223344"
 	)
 
 	dataDir := t.TempDir()
@@ -72,6 +73,7 @@ func TestIntegrationLogRedactionNoSecrets(t *testing.T) {
 		"MAILCUBBY_APP_KEY":                  appKeyB64,
 		"MAILCUBBY_SMTP_ALLOW_INSECURE_AUTH": "true",
 		"MAILCUBBY_SMTP_AUTH_MAX_FAILURES":   "5",
+		"MAILCUBBY_LINK_CHECK_ENABLED":       "true",
 	}
 	cfg, err := config.Load(func(k string) (string, bool) {
 		v, ok := envMap[k]
@@ -167,7 +169,7 @@ func TestIntegrationLogRedactionNoSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("smtp.Data: %v", err)
 	}
-	_, _ = wc.Write([]byte("Subject: Confidential\r\n\r\n" + secretMailBody + "\r\n"))
+	_, _ = wc.Write([]byte("Subject: Confidential\r\n\r\n" + secretMailBody + "\r\nhttp://127.0.0.1/magic?token=" + secretLinkToken + "\r\n"))
 	if err := wc.Close(); err != nil {
 		t.Fatalf("smtp.Data Close: %v", err)
 	}
@@ -262,6 +264,29 @@ doneBadSMTP:
 		t.Fatalf("bearer search = %d", r.Code)
 	}
 
+	// 7. Extract and actively check links on the ingested message (URL carries secretLinkToken;
+	// SSRF-blocked loopback check must never log the checked URL or raw *url.Error).
+	listRec := doReq(t, h, http.MethodGet, "/api/v1/projects/redact-shop/messages", nil, adminCookie, nil)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list messages = %d", listRec.Code)
+	}
+	var msgList struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(listRec.Body.Bytes(), &msgList)
+	if len(msgList.Items) == 0 {
+		t.Fatalf("expected ingested message for link check log redaction")
+	}
+	linkMsgID := msgList.Items[0].ID
+	if r := doReq(t, h, http.MethodGet, "/api/v1/projects/redact-shop/messages/"+linkMsgID+"/links", nil, adminCookie, nil); r.Code != http.StatusOK {
+		t.Fatalf("GET links = %d; body=%s", r.Code, r.Body.String())
+	}
+	if r := doReq(t, h, http.MethodPost, "/api/v1/projects/redact-shop/messages/"+linkMsgID+"/links/check", nil, adminCookie, csrfHeaders(adminCSRF)); r.Code != http.StatusOK {
+		t.Fatalf("POST links/check = %d; body=%s", r.Code, r.Body.String())
+	}
+
 	// Assert captured logs are non-empty and contain [REDACTED] for secret paths.
 	logs := logBuf.String()
 	if logs == "" {
@@ -294,6 +319,7 @@ doneBadSMTP:
 		{"badSMTPValue", badSMTPValue},
 		{"secretQueryTerm", secretQueryTerm},
 		{"secretMailBody", secretMailBody},
+		{"secretLinkToken", secretLinkToken},
 	}
 	for _, sec := range secrets {
 		if sec.value == "" {
