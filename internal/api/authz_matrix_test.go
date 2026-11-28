@@ -14,6 +14,7 @@ import (
 	"github.com/mailcubby/mailcubby/internal/auth"
 	"github.com/mailcubby/mailcubby/internal/blob"
 	"github.com/mailcubby/mailcubby/internal/config"
+	"github.com/mailcubby/mailcubby/internal/ingest"
 	"github.com/mailcubby/mailcubby/internal/store"
 	"github.com/mailcubby/mailcubby/internal/testutil"
 )
@@ -57,7 +58,12 @@ type routeAuthzSpec struct {
 func TestAuthorizationMatrix(t *testing.T) {
 	t.Parallel()
 
-	env := newServerModeEnv(t)
+	// Enable active link checking so POST .../links/check exercises PermMember (200 vs 403)
+	// against a zero-link message (zero outbound network I/O); server-mode default disabled
+	// behavior (403 feature_disabled) is covered in link_check_test.go.
+	env := newServerModeEnvWithOverrides(t, map[string]string{
+		"MAILCUBBY_LINK_CHECK_ENABLED": "true",
+	})
 	h := env.srv.Handler()
 	const pass = "correct-horse-battery-staple"
 
@@ -183,6 +189,19 @@ func TestAuthorizationMatrix(t *testing.T) {
 
 	msgID, attID, pdfAttID := sendSample(proj.Slug)
 	msgTechOffID, _, _ := sendSample(projTechOff.Slug)
+
+	// Seed a plain-text message with zero links so POST .../links/check exercises
+	// PermMember authorization cleanly without making any outbound network calls.
+	noLinkRefs, err := env.ing.Ingest(t.Context(), ingest.Envelope{
+		MailFrom: "sender@example.test",
+		RcptTo:   []string{"rcpt@example.test"},
+	}, []ingest.Target{{ProjectID: proj.ID, ProjectSlug: proj.Slug}}, strings.NewReader(
+		"From: sender@example.test\r\nTo: rcpt@example.test\r\nSubject: No Links\r\n\r\nPlain text without any URLs.\r\n",
+	))
+	if err != nil {
+		t.Fatalf("Ingest no-link message: %v", err)
+	}
+	msgNoLinksID := noLinkRefs[0].ID.String()
 
 	seedTag, err := env.store.CreateTag(t.Context(), proj.ID, "seed-tag", "slate", env.clk.Now().UTC())
 	if err != nil {
@@ -513,6 +532,14 @@ func TestAuthorizationMatrix(t *testing.T) {
 		"GET /api/v1/projects/{project}/messages/{id}/html-check": {
 			expected: viewerTechOK, viewerTechOff: 200,
 			makeReq: constPath("/api/v1/projects/"+proj.Slug+"/messages/"+msgID+"/html-check", nil),
+		},
+		"GET /api/v1/projects/{project}/messages/{id}/links": {
+			expected: viewerTechOK, viewerTechOff: 200,
+			makeReq: constPath("/api/v1/projects/"+proj.Slug+"/messages/"+msgID+"/links", nil),
+		},
+		"POST /api/v1/projects/{project}/messages/{id}/links/check": {
+			expected: memberOK,
+			makeReq:  constPath("/api/v1/projects/"+proj.Slug+"/messages/"+msgNoLinksID+"/links/check", nil),
 		},
 		"GET /api/v1/projects/{project}/messages/{id}/headers": {
 			expected: viewerTechOK, viewerTechOff: 200,

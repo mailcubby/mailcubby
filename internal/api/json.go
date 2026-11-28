@@ -31,6 +31,8 @@ const (
 	ErrCodeUnauthorized ErrorCode = "unauthorized"
 	// ErrCodeForbidden indicates insufficient permissions for the requested action (403).
 	ErrCodeForbidden ErrorCode = "forbidden"
+	// ErrCodeFeatureDisabled indicates a feature is disabled by server configuration (403).
+	ErrCodeFeatureDisabled ErrorCode = "feature_disabled"
 	// ErrCodeNotFound indicates the requested resource does not exist or is inaccessible (404).
 	ErrCodeNotFound ErrorCode = "not_found"
 	// ErrCodeMethodNotAllowed indicates an unsupported HTTP method on an existing route (405).

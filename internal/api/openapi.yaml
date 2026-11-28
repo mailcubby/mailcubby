@@ -730,6 +730,54 @@ paths:
         "404":
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/projects/{project}/messages/{id}/links:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - $ref: "#/components/parameters/MessageID"
+    get:
+      operationId: getMessageLinks
+      summary: Extract and deduplicate message links offline from HTML, plain text, and List-Unsubscribe headers
+      responses:
+        "200":
+          description: Extracted message links with static warnings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageLinksResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/projects/{project}/messages/{id}/links/check:
+    parameters:
+      - $ref: "#/components/parameters/ProjectSlug"
+      - $ref: "#/components/parameters/MessageID"
+    post:
+      operationId: checkMessageLinks
+      summary: Actively check extracted HTTP(S) links in a message under ADR 0010 SSRF protections
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckMessageLinksRequest"
+      responses:
+        "200":
+          description: Active link check report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkCheckResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/projects/{project}/messages/{id}/headers:
     parameters:
       - $ref: "#/components/parameters/ProjectSlug"
@@ -1687,6 +1735,7 @@ components:
                 - validation_failed
                 - unauthorized
                 - forbidden
+                - feature_disabled
                 - not_found
                 - method_not_allowed
                 - conflict
@@ -1739,7 +1788,7 @@ components:
           type: string
         features:
           type: object
-          required: [remote_images, recipient_routing, inline_pdf]
+          required: [remote_images, recipient_routing, inline_pdf, link_check]
           properties:
             remote_images:
               type: string
@@ -1747,6 +1796,8 @@ components:
             recipient_routing:
               type: boolean
             inline_pdf:
+              type: boolean
+            link_check:
               type: boolean
         inbox_domain:
           type: string
@@ -2485,6 +2536,147 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/HTMLCheckFeature"
+
+    LinkSource:
+      type: string
+      enum: [html, text, header]
+
+    LinkWarning:
+      type: string
+      enum:
+        - javascript_url
+        - data_url
+        - credentials_in_url
+        - http_insecure
+        - missing_href
+
+    ExtractedLink:
+      type: object
+      required: [url, text, sources, count, scheme, checkable, warnings]
+      properties:
+        url:
+          type: string
+        text:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkSource"
+        count:
+          type: integer
+        scheme:
+          type: string
+        checkable:
+          type: boolean
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkWarning"
+
+    MessageLinksResponse:
+      type: object
+      required: [links, total, checkable_count, truncated]
+      properties:
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExtractedLink"
+        total:
+          type: integer
+        checkable_count:
+          type: integer
+        truncated:
+          type: boolean
+
+    CheckMessageLinksRequest:
+      type: object
+      properties:
+        urls:
+          type: array
+          minItems: 1
+          items:
+            type: string
+
+    LinkCheckStatus:
+      type: string
+      enum:
+        - ok
+        - redirect
+        - client_error
+        - server_error
+        - blocked
+        - timeout
+        - dns_error
+        - tls_error
+        - network_error
+        - too_many_redirects
+        - skipped_limit
+
+    LinkCheckResult:
+      type: object
+      required:
+        - url
+        - status
+        - status_code
+        - final_url
+        - redirect_count
+        - duration_ms
+        - cached
+        - error_code
+        - error
+      properties:
+        url:
+          type: string
+        status:
+          $ref: "#/components/schemas/LinkCheckStatus"
+        status_code:
+          type: ["integer", "null"]
+        final_url:
+          type: ["string", "null"]
+        redirect_count:
+          type: integer
+        duration_ms:
+          type: integer
+          format: int64
+        cached:
+          type: boolean
+        error_code:
+          type: ["string", "null"]
+        error:
+          type: ["string", "null"]
+
+    LinkCheckSummary:
+      type: object
+      required: [total, ok, redirect, broken, blocked, error, skipped]
+      properties:
+        total:
+          type: integer
+        ok:
+          type: integer
+        redirect:
+          type: integer
+        broken:
+          type: integer
+        blocked:
+          type: integer
+        error:
+          type: integer
+        skipped:
+          type: integer
+
+    LinkCheckResponse:
+      type: object
+      required: [checked_at, summary, results]
+      properties:
+        checked_at:
+          type: string
+          format: date-time
+        summary:
+          $ref: "#/components/schemas/LinkCheckSummary"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinkCheckResult"
 
     BulkMessagesRequest:
       type: object

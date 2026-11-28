@@ -471,6 +471,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/messages/{id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: components["parameters"]["MessageID"];
+            };
+            cookie?: never;
+        };
+        /** Extract and deduplicate message links offline from HTML, plain text, and List-Unsubscribe headers */
+        get: operations["getMessageLinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/messages/{id}/links/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: components["parameters"]["MessageID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Actively check extracted HTTP(S) links in a message under ADR 0010 SSRF protections */
+        post: operations["checkMessageLinks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/messages/{id}/headers": {
         parameters: {
             query?: never;
@@ -965,7 +1005,7 @@ export interface components {
         ErrorEnvelope: {
             error: {
                 /** @enum {string} */
-                code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "method_not_allowed" | "conflict" | "login_required" | "gone" | "payload_too_large" | "unsupported_media_type" | "rate_limited" | "internal" | "service_unavailable";
+                code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "feature_disabled" | "not_found" | "method_not_allowed" | "conflict" | "login_required" | "gone" | "payload_too_large" | "unsupported_media_type" | "rate_limited" | "internal" | "service_unavailable";
                 message: string;
                 details?: {
                     [key: string]: string;
@@ -989,6 +1029,7 @@ export interface components {
                 remote_images: "opt-in" | "off";
                 recipient_routing: boolean;
                 inline_pdf: boolean;
+                link_check: boolean;
             };
             inbox_domain: string;
             smtp: components["schemas"]["SMTPConnectionInfo"];
@@ -1312,6 +1353,57 @@ export interface components {
             truncated: boolean;
             clients: components["schemas"]["HTMLCheckClient"][];
             features: components["schemas"]["HTMLCheckFeature"][];
+        };
+        /** @enum {string} */
+        LinkSource: "html" | "text" | "header";
+        /** @enum {string} */
+        LinkWarning: "javascript_url" | "data_url" | "credentials_in_url" | "http_insecure" | "missing_href";
+        ExtractedLink: {
+            url: string;
+            text: string;
+            sources: components["schemas"]["LinkSource"][];
+            count: number;
+            scheme: string;
+            checkable: boolean;
+            warnings: components["schemas"]["LinkWarning"][];
+        };
+        MessageLinksResponse: {
+            links: components["schemas"]["ExtractedLink"][];
+            total: number;
+            checkable_count: number;
+            truncated: boolean;
+        };
+        CheckMessageLinksRequest: {
+            urls?: string[];
+        };
+        /** @enum {string} */
+        LinkCheckStatus: "ok" | "redirect" | "client_error" | "server_error" | "blocked" | "timeout" | "dns_error" | "tls_error" | "network_error" | "too_many_redirects" | "skipped_limit";
+        LinkCheckResult: {
+            url: string;
+            status: components["schemas"]["LinkCheckStatus"];
+            status_code: number | null;
+            final_url: string | null;
+            redirect_count: number;
+            /** Format: int64 */
+            duration_ms: number;
+            cached: boolean;
+            error_code: string | null;
+            error: string | null;
+        };
+        LinkCheckSummary: {
+            total: number;
+            ok: number;
+            redirect: number;
+            broken: number;
+            blocked: number;
+            error: number;
+            skipped: number;
+        };
+        LinkCheckResponse: {
+            /** Format: date-time */
+            checked_at: string;
+            summary: components["schemas"]["LinkCheckSummary"];
+            results: components["schemas"]["LinkCheckResult"][];
         };
         BulkMessagesRequest: {
             ids: string[];
@@ -2441,6 +2533,62 @@ export interface operations {
             };
             403: components["responses"]["ErrorResponse"];
             404: components["responses"]["ErrorResponse"];
+        };
+    };
+    getMessageLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: components["parameters"]["MessageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Extracted message links with static warnings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageLinksResponse"];
+                };
+            };
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    checkMessageLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["ProjectSlug"];
+                id: components["parameters"]["MessageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CheckMessageLinksRequest"];
+            };
+        };
+        responses: {
+            /** @description Active link check report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkCheckResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            429: components["responses"]["ErrorResponse"];
         };
     };
     getMessageHeaders: {
